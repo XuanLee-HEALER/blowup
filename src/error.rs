@@ -44,6 +44,28 @@ pub enum SubError {
     InvalidSrt(String),
 }
 
+#[derive(Debug, Error)]
+pub enum OmdbError {
+    #[error("OMDB API key not configured.\nRun: blowup config set omdb.api_key YOUR_KEY\nGet a free key at: https://www.omdbapi.com/apikey.aspx")]
+    ApiKeyMissing,
+    #[error("Movie not found: {0}")]
+    NotFound(String),
+    #[error("HTTP request failed: {0}")]
+    HttpFailed(#[from] reqwest::Error),
+}
+
+#[derive(Debug, Error)]
+pub enum ConfigCmdError {
+    #[error("Invalid key format: '{0}' (expected: section.field, e.g. omdb.api_key)")]
+    InvalidKeyFormat(String),
+    #[error("Unknown config key: '{0}'")]
+    UnknownKey(String),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("TOML parse error: {0}")]
+    TomlParse(String),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,5 +80,17 @@ mod tests {
     fn download_error_display() {
         let e = DownloadError::Aria2cNotFound;
         assert_eq!(e.to_string(), "aria2c not found in PATH");
+    }
+
+    #[test]
+    fn omdb_error_api_key_missing_display() {
+        let e = OmdbError::ApiKeyMissing;
+        assert!(e.to_string().contains("blowup config set omdb.api_key"));
+    }
+
+    #[test]
+    fn config_cmd_error_invalid_format_display() {
+        let e = ConfigCmdError::InvalidKeyFormat("noDot".to_string());
+        assert!(e.to_string().contains("section.field"));
     }
 }
