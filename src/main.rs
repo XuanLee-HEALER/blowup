@@ -1,72 +1,127 @@
-use blowup::{
-    sub::{extract_sub_srt, list_all_subtitle_stream},
-    tracker::update_tracker_list,
-};
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+use blowup::{config, download, search, tracker};
+use blowup::sub::{align, fetch, shift};
 
 #[derive(Parser)]
-#[command(propagate_version = true, version = "0.1", about = "all about movie", long_about = None)]
-struct Hermes {
+#[command(name = "blowup", about = "中文观影自动化流水线工具")]
+struct Cli {
     #[command(subcommand)]
-    commands: Commands,
+    command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    #[command(about = "handle all things about tracker list")]
-    Tracker(TrackerArgs),
-    #[command(about = "subtitle file processing tools")]
-    Sub(SubArgs),
-}
-
-#[derive(Args)]
-struct TrackerArgs {
-    #[command(subcommand)]
-    commands: TrackerCommands,
-}
-
-#[derive(Subcommand)]
-enum TrackerCommands {
-    #[command(about = "update the newest tracker list")]
-    Update {},
-}
-
-#[derive(Args)]
-struct SubArgs {
-    #[command(subcommand)]
-    commands: SubCommands,
+    #[command(about = "搜索电影片源（优先 YIFY）")]
+    Search {
+        query: String,
+        #[arg(long)]
+        year: Option<u32>,
+    },
+    #[command(about = "通过 aria2c 下载种子/magnet")]
+    Download {
+        target: String,
+        #[arg(long, default_value = ".")]
+        output_dir: PathBuf,
+    },
+    #[command(subcommand, about = "字幕相关工具")]
+    Sub(SubCommands),
+    #[command(subcommand, about = "Tracker 列表管理")]
+    Tracker(TrackerCommands),
 }
 
 #[derive(Subcommand)]
 enum SubCommands {
-    #[command(name = "export", about = "Extract subtitle stream from video container")]
-    ExportSub {
-        file_name: String,
+    #[command(about = "从 Assrt/OpenSubtitles 下载字幕")]
+    Fetch {
+        video: PathBuf,
+        #[arg(long, default_value = "zh")]
+        lang: String,
+    },
+    #[command(about = "用 alass 自动对齐字幕")]
+    Align {
+        video: PathBuf,
+        srt: PathBuf,
+    },
+    #[command(about = "从视频容器提取内嵌字幕流")]
+    Extract {
+        video: PathBuf,
         #[arg(long)]
         stream: Option<u32>,
     },
-    #[command(name = "list", about = "List subtitle streams in a video container")]
-    ListSubStream {
-        file_name: String,
+    #[command(about = "列出视频中的字幕流")]
+    List {
+        video: PathBuf,
+    },
+    #[command(about = "手动偏移字幕时间戳（毫秒）")]
+    Shift {
+        srt: PathBuf,
+        offset_ms: i64,
+    },
+}
+
+#[derive(Subcommand)]
+enum TrackerCommands {
+    #[command(about = "从远程源更新本地 tracker 列表")]
+    Update {
+        #[arg(long)]
+        source: Option<String>,
     },
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = Hermes::parse();
+async fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    let cfg = config::load_config();
 
-    match &cli.commands {
-        Commands::Tracker(tracker_args) => match &tracker_args.commands {
-            TrackerCommands::Update {} => update_tracker_list(None).await?,
-        },
-        Commands::Sub(sub_args) => match &sub_args.commands {
-            SubCommands::ExportSub { file_name, stream } => {
-                extract_sub_srt(file_name, *stream).await?;
+    match cli.command {
+        Commands::Search { query, year } => {
+            let results = search::search_yify(&query, year).await?;
+            for (i, r) in results.iter().enumerate() {
+                println!(
+                    "{}: {} ({}) [{}] seeds={}",
+                    i + 1,
+                    r.title,
+                    r.year,
+                    r.quality,
+                    r.seeds
+                );
+                if let Some(m) = &r.magnet {
+                    println!("   magnet: {}", m);
+                }
+                if let Some(u) = &r.torrent_url {
+                    println!("   torrent: {}", u);
+                }
             }
-            SubCommands::ListSubStream { file_name } => {
-                list_all_subtitle_stream(file_name).await?;
+        }
+        Commands::Download { target, output_dir } => {
+            download::download(download::DownloadArgs {
+                target: &target,
+                output_dir: &output_dir,
+                aria2c_bin: &cfg.tools.aria2c,
+            })
+            .await?;
+        }
+        Commands::Sub(sub_cmd) => match sub_cmd {
+            SubCommands::Fetch { video, lang } => {
+                fetch::fetch_subtitle(&video, &lang, fetch::SubSource::All, &cfg).await?;
+            }
+            SubCommands::Align { video, srt } => {
+                align::align_subtitle(&video, &srt)?;
+            }
+            SubCommands::Extract { video, stream } => {
+                blowup::sub::extract_sub_srt(&video, stream).await?;
+            }
+            SubCommands::List { video } => {
+                blowup::sub::list_all_subtitle_stream(&video).await?;
+            }
+            SubCommands::Shift { srt, offset_ms } => {
+                shift::shift_srt(&srt, offset_ms)?;
             }
         },
+        Commands::Tracker(TrackerCommands::Update { source }) => {
+            tracker::update_tracker_list(source).await?;
+        }
     }
     Ok(())
 }

@@ -75,10 +75,10 @@ pub struct SubtitleStreamInfo {
 /// 列出视频文件中所有的字幕流信息并打印（列表格式）。
 pub async fn list_all_subtitle_stream(
     file: impl AsRef<Path>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> anyhow::Result<()> {
     let file_path = file.as_ref();
     if !file_path.exists() {
-        return Err(format!("文件不存在: {}", file_path.display()).into());
+        anyhow::bail!("文件不存在: {}", file_path.display());
     }
 
     let mut args: Vec<String> = vec![

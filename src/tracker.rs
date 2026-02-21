@@ -33,7 +33,7 @@ pub fn load_trackers() -> Vec<String> {
 /// source 为可选的远程 URL，默认使用 ngosang/trackerslist。
 pub async fn update_tracker_list(
     _source: Option<String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> anyhow::Result<()> {
     let req_path = format!("/repos/{}/{}/contents/trackers_all.txt", OWNER, REPO);
     let github = octocrab::instance();
 
@@ -41,11 +41,11 @@ pub async fn update_tracker_list(
     let last_modified = content
         .headers()
         .get("last-modified")
-        .ok_or("missing last-modified header")?
+        .ok_or_else(|| anyhow::anyhow!("missing last-modified header"))?
         .to_str()
-        .map_err(|_| "invalid last-modified header")?;
+        .map_err(|_| anyhow::anyhow!("invalid last-modified header"))?;
     let last_modified = DateTime::parse_from_rfc2822(last_modified)
-        .map_err(|_| "failed to parse last-modified")?
+        .map_err(|e| anyhow::anyhow!("failed to parse last-modified: {}", e))?
         .with_timezone(&Local);
 
     let update_record = tracker_list_path().with_file_name("tracker_update_time");
@@ -61,7 +61,7 @@ pub async fn update_tracker_list(
         github.get(&req_path, None::<&()>).await?;
     let text = file_content
         .decoded_content()
-        .ok_or("failed to decode tracker content")?;
+        .ok_or_else(|| anyhow::anyhow!("failed to decode tracker content"))?;
 
     // 确保目录存在
     let tracker_path = tracker_list_path();
@@ -87,9 +87,9 @@ pub async fn update_tracker_list(
     Ok(())
 }
 
-async fn read_update_time(path: &std::path::Path) -> Result<DateTime<Local>, Box<dyn std::error::Error>> {
+async fn read_update_time(path: &std::path::Path) -> anyhow::Result<DateTime<Local>> {
     if !path.is_file() {
-        return Err("no update record".into());
+        anyhow::bail!("no update record");
     }
     let mut buf = String::new();
     File::open(path).await?.read_to_string(&mut buf).await?;
@@ -97,7 +97,7 @@ async fn read_update_time(path: &std::path::Path) -> Result<DateTime<Local>, Box
         .lines()
         .rev()
         .find(|l| !l.trim().is_empty())
-        .ok_or("empty update record")?;
+        .ok_or_else(|| anyhow::anyhow!("empty update record"))?;
     Ok(DateTime::parse_from_str(last_record, TIME_FMT)?.with_timezone(&Local))
 }
 
