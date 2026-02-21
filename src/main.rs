@@ -1,6 +1,6 @@
 use blowup::{
     sub::{OutputFormat, extract_sub_srt, list_all_subtitle_stream},
-    tracker::download_newest_tracker,
+    tracker::update_tracker_list,
 };
 use clap::{Args, Parser, Subcommand};
 
@@ -58,7 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &cli.commands {
         Commands::Tracker(tracker_args) => match &tracker_args.commands {
-            TrackerCommands::Update {} => download_newest_tracker().await?,
+            TrackerCommands::Update {} => update_tracker_list(None).await?,
         },
         Commands::Sub(sub_args) => match &sub_args.commands {
             SubCommands::ExportSub {
