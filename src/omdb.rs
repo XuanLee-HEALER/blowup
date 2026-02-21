@@ -116,11 +116,9 @@ mod tests {
         assert!(matches!(err, OmdbError::NotFound(_)));
     }
 
-    #[test]
-    fn api_key_missing_returns_error() {
-        // query_omdb 是 async，用同步方式测 api_key 检查逻辑
-        // 通过直接检查空 key 条件
-        let key = "";
-        assert!(key.is_empty()); // 确认空 key 会触发 ApiKeyMissing
+    #[tokio::test]
+    async fn api_key_missing_returns_error() {
+        let result = query_omdb("", "Blow-Up", None).await;
+        assert!(matches!(result, Err(OmdbError::ApiKeyMissing)));
     }
 }
