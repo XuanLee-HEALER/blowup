@@ -2,7 +2,7 @@ use std::{ffi::OsStr, path::Path, result};
 
 use thiserror::Error;
 
-use crate::common::{CommandError, CommonError, exec_command, find_command_path};
+use crate::common::{CommonError, exec_command, find_command_path};
 
 pub enum FfmpegTool {
     Ffmpeg,
