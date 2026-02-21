@@ -1,5 +1,5 @@
 use blowup::sub::{align, fetch, shift};
-use blowup::{config, download, search, tracker};
+use blowup::{config, config_cmd, download, omdb, search, tracker};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -28,6 +28,14 @@ enum Commands {
     Sub(SubCommands),
     #[command(subcommand, about = "Tracker 列表管理")]
     Tracker(TrackerCommands),
+    #[command(about = "通过 OMDB API 查询电影信息")]
+    Info {
+        query: String,
+        #[arg(long)]
+        year: Option<u32>,
+    },
+    #[command(subcommand, about = "管理 blowup 配置")]
+    Config(ConfigCommands),
 }
 
 #[derive(Subcommand)]
@@ -50,6 +58,16 @@ enum SubCommands {
     List { video: PathBuf },
     #[command(about = "手动偏移字幕时间戳（毫秒）")]
     Shift { srt: PathBuf, offset_ms: i64 },
+}
+
+#[derive(Subcommand)]
+enum ConfigCommands {
+    #[command(about = "设置配置项 (格式: section.field value)")]
+    Set { key: String, value: String },
+    #[command(about = "读取配置项 (格式: section.field)")]
+    Get { key: String },
+    #[command(about = "列出所有配置项")]
+    List,
 }
 
 #[derive(Subcommand)]
@@ -114,6 +132,22 @@ async fn main() -> anyhow::Result<()> {
         Commands::Tracker(TrackerCommands::Update { source }) => {
             tracker::update_tracker_list(source).await?;
         }
+        Commands::Info { query, year } => {
+            let api_key = &cfg.omdb.api_key;
+            let movie = omdb::query_omdb(api_key, &query, year).await?;
+            movie.print_info();
+        }
+        Commands::Config(config_cmd_args) => match config_cmd_args {
+            ConfigCommands::Set { key, value } => {
+                config_cmd::set_config(&key, &value)?;
+            }
+            ConfigCommands::Get { key } => {
+                config_cmd::get_config(&key)?;
+            }
+            ConfigCommands::List => {
+                config_cmd::list_config()?;
+            }
+        },
     }
     Ok(())
 }
