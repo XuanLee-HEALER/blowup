@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn parse_key_no_dot_returns_error() {
-        let err = parse_key("omdbapi_key").unwrap_err();
+        let err = parse_key("tmdbapi_key").unwrap_err();
         assert!(matches!(err, ConfigCmdError::InvalidKeyFormat(_)));
     }
 

@@ -60,7 +60,7 @@ pub enum TmdbError {
 
 #[derive(Debug, Error)]
 pub enum ConfigCmdError {
-    #[error("Invalid key format: '{0}' (expected: section.field, e.g. omdb.api_key)")]
+    #[error("Invalid key format: '{0}' (expected: section.field, e.g. tmdb.api_key)")]
     InvalidKeyFormat(String),
     #[error("Unknown config key: '{0}'")]
     UnknownKey(String),
