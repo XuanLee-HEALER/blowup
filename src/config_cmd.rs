@@ -26,7 +26,10 @@ fn parse_key(key: &str) -> Result<(&str, &str, KeyType), ConfigCmdError> {
     }
     let section = parts[0];
     let field = parts[1];
-    match KNOWN_KEYS.iter().find(|(s, f, _)| *s == section && *f == field) {
+    match KNOWN_KEYS
+        .iter()
+        .find(|(s, f, _)| *s == section && *f == field)
+    {
         Some((_, _, kt)) => Ok((section, field, *kt)),
         None => Err(ConfigCmdError::UnknownKey(key.to_string())),
     }

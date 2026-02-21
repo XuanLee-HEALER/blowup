@@ -46,7 +46,9 @@ pub enum SubError {
 
 #[derive(Debug, Error)]
 pub enum OmdbError {
-    #[error("OMDB API key not configured.\nRun: blowup config set omdb.api_key YOUR_KEY\nGet a free key at: https://www.omdbapi.com/apikey.aspx")]
+    #[error(
+        "OMDB API key not configured.\nRun: blowup config set omdb.api_key YOUR_KEY\nGet a free key at: https://www.omdbapi.com/apikey.aspx"
+    )]
     ApiKeyMissing,
     #[error("Movie not found: {0}")]
     NotFound(String),
