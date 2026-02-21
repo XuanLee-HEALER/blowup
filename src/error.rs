@@ -45,14 +45,14 @@ pub enum SubError {
 }
 
 #[derive(Debug, Error)]
-pub enum OmdbError {
+pub enum TmdbError {
     #[error(
-        "OMDB API key not configured.\nRun: blowup config set omdb.api_key YOUR_KEY\nGet a free key at: https://www.omdbapi.com/apikey.aspx"
+        "TMDB API key not configured.\nRun: blowup config set tmdb.api_key YOUR_KEY\nGet a free key at: https://www.themoviedb.org/settings/api"
     )]
     ApiKeyMissing,
     #[error("Movie not found: {0}")]
     NotFound(String),
-    #[error("Failed to parse OMDB response: {0}")]
+    #[error("Failed to parse TMDB response: {0}")]
     ParseFailed(String),
     #[error("HTTP request failed: {0}")]
     HttpFailed(#[from] reqwest::Error),
@@ -87,9 +87,9 @@ mod tests {
     }
 
     #[test]
-    fn omdb_error_api_key_missing_display() {
-        let e = OmdbError::ApiKeyMissing;
-        assert!(e.to_string().contains("blowup config set omdb.api_key"));
+    fn tmdb_error_api_key_missing_display() {
+        let e = TmdbError::ApiKeyMissing;
+        assert!(e.to_string().contains("blowup config set tmdb.api_key"));
     }
 
     #[test]
