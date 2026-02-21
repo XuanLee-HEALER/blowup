@@ -11,6 +11,8 @@ pub struct Config {
     pub subtitle: SubtitleConfig,
     #[serde(default)]
     pub opensubtitles: OpenSubtitlesConfig,
+    #[serde(default)]
+    pub omdb: OmdbConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +37,12 @@ pub struct SubtitleConfig {
 
 #[derive(Debug, Default, Deserialize)]
 pub struct OpenSubtitlesConfig {
+    #[serde(default)]
+    pub api_key: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct OmdbConfig {
     #[serde(default)]
     pub api_key: String,
 }
@@ -101,6 +109,12 @@ mod tests {
         assert_eq!(cfg.tools.alass, "alass");
         assert_eq!(cfg.search.rate_limit_secs, 5);
         assert_eq!(cfg.subtitle.default_lang, "zh");
+    }
+
+    #[test]
+    fn omdb_default_api_key_is_empty() {
+        let cfg = Config::default();
+        assert_eq!(cfg.omdb.api_key, "");
     }
 
     #[test]
