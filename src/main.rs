@@ -1,5 +1,5 @@
 use blowup::sub::{align, fetch, shift};
-use blowup::{config, config_cmd, download, omdb, search, tracker};
+use blowup::{config, config_cmd, download, tmdb, search, tracker};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -28,7 +28,7 @@ enum Commands {
     Sub(SubCommands),
     #[command(subcommand, about = "Tracker 列表管理")]
     Tracker(TrackerCommands),
-    #[command(about = "通过 OMDB API 查询电影信息")]
+    #[command(about = "通过 TMDB API 查询电影信息")]
     Info {
         query: String,
         #[arg(long)]
@@ -133,8 +133,8 @@ async fn main() -> anyhow::Result<()> {
             tracker::update_tracker_list(source).await?;
         }
         Commands::Info { query, year } => {
-            let api_key = &cfg.omdb.api_key;
-            let movie = omdb::query_omdb(api_key, &query, year).await?;
+            let api_key = &cfg.tmdb.api_key;
+            let movie = tmdb::query_tmdb(api_key, &query, year).await?;
             movie.print_info();
         }
         Commands::Config(config_cmd_args) => match config_cmd_args {

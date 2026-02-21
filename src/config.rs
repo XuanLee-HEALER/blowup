@@ -12,7 +12,7 @@ pub struct Config {
     #[serde(default)]
     pub opensubtitles: OpenSubtitlesConfig,
     #[serde(default)]
-    pub omdb: OmdbConfig,
+    pub tmdb: TmdbConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,7 +42,7 @@ pub struct OpenSubtitlesConfig {
 }
 
 #[derive(Debug, Default, Deserialize)]
-pub struct OmdbConfig {
+pub struct TmdbConfig {
     #[serde(default)]
     pub api_key: String,
 }
@@ -112,9 +112,9 @@ mod tests {
     }
 
     #[test]
-    fn omdb_default_api_key_is_empty() {
+    fn tmdb_default_api_key_is_empty() {
         let cfg = Config::default();
-        assert_eq!(cfg.omdb.api_key, "");
+        assert_eq!(cfg.tmdb.api_key, "");
     }
 
     #[test]

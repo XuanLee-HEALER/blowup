@@ -14,7 +14,7 @@ const KNOWN_KEYS: &[(&str, &str, KeyType)] = &[
     ("tools", "alass", KeyType::Str),
     ("search", "rate_limit_secs", KeyType::U64),
     ("subtitle", "default_lang", KeyType::Str),
-    ("omdb", "api_key", KeyType::Str),
+    ("tmdb", "api_key", KeyType::Str),
     ("opensubtitles", "api_key", KeyType::Str),
 ];
 
@@ -132,8 +132,8 @@ mod tests {
 
     #[test]
     fn parse_key_valid() {
-        let (section, field, kt) = parse_key("omdb.api_key").unwrap();
-        assert_eq!(section, "omdb");
+        let (section, field, kt) = parse_key("tmdb.api_key").unwrap();
+        assert_eq!(section, "tmdb");
         assert_eq!(field, "api_key");
         assert_eq!(kt, KeyType::Str);
     }
@@ -154,8 +154,8 @@ mod tests {
     fn set_and_get_in_memory() {
         // 测试 toml_edit 的 set/get 逻辑，不写磁盘
         let mut doc = DocumentMut::new();
-        doc["omdb"]["api_key"] = toml_edit::value("test_key_123");
-        let val = doc["omdb"]["api_key"].as_str().unwrap();
+        doc["tmdb"]["api_key"] = toml_edit::value("test_key_123");
+        let val = doc["tmdb"]["api_key"].as_str().unwrap();
         assert_eq!(val, "test_key_123");
     }
 
@@ -171,8 +171,8 @@ mod tests {
     #[test]
     fn item_to_string_handles_string() {
         let mut doc = DocumentMut::new();
-        doc["omdb"]["api_key"] = toml_edit::value("my_key");
-        let item = &doc["omdb"]["api_key"];
+        doc["tmdb"]["api_key"] = toml_edit::value("my_key");
+        let item = &doc["tmdb"]["api_key"];
         let result = item_to_string(item);
         assert_eq!(result, Some("my_key".to_string()));
     }
