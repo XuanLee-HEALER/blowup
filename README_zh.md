@@ -1,74 +1,181 @@
 # blowup
 
-> [Click here for Chinese version/中文版本点此链接](./README_zh.md)
+> [Click here for English version](./README.md)
 
-![Maintenance Status](https://img.shields.io/badge/Status-Active-yellow?style=for-the-badge&logo=movistar&logoSize=wider) ![Version](https://img.shields.io/badge/Version-0.1.1-red?style=for-the-badge&logoSize=wider) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge&logoSize=wider)
+![Version](https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge) ![Crates.io](https://img.shields.io/crates/v/blowup?style=for-the-badge)
 
-> **blow-up [Michelangelo Antonioni]**: A fashion photographer unknowingly captures a death on film after following two lovers in a park.
+> **《放大》[米开朗基罗·安东尼奥尼，1966]**：一位时装摄影师在公园里跟拍两名恋人时，无意间将一桩谋杀摄入镜头。
 >
-> The best movie I've seen so far.
->
-> 我认为的最好的电影，目前为止
+> 我认为迄今为止最好的电影。
 
 ---
 
-`blowup` 是一个命令行工具（CLI），旨在简化和自动化我的个人观影体验中的技术环节，从管理电影种子追踪器（tracker）到处理字幕文件，让观影过程更加顺畅。
+**blowup** 是一个命令行工具，用于自动化观看外国电影的技术环节——搜索片源、下载、获取并对齐字幕——让你把更多精力放在电影本身上。
 
-这是一个源于对电影的热爱而诞生的个人项目，其初衷是解决常见的技术痛点，从而把更多时间留给电影艺术本身。
+## 功能列表
 
-## ✨ 主要功能
+| 命令 | 说明 |
+|------|------|
+| `blowup search` | 通过标题和年份在 YIFY 搜索电影种子 |
+| `blowup download` | 通过 aria2c 下载种子文件或 magnet 链接 |
+| `blowup info` | 通过 TMDB 查询电影详情（演员、导演、简介） |
+| `blowup sub fetch` | 从 OpenSubtitles 下载字幕 |
+| `blowup sub align` | 使用 alass 自动同步字幕时间轴到视频 |
+| `blowup sub extract` | 从视频容器中提取内嵌字幕流 |
+| `blowup sub list` | 列出视频文件中的所有字幕流 |
+| `blowup sub shift` | 将字幕所有时间戳偏移 N 毫秒 |
+| `blowup tracker update` | 从远程源更新本地 tracker 列表 |
+| `blowup config` | 读写工具配置 |
 
-### 已实现功能
-
-* Tracker 管理：从指定的 GitHub 仓库下载最新的 tracker 列表。
-* 字幕流管理：
-  * 列出视频容器中可用的字幕流（需要 ffprobe）。
-  * 将视频容器中的指定字幕流导出为 SRT 文件（需要 ffmpeg）。
-* SRT 字幕处理：
-  * 对 SRT 字幕文件中的所有时间戳进行指定的时间平移。
-  * 交互式对比并同步两个 SRT 字幕文件。
-
-### 计划中功能
-
-* 多源 Tracker 获取：支持从多种来源获取 tracker 列表，包括不同的 GitHub 仓库和直接 URL 下载。
-* 本地字幕翻译：调用本地大语言模型（LLM）对字幕文件进行翻译。
-
-## 🚀 安装与使用
-
-您可以通过 `cargo` 直接从 crates.io 安装 `blowup`。
-
-注意：字幕提取和列表功能需要您的系统已安装 ffmpeg 和 ffprobe，并且程序路径已添加到 PATH 环境变量中。您可以通过官方网站或包管理器下载它们。
+## 安装
 
 ```bash
 cargo install blowup
-# 安装后，如果您的系统 PATH 环境变量中没有 cargo 的二进制路径，请手动添加。
-
-# 命令概览
-
-# 本工具采用子命令结构，每个主要功能对应一个子命令。
-
-# 主要命令
-Usage: blowup <COMMAND>
-
-Commands:
-  tracker   与 tracker 列表相关的所有操作
-  sub       字幕文件处理工具
-
-# 更多详细用法和示例，请运行：
-blowup --help
-blowup <subcommand> --help
-# 关于每个命令的详细用法，请参考内置的 --help 文档和项目的官方文档。
 ```
 
-## 💡 项目灵感
-创建 blowup 的核心灵感源于我个人的观影流程。我发现自己经常将大量时间花在重复性的任务上，比如手动更新种子 tracker 或校对字幕时间。
+**运行时依赖**（需单独安装）：
 
-本项目正是为了自动化这些琐事而生的，让观影的技术环节变得无缝，从而把注意力重新集中到故事、摄影和表演上。
+| 工具 | 用途 | 安装方式 |
+|------|------|----------|
+| `aria2c` | `download` 命令 | `brew install aria2` / `apt install aria2` |
+| `alass` / `alass-cli` | `sub align` 命令 | `brew install alass` / [GitHub releases](https://github.com/kaegi/alass/releases) |
+| `ffmpeg` + `ffprobe` | `sub extract`、`sub list` 命令 | `brew install ffmpeg` |
 
-## 🤝 贡献指南
+## 快速开始
 
-欢迎贡献！如果您也曾遇到类似的问题，或者对新功能有好的想法，欢迎提交议题（issue）或发起拉取请求（pull request）。
+```bash
+# 1. 配置 API Key 和工具路径
+blowup config set tmdb.api_key 你的TMDB密钥   # 在 themoviedb.org 免费申请
+blowup config set tools.aria2c /usr/local/bin/aria2c
+blowup config set tools.alass /usr/local/bin/alass-cli
 
-## 📜 许可协议
+# 2. 查询电影信息
+blowup info "放大" --year 1966
 
-本项目采用 MIT 许可协议。完整的许可协议文本请参阅 LICENSE 文件。
+# 3. 搜索片源
+blowup search "Blow-Up" --year 1966
+
+# 4. 下载种子
+blowup download "https://yts.bz/torrent/download/HASH" --output-dir ~/Movies
+
+# 5. 下载中文字幕
+blowup sub fetch ~/Movies/Blow-Up.mp4 --lang zh
+
+# 6. 自动对齐字幕时间轴
+blowup sub align ~/Movies/Blow-Up.mp4 ~/Movies/Blow-Up.zh.srt
+```
+
+## 命令详解
+
+### `search`
+
+在 YIFY 搜索电影种子。结果按画质（2160p → 1080p → 720p）和做种数量排序。
+
+```
+blowup search <查询词> [--year 年份]
+```
+
+```
+blowup search "寄生虫" --year 2019
+1: Parasite (2019) [1080p] seeds=312
+   torrent: https://yts.bz/torrent/download/...
+```
+
+### `download`
+
+使用 aria2c 下载种子文件 URL 或 magnet 链接。
+
+```
+blowup download <目标> [--output-dir 目录]
+```
+
+通过 `blowup config set tools.aria2c <路径>` 配置 aria2c 可执行文件路径。
+
+### `info`
+
+从 TMDB 查询电影元数据：简介、类型、导演、主要演员。
+
+```
+blowup info <查询词> [--year 年份]
+```
+
+需要免费的 TMDB API Key，通过 `blowup config set tmdb.api_key <key>` 设置。
+
+### `sub fetch`
+
+在 OpenSubtitles 搜索并将最佳匹配字幕下载到视频同级目录。
+
+```
+blowup sub fetch <视频文件> [--lang 语言代码]
+```
+
+默认语言为 `zh`（中文）。字幕保存为 `<视频名>.<lang>.srt`。
+
+支持的语言代码：`zh`（中文）、`en`（英语）、`ja`（日语）、`ko`（韩语）、`fr`（法语）、`de`（德语）、`es`（西班牙语）。
+
+### `sub align`
+
+使用 [alass](https://github.com/kaegi/alass) 自动将字幕时间轴同步到视频。原始字幕保留为 `<名称>.bak.srt`。
+
+```
+blowup sub align <视频文件> <字幕文件>
+```
+
+通过 `blowup config set tools.alass <路径>` 配置 alass 可执行文件路径。
+
+### `sub extract`
+
+从视频容器中提取内嵌字幕流为 SRT 文件（需要 ffmpeg）。
+
+```
+blowup sub extract <视频文件> [--stream 流编号]
+```
+
+### `sub list`
+
+列出视频文件中的所有字幕流（需要 ffprobe）。
+
+```
+blowup sub list <视频文件>
+```
+
+### `sub shift`
+
+将 SRT 文件中所有时间戳偏移固定毫秒数。正值延后，负值提前。
+
+```
+blowup sub shift <字幕文件> <偏移毫秒>
+```
+
+### `tracker update`
+
+从远程源获取最新的 BitTorrent tracker 列表并保存到本地。
+
+```
+blowup tracker update [--source URL]
+```
+
+### `config`
+
+读写保存在 `~/.config/blowup/config.toml` 的工具配置。
+
+```
+blowup config set <KEY> <VALUE>
+blowup config get <KEY>
+blowup config list
+```
+
+**可用配置项：**
+
+| Key | 类型 | 说明 |
+|-----|------|------|
+| `tools.aria2c` | 路径 | aria2c 可执行文件路径 |
+| `tools.alass` | 路径 | alass 或 alass-cli 可执行文件路径 |
+| `tmdb.api_key` | 字符串 | TMDB API Key（在 [themoviedb.org](https://www.themoviedb.org/settings/api) 免费申请） |
+| `opensubtitles.api_key` | 字符串 | OpenSubtitles API Key（可选） |
+| `subtitle.default_lang` | 字符串 | 默认字幕语言代码（如 `zh`） |
+| `search.rate_limit_secs` | 整数 | 搜索请求之间的等待秒数 |
+
+## 许可协议
+
+MIT — 详见 [LICENSE](./LICENSE.txt)。
