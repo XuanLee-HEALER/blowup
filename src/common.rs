@@ -36,7 +36,7 @@ pub fn same_path_with<P: AsRef<Path>>(ori_path: P, suffix: &str, c: &str) -> Res
     let mut new_path = PathBuf::from(ori_path);
     let new_name = ori_path
         .file_stem()
-        .ok_or_else(|| CommonError::PathMissingFinalError)?
+        .ok_or(CommonError::PathMissingFinalError)?
         .to_str()
         .ok_or(CommonError::NonUtf8PathError)?;
     let new_name = format!("{}{}{}", new_name, c, suffix);
@@ -84,7 +84,7 @@ pub async fn exec_command<S: AsRef<OsStr>>(
     if let Some(options) = options {
         command.args(options);
     }
-    let output = command.output().await.map_err(|e| CommandError::Io(e))?;
+    let output = command.output().await.map_err(CommandError::Io)?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -112,13 +112,15 @@ pub async fn read_multiple_file_to_string<P: AsRef<Path> + Send + 'static>(
     let file_size = files.len();
     let mut handlers: Vec<_> = Vec::with_capacity(file_size);
     for (idx, file) in files.into_iter().enumerate() {
-        handlers.push(tokio::spawn(async move { read_file_to_string(idx, file) }));
+        handlers.push(tokio::spawn(
+            async move { read_file_to_string(idx, file).await },
+        ));
     }
     let mut res = vec![Default::default(); file_size];
     for handler in handlers {
         match handler.await {
-            Ok(text) => {
-                let (idx, text) = text.await?;
+            Ok(result) => {
+                let (idx, text) = result?;
                 res[idx] = text
             }
             Err(e) => panic!("Tokio: failed to execute some subtask {}", e),

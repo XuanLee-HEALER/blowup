@@ -1,9 +1,9 @@
-use std::path::Path;
 use crate::error::DownloadError;
 use crate::tracker::load_trackers;
+use std::path::Path;
 
 pub struct DownloadArgs<'a> {
-    pub target: &'a str,      // magnet: / URL / .torrent 路径
+    pub target: &'a str, // magnet: / URL / .torrent 路径
     pub output_dir: &'a Path,
     pub aria2c_bin: &'a str,
 }

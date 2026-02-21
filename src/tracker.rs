@@ -31,9 +31,7 @@ pub fn load_trackers() -> Vec<String> {
 
 /// 从 GitHub 下载最新 tracker 列表并保存到本地。
 /// source 为可选的远程 URL，默认使用 ngosang/trackerslist。
-pub async fn update_tracker_list(
-    _source: Option<String>,
-) -> anyhow::Result<()> {
+pub async fn update_tracker_list(_source: Option<String>) -> anyhow::Result<()> {
     let req_path = format!("/repos/{}/{}/contents/trackers_all.txt", OWNER, REPO);
     let github = octocrab::instance();
 
@@ -50,15 +48,12 @@ pub async fn update_tracker_list(
 
     let update_record = tracker_list_path().with_file_name("tracker_update_time");
 
-    if let Ok(last_update) = read_update_time(&update_record).await {
-        if last_modified <= last_update {
-            return Ok(());
-        }
+    if matches!(read_update_time(&update_record).await, Ok(t) if last_modified <= t) {
+        return Ok(());
     }
 
     // 下载 tracker 内容
-    let file_content: octocrab::models::repos::Content =
-        github.get(&req_path, None::<&()>).await?;
+    let file_content: octocrab::models::repos::Content = github.get(&req_path, None::<&()>).await?;
     let text = file_content
         .decoded_content()
         .ok_or_else(|| anyhow::anyhow!("failed to decode tracker content"))?;
@@ -103,8 +98,6 @@ async fn read_update_time(path: &std::path::Path) -> anyhow::Result<DateTime<Loc
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn load_trackers_parses_content() {
         let content = "udp://tracker1.com\nudp://tracker2.com\n\n";
