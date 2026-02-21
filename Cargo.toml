@@ -1,12 +1,12 @@
 [package]
 name = "blowup"
-version = "0.1.2"
+version = "1.0.0"
 edition = "2024"
 authors = ["mouselee"]
 rust-version = "1.88"
 description = "All tools related to improving my movie-watching experience."
 readme = "README.md"
-repository = "https://github.com/XuanLee-HEALER/hermes"
+repository = "https://github.com/XuanLee-HEALER/blowup"
 license = "MIT"
 keywords = ["tracker", "srt", "movie", "torrent", "film"]
 categories = ["command-line-utilities"]
@@ -29,6 +29,7 @@ toml = "0.8"
 toml_edit = "0.22"
 dirs = "5"
 anyhow = "1"
+flate2 = "1"
 chromiumoxide = { version = "0.7", optional = true }
 
 [features]

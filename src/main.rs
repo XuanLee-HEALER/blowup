@@ -117,7 +117,7 @@ async fn main() -> anyhow::Result<()> {
                 fetch::fetch_subtitle(&video, &lang, fetch::SubSource::All, &cfg).await?;
             }
             SubCommands::Align { video, srt } => {
-                align::align_subtitle(&video, &srt)?;
+                align::align_subtitle(&video, &srt, Some(&cfg.tools.alass))?;
             }
             SubCommands::Extract { video, stream } => {
                 blowup::sub::extract_sub_srt(&video, stream).await?;
