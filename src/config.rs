@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub tools: ToolsConfig,
@@ -33,42 +33,47 @@ pub struct SubtitleConfig {
     pub default_lang: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct OpenSubtitlesConfig {
     #[serde(default)]
     pub api_key: String,
 }
 
-fn default_aria2c() -> String { "aria2c".to_string() }
-fn default_alass() -> String { "alass".to_string() }
-fn default_rate_limit() -> u64 { 5 }
-fn default_lang() -> String { "zh".to_string() }
+fn default_aria2c() -> String {
+    "aria2c".to_string()
+}
+fn default_alass() -> String {
+    "alass".to_string()
+}
+fn default_rate_limit() -> u64 {
+    5
+}
+fn default_lang() -> String {
+    "zh".to_string()
+}
 
 impl Default for ToolsConfig {
     fn default() -> Self {
-        Self { aria2c: default_aria2c(), alass: default_alass() }
-    }
-}
-impl Default for SearchConfig {
-    fn default() -> Self { Self { rate_limit_secs: default_rate_limit() } }
-}
-impl Default for SubtitleConfig {
-    fn default() -> Self { Self { default_lang: default_lang() } }
-}
-impl Default for OpenSubtitlesConfig {
-    fn default() -> Self { Self { api_key: String::new() } }
-}
-impl Default for Config {
-    fn default() -> Self {
         Self {
-            tools: ToolsConfig::default(),
-            search: SearchConfig::default(),
-            subtitle: SubtitleConfig::default(),
-            opensubtitles: OpenSubtitlesConfig::default(),
+            aria2c: default_aria2c(),
+            alass: default_alass(),
         }
     }
 }
-
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            rate_limit_secs: default_rate_limit(),
+        }
+    }
+}
+impl Default for SubtitleConfig {
+    fn default() -> Self {
+        Self {
+            default_lang: default_lang(),
+        }
+    }
+}
 pub fn config_path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))

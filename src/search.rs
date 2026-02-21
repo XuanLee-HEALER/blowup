@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use crate::error::SearchError;
+use serde::Deserialize;
 
 #[derive(Debug, Clone)]
 pub struct MovieResult {
@@ -11,10 +11,7 @@ pub struct MovieResult {
     pub seeds: u32,
 }
 
-pub async fn search_yify(
-    query: &str,
-    year: Option<u32>,
-) -> Result<Vec<MovieResult>, SearchError> {
+pub async fn search_yify(query: &str, year: Option<u32>) -> Result<Vec<MovieResult>, SearchError> {
     let client = reqwest::Client::new();
     match search_via_api(&client, query, year).await {
         Ok(results) if !results.is_empty() => Ok(results),

@@ -1,6 +1,6 @@
+use crate::error::SubError;
 use std::fs;
 use std::path::Path;
-use crate::error::SubError;
 
 /// 将 SRT 文件中所有时间戳偏移 offset_ms 毫秒
 pub fn shift_srt(srt_path: &Path, offset_ms: i64) -> Result<(), SubError> {
@@ -12,9 +12,8 @@ pub fn shift_srt(srt_path: &Path, offset_ms: i64) -> Result<(), SubError> {
 
 fn apply_offset(content: &str, offset_ms: i64) -> Result<String, SubError> {
     use regex::Regex;
-    let re = Regex::new(
-        r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})"
-    ).unwrap();
+    let re =
+        Regex::new(r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})").unwrap();
 
     let result = re.replace_all(content, |caps: &regex::Captures| {
         let start = parse_ts(caps, 1) + offset_ms;

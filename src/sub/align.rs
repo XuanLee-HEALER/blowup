@@ -1,6 +1,6 @@
+use crate::error::SubError;
 use std::path::Path;
 use std::process::Command;
-use crate::error::SubError;
 use which::which;
 
 /// 使用 alass 自动对齐字幕时间轴

@@ -1,6 +1,6 @@
-use std::path::Path;
-use crate::error::SubError;
 use crate::config::Config;
+use crate::error::SubError;
+use std::path::Path;
 
 pub enum SubSource {
     Assrt,
@@ -33,7 +33,9 @@ pub async fn fetch_subtitle(
             search_opensubtitles(&client, &query, lang, &cfg.opensubtitles.api_key).await?
         }
         SubSource::All => {
-            let mut res = search_assrt(&client, &query, lang).await.unwrap_or_default();
+            let mut res = search_assrt(&client, &query, lang)
+                .await
+                .unwrap_or_default();
             let os = search_opensubtitles(&client, &query, lang, &cfg.opensubtitles.api_key)
                 .await
                 .unwrap_or_default();
@@ -116,9 +118,7 @@ async fn search_opensubtitles(
 }
 
 fn parse_opensubtitles_response(body: &serde_json::Value) -> Result<Vec<SubtitleResult>, SubError> {
-    let data = body["data"]
-        .as_array()
-        .ok_or(SubError::NoSubtitleFound)?;
+    let data = body["data"].as_array().ok_or(SubError::NoSubtitleFound)?;
 
     let results = data
         .iter()

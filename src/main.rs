@@ -1,7 +1,7 @@
+use blowup::sub::{align, fetch, shift};
+use blowup::{config, download, search, tracker};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use blowup::{config, download, search, tracker};
-use blowup::sub::{align, fetch, shift};
 
 #[derive(Parser)]
 #[command(name = "blowup", about = "中文观影自动化流水线工具")]
@@ -39,10 +39,7 @@ enum SubCommands {
         lang: String,
     },
     #[command(about = "用 alass 自动对齐字幕")]
-    Align {
-        video: PathBuf,
-        srt: PathBuf,
-    },
+    Align { video: PathBuf, srt: PathBuf },
     #[command(about = "从视频容器提取内嵌字幕流")]
     Extract {
         video: PathBuf,
@@ -50,14 +47,9 @@ enum SubCommands {
         stream: Option<u32>,
     },
     #[command(about = "列出视频中的字幕流")]
-    List {
-        video: PathBuf,
-    },
+    List { video: PathBuf },
     #[command(about = "手动偏移字幕时间戳（毫秒）")]
-    Shift {
-        srt: PathBuf,
-        offset_ms: i64,
-    },
+    Shift { srt: PathBuf, offset_ms: i64 },
 }
 
 #[derive(Subcommand)]
