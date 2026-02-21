@@ -4,8 +4,14 @@ use std::process::Command;
 use which::which;
 
 /// 使用 alass 自动对齐字幕时间轴
-pub fn align_subtitle(video: &Path, srt: &Path) -> Result<(), SubError> {
-    let alass = which("alass").map_err(|_| SubError::AlassNotFound)?;
+pub fn align_subtitle(video: &Path, srt: &Path, alass_path: Option<&str>) -> Result<(), SubError> {
+    let alass = if let Some(p) = alass_path.filter(|s| !s.is_empty()) {
+        std::path::PathBuf::from(p)
+    } else {
+        which("alass")
+            .or_else(|_| which("alass-cli"))
+            .map_err(|_| SubError::AlassNotFound)?
+    };
     align_with_binary(&alass, video, srt)
 }
 

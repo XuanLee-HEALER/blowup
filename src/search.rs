@@ -15,7 +15,8 @@ pub async fn search_yify(query: &str, year: Option<u32>) -> Result<Vec<MovieResu
     let client = reqwest::Client::new();
     match search_via_api(&client, query, year).await {
         Ok(results) if !results.is_empty() => Ok(results),
-        _ => Err(SearchError::NoResults(query.to_string())),
+        Ok(_) => Err(SearchError::NoResults(query.to_string())),
+        Err(_) => Err(SearchError::NoResults(query.to_string())),
     }
 }
 
@@ -34,7 +35,7 @@ async fn search_via_api(
     }
 
     let resp = client
-        .get("https://yts.mx/api/v2/list_movies.json")
+        .get("https://yts.torrentbay.st/api/v2/list_movies.json")
         .query(&params)
         .header("User-Agent", "blowup/0.1")
         .send()
