@@ -4,6 +4,7 @@ pub mod config;
 pub mod download;
 pub mod error;
 pub mod ffmpeg;
+pub mod omdb;
 pub mod search;
 pub mod sub;
 pub mod tracker;
