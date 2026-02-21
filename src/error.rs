@@ -50,6 +50,8 @@ pub enum OmdbError {
     ApiKeyMissing,
     #[error("Movie not found: {0}")]
     NotFound(String),
+    #[error("Failed to parse OMDB response: {0}")]
+    ParseFailed(String),
     #[error("HTTP request failed: {0}")]
     HttpFailed(#[from] reqwest::Error),
 }

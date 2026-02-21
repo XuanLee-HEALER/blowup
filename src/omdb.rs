@@ -50,7 +50,7 @@ fn parse_omdb_response(body: &serde_json::Value) -> Result<OmdbMovie, OmdbError>
         let title = body["Error"].as_str().unwrap_or("unknown").to_string();
         return Err(OmdbError::NotFound(title));
     }
-    serde_json::from_value(body.clone()).map_err(|e| OmdbError::NotFound(e.to_string()))
+    serde_json::from_value(body.clone()).map_err(|e| OmdbError::ParseFailed(e.to_string()))
 }
 
 pub async fn query_omdb(
@@ -73,7 +73,7 @@ pub async fn query_omdb(
     }
 
     let body: serde_json::Value = client
-        .get("http://www.omdbapi.com/")
+        .get("https://www.omdbapi.com/")
         .query(&params)
         .header("User-Agent", "blowup/0.1")
         .send()
