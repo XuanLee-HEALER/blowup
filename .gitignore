@@ -1,4 +1,5 @@
 /target
+.serena/
 node_modules
 .husky
 
