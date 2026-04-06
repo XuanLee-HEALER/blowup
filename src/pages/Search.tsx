@@ -27,7 +27,7 @@ export default function Search() {
   const [minRating, setMinRating] = useState<number | undefined>();
   const [sortBy, setSortBy]     = useState("vote_average.desc");
 
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Load API key and genre list on mount
   useEffect(() => {
