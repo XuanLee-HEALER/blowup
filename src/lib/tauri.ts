@@ -42,7 +42,7 @@ export interface AppConfig {
   opensubtitles: { api_key: string };
   tmdb: { api_key: string };
   library: { root_dir: string };
-  music: { enabled: boolean; mode: string; playlist: MusicTrack[] };
+  music: { enabled: boolean; mode: "sequential" | "random"; playlist: MusicTrack[] };
 }
 
 // ── Library types ─────────────────────────────────────────────────

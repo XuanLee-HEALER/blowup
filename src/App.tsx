@@ -47,7 +47,7 @@ export default function App() {
   const { pathname } = useLocation();
 
   const isKbActive = KB_PATHS.some(
-    (p) => pathname === p || (p !== "/" && pathname.startsWith(p))
+    (p) => pathname === p || (p !== "/" && pathname.startsWith(p + "/"))
   );
 
   const [musicEnabled, setMusicEnabled] = useState(false);

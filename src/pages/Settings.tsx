@@ -151,7 +151,8 @@ export default function Settings() {
             value={cfg.music?.mode ?? "sequential"}
             onChange={async (e) => {
               await config.set("music.mode", e.target.value);
-              setCfg((prev) => prev ? { ...prev, music: { ...prev.music, mode: e.target.value } } : prev);
+              const mode = e.target.value === "random" ? "random" as const : "sequential" as const;
+              setCfg((prev) => prev ? { ...prev, music: { ...prev.music, mode } } : prev);
             }}
             style={{
               background: "var(--color-bg-control)",
