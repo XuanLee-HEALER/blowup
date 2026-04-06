@@ -1,4 +1,3 @@
-// src/pages/Search.tsx
 import { useState, useEffect, useRef, useCallback } from "react";
 import { TextInput } from "../components/ui/TextInput";
 import { Chip } from "../components/ui/Chip";
@@ -10,6 +9,121 @@ const SORT_OPTIONS = [
   { value: "popularity.desc",   label: "按热度排序" },
   { value: "release_date.desc", label: "按年份排序" },
 ];
+
+// ── Filter Popover ───────────────────────────────────────────────
+
+function FilterPopover({ anchor, onClose, children }: {
+  anchor: string; onClose: () => void; children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  return (
+    <div ref={ref} style={{
+      position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 50,
+      background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)",
+      borderRadius: 8, padding: "0.75rem", minWidth: 180,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+    }}>
+      <p style={{ margin: "0 0 0.5rem", fontSize: "0.68rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        {anchor}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+// ── Individual filter components ─────────────────────────────────
+
+function YearFilter({ yearFrom, yearTo, onChange }: {
+  yearFrom?: number; yearTo?: number;
+  onChange: (from?: number, to?: number) => void;
+}) {
+  const [from, setFrom] = useState(yearFrom?.toString() ?? "");
+  const [to, setTo] = useState(yearTo?.toString() ?? "");
+  const inputStyle: React.CSSProperties = {
+    width: 72, padding: "0.3rem 0.5rem", fontSize: "0.78rem",
+    background: "var(--color-bg-control)", border: "1px solid var(--color-separator)",
+    borderRadius: 4, color: "var(--color-label-primary)", fontFamily: "inherit", outline: "none",
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+      <input type="number" placeholder="起始" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} />
+      <span style={{ color: "var(--color-label-quaternary)", fontSize: "0.75rem" }}>—</span>
+      <input type="number" placeholder="结束" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
+      <button onClick={() => onChange(from ? parseInt(from) : undefined, to ? parseInt(to) : undefined)}
+        style={{ background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#0B1628", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
+        确定
+      </button>
+    </div>
+  );
+}
+
+function GenreFilter({ genres, selected, onChange }: {
+  genres: TmdbGenre[]; selected: number[]; onChange: (ids: number[]) => void;
+}) {
+  const [ids, setIds] = useState<Set<number>>(new Set(selected));
+  const toggle = (id: number) => {
+    const next = new Set(ids);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setIds(next);
+  };
+  return (
+    <div>
+      <div style={{ maxHeight: 200, overflowY: "auto", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+        {genres.map((g) => (
+          <label key={g.id} style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.2rem 0", cursor: "pointer", fontSize: "0.78rem", color: "var(--color-label-secondary)" }}>
+            <input type="checkbox" checked={ids.has(g.id)} onChange={() => toggle(g.id)}
+              style={{ accentColor: "var(--color-accent)" }} />
+            {g.name}
+          </label>
+        ))}
+      </div>
+      <button onClick={() => onChange([...ids])}
+        style={{ marginTop: "0.5rem", background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#0B1628", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, width: "100%" }}>
+        确定
+      </button>
+    </div>
+  );
+}
+
+function RatingFilter({ current, onChange }: { current?: number; onChange: (v?: number) => void }) {
+  const [val, setVal] = useState(current?.toString() ?? "");
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+      <span style={{ fontSize: "0.75rem", color: "var(--color-label-secondary)" }}>≥</span>
+      <input type="number" min="0" max="10" step="0.5" value={val} onChange={(e) => setVal(e.target.value)}
+        style={{ width: 60, padding: "0.3rem 0.5rem", fontSize: "0.78rem", background: "var(--color-bg-control)", border: "1px solid var(--color-separator)", borderRadius: 4, color: "var(--color-label-primary)", fontFamily: "inherit", outline: "none" }} />
+      <button onClick={() => onChange(val ? parseFloat(val) : undefined)}
+        style={{ background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#0B1628", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
+        确定
+      </button>
+    </div>
+  );
+}
+
+function SortFilter({ current, onChange }: { current: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+      {SORT_OPTIONS.map((o) => (
+        <label key={o.value} style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.25rem 0", cursor: "pointer", fontSize: "0.78rem", color: current === o.value ? "var(--color-accent)" : "var(--color-label-secondary)" }}>
+          <input type="radio" name="sort" checked={current === o.value} onChange={() => onChange(o.value)}
+            style={{ accentColor: "var(--color-accent)" }} />
+          {o.label}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+// ── Main page ────────────────────────────────────────────────────
 
 export default function Search() {
   const [apiKey, setApiKey] = useState("");
@@ -28,7 +142,8 @@ export default function Search() {
   const [minRating, setMinRating] = useState<number | undefined>();
   const [sortBy, setSortBy]     = useState("vote_average.desc");
 
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Popover state
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
 
   // Load API key and genre list on mount
   useEffect(() => {
@@ -58,33 +173,29 @@ export default function Search() {
       setLoading(true);
       try {
         const filters = buildFilters(p);
-        const rows =
-          q.trim()
-            ? await tmdb.searchMovies(apiKey, q.trim(), filters)
-            : await tmdb.discoverMovies(apiKey, filters);
-
-        setResults((prev) => (append ? [...prev, ...rows] : rows));
-        setHasMore(rows.length === 20);
+        const items = q.trim()
+          ? await tmdb.searchMovies(apiKey, q.trim(), filters)
+          : await tmdb.discoverMovies(apiKey, filters);
+        setResults(append ? (prev) => [...prev, ...items] : items);
         setPage(p);
-      } catch (e) {
-        console.error(e);
-      } finally {
+        setHasMore(items.length >= 20);
+      } catch { /* */ } finally {
         setLoading(false);
       }
     },
     [apiKey, buildFilters]
   );
 
-  // Debounced search on query / filter change
+  const doSearch = useCallback(() => runSearch(query, 1, false), [query, runSearch]);
+
+  // Re-search when filters change (not query — query uses Enter)
   useEffect(() => {
-    clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => runSearch(query, 1, false), 400);
-    return () => clearTimeout(searchTimer.current);
-  }, [query, yearFrom, yearTo, genreIds, minRating, sortBy, apiKey, runSearch]);
+    if (apiKey) runSearch(query, 1, false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [yearFrom, yearTo, genreIds, minRating, sortBy]);
 
   const loadMore = () => runSearch(query, page + 1, true);
 
-  // Selected genre names for chip display
   const selectedGenreNames = genres
     .filter((g) => genreIds.includes(g.id))
     .map((g) => g.name);
@@ -108,83 +219,74 @@ export default function Search() {
 
           <TextInput
             leadingIcon="⌕"
-            placeholder="电影名称、导演…"
+            placeholder="电影名称、导演… (回车搜索)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
             style={{ marginBottom: "0.7rem" }}
           />
 
           {/* Filter chips */}
-          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "1rem", position: "relative" }}>
             {/* Year range */}
-            <Chip
-              label={yearFrom || yearTo ? `${yearFrom ?? "?"} – ${yearTo ?? "?"}` : "年代"}
-              active={!!(yearFrom || yearTo)}
-              onRemove={
-                yearFrom || yearTo
-                  ? () => { setYearFrom(undefined); setYearTo(undefined); }
-                  : undefined
-              }
-              onClick={() => {
-                const from = prompt("起始年份 (留空跳过)");
-                const to   = prompt("结束年份 (留空跳过)");
-                setYearFrom(from ? parseInt(from) : undefined);
-                setYearTo(to   ? parseInt(to)   : undefined);
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <Chip
+                label={yearFrom || yearTo ? `${yearFrom ?? "?"} – ${yearTo ?? "?"}` : "年代"}
+                active={!!(yearFrom || yearTo)}
+                onRemove={yearFrom || yearTo ? () => { setYearFrom(undefined); setYearTo(undefined); } : undefined}
+                onClick={() => setOpenFilter(openFilter === "year" ? null : "year")}
+              />
+              {openFilter === "year" && (
+                <FilterPopover anchor="年代范围" onClose={() => setOpenFilter(null)}>
+                  <YearFilter yearFrom={yearFrom} yearTo={yearTo} onChange={(f, t) => { setYearFrom(f); setYearTo(t); setOpenFilter(null); }} />
+                </FilterPopover>
+              )}
+            </div>
 
             {/* Genres */}
-            {selectedGenreNames.length > 0
-              ? selectedGenreNames.map((name, i) => (
-                  <Chip
-                    key={genreIds[i]}
-                    label={name}
-                    active
-                    onRemove={() =>
-                      setGenreIds((ids) => ids.filter((id) => id !== genreIds[i]))
-                    }
-                  />
-                ))
-              : (
-                <Chip
-                  label="类型"
-                  onClick={() => {
-                    const names = genres.map((g, i) => `${i + 1}. ${g.name}`).join("\n");
-                    const pick = prompt(`选择类型序号（逗号分隔）:\n${names}`);
-                    if (pick) {
-                      const ids = pick.split(",")
-                        .map((s) => genres[parseInt(s.trim()) - 1]?.id)
-                        .filter(Boolean) as number[];
-                      setGenreIds(ids);
-                    }
-                  }}
-                />
+            <div style={{ position: "relative" }}>
+              {selectedGenreNames.length > 0
+                ? selectedGenreNames.map((name, i) => (
+                    <Chip key={genreIds[i]} label={name} active
+                      onRemove={() => setGenreIds((ids) => ids.filter((id) => id !== genreIds[i]))} />
+                  ))
+                : <Chip label="类型" onClick={() => setOpenFilter(openFilter === "genre" ? null : "genre")} />
+              }
+              {openFilter === "genre" && (
+                <FilterPopover anchor="选择类型" onClose={() => setOpenFilter(null)}>
+                  <GenreFilter genres={genres} selected={genreIds} onChange={(ids) => { setGenreIds(ids); setOpenFilter(null); }} />
+                </FilterPopover>
               )}
+            </div>
 
             {/* Rating */}
-            <Chip
-              label={minRating ? `≥ ${minRating}` : "评分"}
-              active={!!minRating}
-              onRemove={minRating ? () => setMinRating(undefined) : undefined}
-              onClick={() => {
-                const r = prompt("最低评分 (0–10)");
-                setMinRating(r ? parseFloat(r) : undefined);
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <Chip
+                label={minRating ? `≥ ${minRating}` : "评分"}
+                active={!!minRating}
+                onRemove={minRating ? () => setMinRating(undefined) : undefined}
+                onClick={() => setOpenFilter(openFilter === "rating" ? null : "rating")}
+              />
+              {openFilter === "rating" && (
+                <FilterPopover anchor="最低评分" onClose={() => setOpenFilter(null)}>
+                  <RatingFilter current={minRating} onChange={(v) => { setMinRating(v); setOpenFilter(null); }} />
+                </FilterPopover>
+              )}
+            </div>
 
             {/* Sort */}
-            <Chip
-              label={SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "排序"}
-              active
-              onClick={() => {
-                const opts = SORT_OPTIONS.map((o, i) => `${i + 1}. ${o.label}`).join("\n");
-                const pick = prompt(`排序方式:\n${opts}`);
-                if (pick) {
-                  const opt = SORT_OPTIONS[parseInt(pick) - 1];
-                  if (opt) setSortBy(opt.value);
-                }
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <Chip
+                label={SORT_OPTIONS.find((o) => o.value === sortBy)?.label ?? "排序"}
+                active
+                onClick={() => setOpenFilter(openFilter === "sort" ? null : "sort")}
+              />
+              {openFilter === "sort" && (
+                <FilterPopover anchor="排序方式" onClose={() => setOpenFilter(null)}>
+                  <SortFilter current={sortBy} onChange={(v) => { setSortBy(v); setOpenFilter(null); }} />
+                </FilterPopover>
+              )}
+            </div>
           </div>
         </div>
 
@@ -199,140 +301,77 @@ export default function Search() {
             </p>
           )}
 
-          {results.map((film) => (
-            <FilmRow
-              key={film.id}
-              film={film}
-              selected={selected?.id === film.id}
-              onClick={() => setSelected(film)}
-            />
-          ))}
-
-          {loading && (
-            <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.75rem", padding: "0.5rem 0" }}>
-              加载中…
-            </p>
-          )}
-
-          {hasMore && !loading && (
-            <button
-              onClick={loadMore}
+          {results.map((m) => (
+            <div
+              key={m.id}
+              onClick={() => setSelected(m)}
               style={{
-                background: "none",
-                border: "none",
-                color: "var(--color-label-tertiary)",
-                fontSize: "0.75rem",
+                display: "flex",
+                gap: "0.75rem",
+                padding: "0.65rem 0.5rem",
+                borderRadius: 6,
                 cursor: "pointer",
-                padding: "0.5rem 0",
-                fontFamily: "inherit",
+                background: selected?.id === m.id ? "var(--color-bg-elevated)" : "transparent",
+              }}
+              onMouseEnter={(e) => {
+                if (selected?.id !== m.id) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)";
+              }}
+              onMouseLeave={(e) => {
+                if (selected?.id !== m.id) (e.currentTarget as HTMLDivElement).style.background = "transparent";
               }}
             >
+              {m.poster_path && (
+                <img
+                  src={`https://image.tmdb.org/t/p/w92${m.poster_path}`}
+                  alt=""
+                  style={{ width: 46, height: 69, borderRadius: 4, objectFit: "cover", flexShrink: 0 }}
+                />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "0.85rem", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {m.title}
+                </div>
+                <div style={{ fontSize: "0.72rem", color: "var(--color-label-tertiary)", marginTop: "0.15rem" }}>
+                  {m.year ?? "—"}
+                  {m.vote_average > 0 && (
+                    <span style={{ marginLeft: "0.5rem", color: "var(--color-accent)" }}>
+                      ★ {m.vote_average.toFixed(1)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {hasMore && !loading && (
+            <button onClick={loadMore}
+              style={{
+                display: "block", margin: "0.75rem auto", background: "none",
+                border: "1px solid var(--color-separator)", borderRadius: 6,
+                padding: "0.4rem 1.2rem", color: "var(--color-label-secondary)",
+                cursor: "pointer", fontSize: "0.78rem", fontFamily: "inherit",
+              }}>
               加载更多
             </button>
           )}
+
+          {loading && <p style={{ textAlign: "center", color: "var(--color-label-tertiary)", fontSize: "0.78rem" }}>搜索中…</p>}
         </div>
       </div>
 
-      {/* Right: detail panel */}
+      {/* Right panel */}
       {selected && (
-        <FilmDetailPanel film={selected} onClose={() => setSelected(null)} />
+        <div
+          style={{
+            width: 380,
+            flexShrink: 0,
+            borderLeft: "1px solid var(--color-separator)",
+            overflowY: "auto",
+          }}
+        >
+          <FilmDetailPanel film={selected} onClose={() => setSelected(null)} />
+        </div>
       )}
-    </div>
-  );
-}
-
-// ── FilmRow ──────────────────────────────────────────────────────
-function FilmRow({
-  film,
-  selected,
-  onClick,
-}: {
-  film: MovieListItem;
-  selected: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "0.85rem",
-        padding: "0.55rem 0.6rem",
-        borderRadius: "7px",
-        cursor: "pointer",
-        background: selected ? "var(--color-bg-elevated)" : "transparent",
-      }}
-      onMouseEnter={(e) => {
-        if (!selected)
-          (e.currentTarget as HTMLDivElement).style.background =
-            "rgba(255,255,255,0.04)";
-      }}
-      onMouseLeave={(e) => {
-        if (!selected)
-          (e.currentTarget as HTMLDivElement).style.background = "transparent";
-      }}
-    >
-      {/* Poster */}
-      <div
-        style={{
-          width: 34,
-          height: 48,
-          background: "var(--color-bg-elevated)",
-          borderRadius: 3,
-          flexShrink: 0,
-          overflow: "hidden",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "var(--color-label-quaternary)",
-          fontSize: "0.9rem",
-        }}
-      >
-        {film.poster_path ? (
-          <img
-            src={`https://image.tmdb.org/t/p/w92${film.poster_path}`}
-            alt=""
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          "🎬"
-        )}
-      </div>
-
-      {/* Info */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p
-          style={{
-            margin: 0,
-            fontSize: "0.86rem",
-            fontWeight: 500,
-            letterSpacing: "-0.01em",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {film.title}
-        </p>
-        <p
-          style={{
-            margin: "0.12rem 0 0",
-            fontSize: "0.7rem",
-            color: "var(--color-label-tertiary)",
-          }}
-        >
-          {[film.year].filter(Boolean).join(" · ")}
-        </p>
-      </div>
-
-      {/* Score */}
-      <span style={{ fontSize: "0.72rem", color: "var(--color-label-tertiary)", flexShrink: 0 }}>
-        <strong style={{ color: "var(--color-label-secondary)", fontWeight: 500, fontSize: "0.8rem" }}>
-          {film.vote_average.toFixed(1)}
-        </strong>{" "}
-        / 10
-      </span>
     </div>
   );
 }

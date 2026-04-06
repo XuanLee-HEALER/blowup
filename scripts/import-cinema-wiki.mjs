@@ -105,16 +105,12 @@ async function main() {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
 
-  // Run migrations if tables don't exist
+  // Verify tables exist (created by running the app at least once)
   const tableCheck = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='genres'").get();
   if (!tableCheck) {
-    console.log("Running migrations...");
-    const migrationsDir = join(import.meta.dirname, "..", "src-tauri", "migrations");
-    const migration1 = readFileSync(join(migrationsDir, "001_initial.sql"), "utf-8");
-    const migration2 = readFileSync(join(migrationsDir, "002_downloads.sql"), "utf-8");
-    db.exec(migration1);
-    db.exec(migration2);
-    console.log("Migrations applied.");
+    console.error("Error: Database tables not found.");
+    console.error("Please start the app (just dev) at least once to initialize the database, then re-run this script.");
+    process.exit(1);
   }
 
   // Prepared statements

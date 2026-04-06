@@ -20,10 +20,20 @@ pub fn run() {
                 .expect("could not resolve app data dir");
             config::init_app_data_dir(data_dir);
             tauri::async_runtime::block_on(async move {
-                let pool = db::init_db(&handle)
-                    .await
-                    .expect("Failed to initialize database");
-                handle.manage(pool);
+                match db::init_db(&handle).await {
+                    Ok(pool) => {
+                        handle.manage(pool);
+                    }
+                    Err(msg) => {
+                        use tauri_plugin_dialog::DialogExt;
+                        handle
+                            .dialog()
+                            .message(msg)
+                            .title("blowup 启动失败")
+                            .blocking_show();
+                        std::process::exit(1);
+                    }
+                }
             });
             Ok(())
         })
