@@ -298,7 +298,7 @@ pub async fn search_movies(
     let page = filters.page.unwrap_or(1);
 
     // ① Title search
-    let mut params: Vec<(&str, String)> = vec![
+    let params: Vec<(&str, String)> = vec![
         ("api_key", api_key.clone()),
         ("query", query.clone()),
         ("page", page.to_string()),
