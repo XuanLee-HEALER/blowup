@@ -10,6 +10,7 @@ import Genres from "./pages/Genres";
 import Graph from "./pages/Graph";
 import Library from "./pages/Library";
 import Download from "./pages/Download";
+import Subtitle from "./pages/Subtitle";
 import { MusicPlayer } from "./components/MusicPlayer";
 import { config, type MusicTrack } from "./lib/tauri";
 
@@ -36,7 +37,7 @@ const NAV_SECTIONS = [
   {
     label: "工具",
     items: [
-      { icon: "◷", label: "字幕", path: "/subtitle", disabled: true },
+      { icon: "◷", label: "字幕", path: "/subtitle" },
       { icon: "▶", label: "媒体", path: "/media", disabled: true },
     ],
   },
@@ -138,7 +139,7 @@ export default function App() {
             <Route path="/graph"    element={<Graph />} />
             <Route path="/library"  element={<Library />} />
             <Route path="/download" element={<Download />} />
-            <Route path="/subtitle" element={<Placeholder title="字幕" milestone="M4" />} />
+            <Route path="/subtitle" element={<Subtitle />} />
             <Route path="/media"    element={<Placeholder title="媒体工具" milestone="M4" />} />
           </Routes>
         </main>
