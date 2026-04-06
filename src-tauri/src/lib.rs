@@ -14,6 +14,11 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle().clone();
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("could not resolve app data dir");
+            config::init_app_data_dir(data_dir);
             tauri::async_runtime::block_on(async move {
                 let pool = db::init_db(&handle)
                     .await
