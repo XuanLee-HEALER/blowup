@@ -46,7 +46,7 @@ export interface AppConfig {
 }
 
 // ── Library types ─────────────────────────────────────────────────
-export interface PersonSummary { id: number; name: string; primary_role: string; film_count: number; }
+export interface PersonSummary { id: number; name: string; primary_role: string; nationality: string | null; film_count: number; }
 export interface PersonFilmEntry { film_id: number; title: string; year: number | null; role: string; poster_cache_path: string | null; }
 export interface PersonRelation { target_id: number; target_name: string; direction: string; relation_type: string; }
 export interface PersonDetail {

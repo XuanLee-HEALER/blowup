@@ -4,10 +4,36 @@ import type { PersonSummary, PersonDetail } from "../lib/tauri";
 import { WikiDetailView } from "../components/WikiDetailView";
 
 const ROLE_LABELS: Record<string, string> = {
-  director: "导演", cinematographer: "摄影", composer: "音乐",
+  director: "导演", cinematographer: "摄影", composer: "配乐",
   editor: "剪辑", screenwriter: "编剧", producer: "制片", actor: "演员",
 };
 const PRIMARY_ROLES = Object.keys(ROLE_LABELS);
+
+// Sidebar grouping order
+const ROLE_GROUP_ORDER = ["director", "editor", "composer"] as const;
+const ROLE_GROUP_LABELS: Record<string, string> = {
+  director: "导演", editor: "剪辑", composer: "配乐",
+};
+
+// Nationality → flag emoji (Unicode regional indicator)
+const FLAG_MAP: Record<string, string> = {
+  "中国": "🇨🇳", "台湾": "🇹🇼", "香港": "🇭🇰",
+  "日本": "🇯🇵", "韩国": "🇰🇷",
+  "美国": "🇺🇸", "英国": "🇬🇧", "美国/英国": "🇺🇸",
+  "法国": "🇫🇷", "意大利": "🇮🇹", "德国": "🇩🇪",
+  "西班牙": "🇪🇸", "瑞典": "🇸🇪", "丹麦": "🇩🇰",
+  "苏联": "🇷🇺", "苏联/亚美尼亚": "🇦🇲", "俄罗斯": "🇷🇺",
+  "伊朗": "🇮🇷", "波兰": "🇵🇱", "奥地利": "🇦🇹",
+  "巴西": "🇧🇷", "墨西哥": "🇲🇽", "印度": "🇮🇳",
+  "泰国": "🇹🇭", "澳大利亚": "🇦🇺", "加拿大": "🇨🇦",
+};
+
+function getFlag(nationality?: string | null): string {
+  if (!nationality) return "";
+  // Handle compound nationalities like "法国/瑞士" — use first
+  const first = nationality.split("/")[0];
+  return FLAG_MAP[nationality] ?? FLAG_MAP[first] ?? "";
+}
 
 // ── Shared modal primitives ───────────────────────────────────────
 const inputStyle: React.CSSProperties = {
@@ -215,20 +241,35 @@ export default function People() {
         <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem" }}>
           {people.length === 0 ? (
             <p style={{ padding: "1rem", color: "var(--color-label-tertiary)", fontSize: "0.8rem" }}>知识库中暂无影人</p>
-          ) : people.map((p) => (
-            <div key={p.id}
-              onClick={() => loadPerson(p.id)}
-              style={{ padding: "0.45rem 0.75rem", borderRadius: 5, cursor: "pointer", background: selected?.id === p.id ? "var(--color-bg-elevated)" : "transparent" }}
-              onMouseEnter={(e) => { if (selected?.id !== p.id) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)"; }}
-              onMouseLeave={(e) => { if (selected?.id !== p.id) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
-            >
-              <div style={{ fontSize: "0.82rem" }}>{p.name}</div>
-              <div style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>
-                {ROLE_LABELS[p.primary_role] ?? p.primary_role}
-                {p.film_count > 0 && ` · ${p.film_count} 部`}
-              </div>
-            </div>
-          ))}
+          ) : (
+            ROLE_GROUP_ORDER.map((role) => {
+              const group = people.filter((p) => p.primary_role === role);
+              if (group.length === 0) return null;
+              return (
+                <div key={role}>
+                  <p style={{ margin: "0.75rem 0.75rem 0.25rem", fontSize: "0.65rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+                    {ROLE_GROUP_LABELS[role]} ({group.length})
+                  </p>
+                  {group.map((p) => (
+                    <div key={p.id}
+                      onClick={() => loadPerson(p.id)}
+                      style={{ padding: "0.45rem 0.75rem", borderRadius: 5, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.5rem", background: selected?.id === p.id ? "var(--color-bg-elevated)" : "transparent" }}
+                      onMouseEnter={(e) => { if (selected?.id !== p.id) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)"; }}
+                      onMouseLeave={(e) => { if (selected?.id !== p.id) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                    >
+                      <span style={{ fontSize: "0.9rem", lineHeight: 1 }}>{getFlag(p.nationality)}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "0.82rem" }}>{p.name}</div>
+                        {p.film_count > 0 && (
+                          <div style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>{p.film_count} 部</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

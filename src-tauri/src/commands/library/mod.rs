@@ -16,6 +16,7 @@ pub struct PersonSummary {
     pub id: i64,
     pub name: String,
     pub primary_role: String,
+    pub nationality: Option<String>,
     pub film_count: i64,
 }
 

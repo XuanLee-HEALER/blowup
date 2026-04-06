@@ -15,7 +15,7 @@ struct PersonRow {
 #[tauri::command]
 pub async fn list_people(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<PersonSummary>, String> {
     sqlx::query_as::<_, PersonSummary>(
-        "SELECT p.id, p.name, p.primary_role, COUNT(pf.film_id) as film_count
+        "SELECT p.id, p.name, p.primary_role, p.nationality, COUNT(pf.film_id) as film_count
          FROM people p
          LEFT JOIN person_films pf ON pf.person_id = p.id
          GROUP BY p.id ORDER BY p.name",
@@ -199,7 +199,7 @@ mod tests {
         .last_insert_rowid();
 
         let rows = sqlx::query_as::<_, PersonSummary>(
-            "SELECT p.id, p.name, p.primary_role, COUNT(pf.film_id) as film_count
+            "SELECT p.id, p.name, p.primary_role, p.nationality, COUNT(pf.film_id) as film_count
              FROM people p LEFT JOIN person_films pf ON pf.person_id = p.id
              GROUP BY p.id ORDER BY p.name",
         )
