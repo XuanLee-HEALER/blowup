@@ -10,11 +10,9 @@
 
 ---
 
-**blowup** 是一个桌面应用（兼命令行工具），为中国影迷打造的观影工作流：TMDB 搜片、种子搜索与下载、字幕管理、个人影片知识库、媒体播放。
+**blowup** 是一个桌面应用，为中国影迷打造的观影工作流：TMDB 搜片、种子搜索与下载、字幕管理、个人影片知识库、媒体播放。
 
-## v2 桌面应用
-
-v2 是基于 **Tauri v2** 构建的全功能桌面应用，搭配 React 前端。将所有 CLI 功能包装为原生桌面界面，并新增个人影片知识库。
+基于 **Tauri v2**（Rust 后端）和 **React 19**（TypeScript 前端）构建。
 
 ### 功能页面
 
@@ -68,50 +66,6 @@ npm run tauri build
 | `opensubtitles.api_key` | 字符串 | OpenSubtitles API Key（可选） |
 | `subtitle.default_lang` | 字符串 | 默认字幕语言（默认：zh） |
 | `library.root_dir` | 路径 | 下载/库目录（默认：~/Movies/blowup） |
-
----
-
-## v1 命令行工具
-
-原始 CLI 工具仍可通过 crates.io 安装：
-
-```bash
-cargo install blowup
-```
-
-### CLI 命令
-
-| 命令 | 说明 |
-|------|------|
-| `blowup search` | 通过标题和年份在 YIFY 搜索电影种子 |
-| `blowup download` | 通过 aria2c 下载种子文件或 magnet 链接 |
-| `blowup info` | 通过 TMDB 查询电影详情 |
-| `blowup sub fetch` | 从 OpenSubtitles 下载字幕 |
-| `blowup sub align` | 使用 alass 自动同步字幕时间轴 |
-| `blowup sub extract` | 从视频容器中提取内嵌字幕流 |
-| `blowup sub list` | 列出视频文件中的所有字幕流 |
-| `blowup sub shift` | 将字幕时间戳偏移 N 毫秒 |
-| `blowup tracker update` | 从远程源更新本地 tracker 列表 |
-| `blowup config` | 读写工具配置 |
-
-### 快速开始（CLI）
-
-```bash
-# 1. 配置
-blowup config set tmdb.api_key 你的TMDB密钥
-blowup config set tools.aria2c /usr/local/bin/aria2c
-
-# 2. 查询电影
-blowup info "放大" --year 1966
-
-# 3. 搜索并下载
-blowup search "Blow-Up" --year 1966
-blowup download "magnet:?xt=..." --output-dir ~/Movies
-
-# 4. 字幕
-blowup sub fetch ~/Movies/Blow-Up.mp4 --lang zh
-blowup sub align ~/Movies/Blow-Up.mp4 ~/Movies/Blow-Up.zh.srt
-```
 
 ## 许可协议
 

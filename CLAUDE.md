@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**blowup** v2.0.0 — A Tauri v2 desktop app (+ CLI) for the Chinese film-watching pipeline: TMDB discovery, torrent search & download, subtitle management, personal film knowledge base, and media playback.
+**blowup** v2.0.0 — A Tauri v2 desktop app for the Chinese film-watching pipeline: TMDB discovery, torrent search & download, subtitle management, personal film knowledge base, and media playback.
 
 Named after Michelangelo Antonioni's 1966 film *Blow-Up*.
 

@@ -10,11 +10,9 @@
 
 ---
 
-**blowup** is a desktop application (and CLI tool) for the Chinese film-watching pipeline: TMDB discovery, torrent search & download, subtitle management, knowledge base curation, and media playback.
+**blowup** is a desktop application for the Chinese film-watching pipeline: TMDB discovery, torrent search & download, subtitle management, personal film knowledge base, and media playback.
 
-## v2 Desktop App
-
-v2 is a full-featured **Tauri v2** desktop application with a React frontend. It wraps all CLI functionality in a native desktop GUI and adds a personal film knowledge base.
+Built with **Tauri v2** (Rust backend) and **React 19** (TypeScript frontend).
 
 ### Pages
 
@@ -73,50 +71,6 @@ Settings are stored at `~/.config/blowup/config.toml`. Configure via the Setting
 | `opensubtitles.api_key` | string | OpenSubtitles API key (optional) |
 | `subtitle.default_lang` | string | Default subtitle language (default: zh) |
 | `library.root_dir` | path | Download/library directory (default: ~/Movies/blowup) |
-
----
-
-## v1 CLI Tool
-
-The original CLI is still available on crates.io:
-
-```bash
-cargo install blowup
-```
-
-### CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `blowup search` | Search YIFY for movie torrents by title and year |
-| `blowup download` | Download a torrent or magnet link via aria2c |
-| `blowup info` | Look up movie details via TMDB |
-| `blowup sub fetch` | Download subtitles from OpenSubtitles |
-| `blowup sub align` | Auto-sync subtitle timing using alass |
-| `blowup sub extract` | Extract embedded subtitle streams |
-| `blowup sub list` | List subtitle streams in a video file |
-| `blowup sub shift` | Shift subtitle timestamps by N milliseconds |
-| `blowup tracker update` | Update local tracker list |
-| `blowup config` | Read and write configuration |
-
-### Quick Start (CLI)
-
-```bash
-# 1. Configure
-blowup config set tmdb.api_key YOUR_TMDB_KEY
-blowup config set tools.aria2c /usr/local/bin/aria2c
-
-# 2. Find a movie
-blowup info "Blow-Up" --year 1966
-
-# 3. Search and download
-blowup search "Blow-Up" --year 1966
-blowup download "magnet:?xt=..." --output-dir ~/Movies
-
-# 4. Subtitles
-blowup sub fetch ~/Movies/Blow-Up.mp4 --lang zh
-blowup sub align ~/Movies/Blow-Up.mp4 ~/Movies/Blow-Up.zh.srt
-```
 
 ## License
 
