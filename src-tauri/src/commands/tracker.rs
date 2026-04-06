@@ -96,6 +96,11 @@ async fn read_update_time(path: &std::path::Path) -> anyhow::Result<DateTime<Loc
     Ok(DateTime::parse_from_str(last_record, TIME_FMT)?.with_timezone(&Local))
 }
 
+#[tauri::command]
+pub async fn update_trackers(source: Option<String>) -> std::result::Result<(), String> {
+    update_tracker_list(source).await.map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
