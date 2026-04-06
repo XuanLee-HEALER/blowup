@@ -4,13 +4,13 @@ import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { NavItem } from "./components/ui/NavItem";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
-import Placeholder from "./pages/Placeholder";
 import People from "./pages/People";
 import Genres from "./pages/Genres";
 import Graph from "./pages/Graph";
 import Library from "./pages/Library";
 import Download from "./pages/Download";
 import Subtitle from "./pages/Subtitle";
+import Media from "./pages/Media";
 import { MusicPlayer } from "./components/MusicPlayer";
 import { config, type MusicTrack } from "./lib/tauri";
 
@@ -38,7 +38,7 @@ const NAV_SECTIONS = [
     label: "工具",
     items: [
       { icon: "◷", label: "字幕", path: "/subtitle" },
-      { icon: "▶", label: "媒体", path: "/media", disabled: true },
+      { icon: "▶", label: "媒体", path: "/media" },
     ],
   },
 ];
@@ -105,7 +105,7 @@ export default function App() {
                   icon={item.icon}
                   label={item.label}
                   active={pathname === item.path}
-                  disabled={"disabled" in item && item.disabled}
+                  disabled={"disabled" in item && (item.disabled as boolean)}
                   onClick={() => navigate(item.path)}
                 />
               ))}
@@ -140,7 +140,7 @@ export default function App() {
             <Route path="/library"  element={<Library />} />
             <Route path="/download" element={<Download />} />
             <Route path="/subtitle" element={<Subtitle />} />
-            <Route path="/media"    element={<Placeholder title="媒体工具" milestone="M4" />} />
+            <Route path="/media"    element={<Media />} />
           </Routes>
         </main>
       </div>
