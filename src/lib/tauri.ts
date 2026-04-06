@@ -162,6 +162,32 @@ export interface FilmFilterParams {
   pageSize?: number;
 }
 
+// ── Download ─────────────────────────────────────────────────────
+
+export interface DownloadRecord {
+  id: number;
+  film_id: number | null;
+  title: string;
+  quality: string | null;
+  target: string;
+  output_dir: string;
+  status: "pending" | "downloading" | "completed" | "failed" | "cancelled";
+  pid: number | null;
+  file_path: string | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface MovieResult {
+  title: string;
+  year: number;
+  quality: string;
+  magnet: string | null;
+  torrent_url: string | null;
+  seeds: number;
+}
+
 // ── Invoke wrappers ───────────────────────────────────────────────
 export const tmdb = {
   searchMovies: (apiKey: string, query: string, filters: SearchFilters) =>
@@ -239,4 +265,25 @@ export const library = {
     invoke<LibraryStats>("get_library_stats"),
   listFilmsFiltered: (params: FilmFilterParams) =>
     invoke<FilmFilterResult>("list_films_filtered", params as Record<string, unknown>),
+};
+
+export const download = {
+  startDownload: (title: string, target: string, quality?: string, filmId?: number) =>
+    invoke<number>("start_download", { title, target, quality, filmId }),
+  listDownloads: () =>
+    invoke<DownloadRecord[]>("list_downloads"),
+  cancelDownload: (id: number) =>
+    invoke<void>("cancel_download", { id }),
+  deleteDownloadRecord: (id: number) =>
+    invoke<void>("delete_download_record", { id }),
+};
+
+export const yts = {
+  search: (query: string, year?: number) =>
+    invoke<MovieResult[]>("search_yify_cmd", { query, year }),
+};
+
+export const tracker = {
+  update: (source?: string) =>
+    invoke<void>("update_trackers", { source }),
 };
