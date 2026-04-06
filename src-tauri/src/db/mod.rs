@@ -17,6 +17,6 @@ pub async fn init_db(app: &AppHandle) -> Result<SqlitePool, sqlx::Error> {
     );
 
     let pool = SqlitePool::connect(&url).await?;
-    sqlx::migrate!("migrations").run(&pool).await?;
+    sqlx::migrate!("./migrations").run(&pool).await?;
     Ok(pool)
 }
