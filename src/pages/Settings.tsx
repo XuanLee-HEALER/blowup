@@ -106,7 +106,7 @@ export default function Settings() {
       </Section>
 
       <Section title="工具路径">
-        {(["aria2c", "alass", "ffmpeg"] as const).map((tool) => (
+        {(["aria2c", "alass", "ffmpeg", "player"] as const).map((tool) => (
           <Field key={tool} label={tool}>
             <TextInput
               defaultValue={cfg.tools[tool]}

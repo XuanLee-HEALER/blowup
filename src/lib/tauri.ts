@@ -36,7 +36,7 @@ export interface TmdbMovieCredits {
 export interface MusicTrack { src: string; name: string; }
 
 export interface AppConfig {
-  tools: { aria2c: string; alass: string; ffmpeg: string };
+  tools: { aria2c: string; alass: string; ffmpeg: string; player: string };
   search: { rate_limit_secs: number };
   subtitle: { default_lang: string };
   opensubtitles: { api_key: string };
@@ -196,6 +196,29 @@ export interface SubtitleStreamInfo {
   title: string | null;
 }
 
+export interface MediaInfo {
+  file_path: string;
+  file_size: number | null;
+  duration_secs: number | null;
+  format_name: string | null;
+  bit_rate: number | null;
+  streams: StreamInfo[];
+}
+
+export interface StreamInfo {
+  index: number;
+  codec_type: string;
+  codec_name: string;
+  width: number | null;
+  height: number | null;
+  frame_rate: string | null;
+  bit_rate: number | null;
+  channels: number | null;
+  sample_rate: string | null;
+  language: string | null;
+  title: string | null;
+}
+
 // ── Invoke wrappers ───────────────────────────────────────────────
 export const tmdb = {
   searchMovies: (apiKey: string, query: string, filters: SearchFilters) =>
@@ -307,4 +330,11 @@ export const subtitle = {
     invoke<SubtitleStreamInfo[]>("list_subtitle_streams_cmd", { video }),
   shift: (srt: string, offsetMs: number) =>
     invoke<void>("shift_subtitle_cmd", { srt, offsetMs }),
+};
+
+export const media = {
+  probeDetail: (filePath: string) =>
+    invoke<MediaInfo>("probe_media_detail", { filePath }),
+  openInPlayer: (filePath: string) =>
+    invoke<void>("open_in_player", { filePath }),
 };
