@@ -41,6 +41,8 @@ pub fn run() {
             commands::subtitle::list_subtitle_streams_cmd,
             commands::subtitle::shift_subtitle_cmd,
             commands::media::probe_media,
+            commands::media::probe_media_detail,
+            commands::media::open_in_player,
             commands::config::get_config,
             commands::config::set_config_key,
             commands::config::set_music_playlist,

@@ -27,6 +27,8 @@ pub struct ToolsConfig {
     pub alass: String,
     #[serde(default = "default_ffmpeg")]
     pub ffmpeg: String,
+    #[serde(default = "default_player")]
+    pub player: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -79,6 +81,9 @@ fn default_music_mode() -> String {
     "sequential".to_string()
 }
 
+fn default_player() -> String {
+    "mpv".to_string()
+}
 fn default_aria2c() -> String {
     "aria2c".to_string()
 }
@@ -111,6 +116,7 @@ impl Default for ToolsConfig {
             aria2c: default_aria2c(),
             alass: default_alass(),
             ffmpeg: default_ffmpeg(),
+            player: default_player(),
         }
     }
 }
@@ -181,6 +187,7 @@ mod tests {
         assert_eq!(cfg.tools.aria2c, "aria2c");
         assert_eq!(cfg.tools.alass, "alass");
         assert_eq!(cfg.tools.ffmpeg, "ffmpeg");
+        assert_eq!(cfg.tools.player, "mpv");
         assert_eq!(cfg.search.rate_limit_secs, 5);
         assert_eq!(cfg.subtitle.default_lang, "zh");
     }
