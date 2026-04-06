@@ -35,3 +35,12 @@ pub fn set_config_key(key: String, value: String) -> Result<(), String> {
     std::fs::write(&path, doc.to_string()).map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[tauri::command]
+pub fn set_music_playlist(
+    tracks: Vec<crate::config::MusicTrack>,
+) -> Result<(), String> {
+    let mut config = crate::config::load_config();
+    config.music.playlist = tracks;
+    crate::config::save_config(&config)
+}

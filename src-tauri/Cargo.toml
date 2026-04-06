@@ -34,7 +34,7 @@ flate2         = "1"
 octocrab       = "0.44"
 
 # New for v2
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "migrate"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "migrate", "derive"] }
 
 [dev-dependencies]
 tempfile = "3"
