@@ -21,7 +21,9 @@
     "marked": "^17.0.6",
     "react": "^19",
     "react-dom": "^19",
-    "react-router-dom": "^7"
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",

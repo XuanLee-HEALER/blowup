@@ -1,16 +1,11 @@
-// src/pages/Genres.tsx
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { library } from "../lib/tauri";
 import type { GenreTreeNode, GenreDetail } from "../lib/tauri";
-import { WikiEditor } from "../components/WikiEditor";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <p style={{ margin: "1.25rem 0 0.5rem", fontSize: "0.72rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
-      {children}
-    </p>
-  );
-}
+// ── Tree Node ────────────────────────────────────────────────────
 
 function GenreNode({ node, depth, selectedId, onSelect, onAddChild }: {
   node: GenreTreeNode; depth: number; selectedId: number | undefined;
@@ -54,64 +49,264 @@ function GenreNode({ node, depth, selectedId, onSelect, onAddChild }: {
   );
 }
 
-function GenreDetailView({ genre, wikiContent, onWikiChange, onWikiSave, onDelete }: {
-  genre: GenreDetail; wikiContent: string;
-  onWikiChange: (v: string) => void; onWikiSave: () => void; onDelete: () => void;
-}) {
+// ── Outline (extracted from wiki markdown headings) ──────────────
+
+function Outline({ content, containerRef }: { content: string; containerRef: React.RefObject<HTMLDivElement | null> }) {
+  const headings = useMemo(() => {
+    const lines = content.split("\n");
+    const result: { level: number; text: string; id: string }[] = [];
+    for (const line of lines) {
+      const match = line.match(/^(#{1,4})\s+(.+)/);
+      if (match) {
+        const text = match[2].trim();
+        const id = "heading-" + text.replace(/\s+/g, "-");
+        result.push({ level: match[1].length, text, id });
+      }
+    }
+    return result;
+  }, [content]);
+
+  if (headings.length === 0) return null;
+
+  const handleClick = (id: string) => {
+    const el = containerRef.current?.querySelector(`[data-heading-id="${id}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
-    <div style={{ maxWidth: 680 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.25rem" }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 700, letterSpacing: "-0.03em" }}>{genre.name}</h2>
-          {genre.period && <p style={{ margin: "0.15rem 0 0", fontSize: "0.75rem", color: "var(--color-label-tertiary)" }}>{genre.period}</p>}
+    <nav style={{ fontSize: "0.75rem", lineHeight: 2 }}>
+      <p style={{ margin: "0 0 0.5rem", fontSize: "0.68rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
+        目录
+      </p>
+      {headings.map((h, i) => (
+        <div
+          key={i}
+          onClick={() => handleClick(h.id)}
+          style={{
+            paddingLeft: `${(h.level - 1) * 12}px`,
+            color: "var(--color-label-secondary)",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-accent)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-label-secondary)"; }}
+        >
+          {h.text}
         </div>
-        <button onClick={onDelete} style={{ background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>删除</button>
-      </div>
+      ))}
+    </nav>
+  );
+}
 
-      <SectionTitle>简介 Wiki</SectionTitle>
-      <WikiEditor value={wikiContent} onChange={onWikiChange} onSave={onWikiSave} />
+// ── Markdown custom components ───────────────────────────────────
 
-      <SectionTitle>关联影人</SectionTitle>
-      {genre.people.length === 0 ? (
-        <p style={{ fontSize: "0.78rem", color: "var(--color-label-quaternary)" }}>暂无关联影人</p>
-      ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-          {genre.people.map((p) => (
-            <span key={p.id} style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)", borderRadius: 4, padding: "0.2rem 0.5rem", fontSize: "0.75rem", color: "var(--color-label-secondary)" }}>{p.name}</span>
-          ))}
-        </div>
-      )}
+const mdComponents: Components = {
+  h1: ({ children, ...props }) => {
+    const id = "heading-" + String(children).replace(/\s+/g, "-");
+    return <h1 data-heading-id={id} style={{ fontSize: "1.3rem", fontWeight: 700, margin: "2rem 0 0.75rem", color: "var(--color-label-primary)", letterSpacing: "-0.02em" }} {...props}>{children}</h1>;
+  },
+  h2: ({ children, ...props }) => {
+    const id = "heading-" + String(children).replace(/\s+/g, "-");
+    return <h2 data-heading-id={id} style={{ fontSize: "1.1rem", fontWeight: 600, margin: "2rem 0 0.6rem", paddingBottom: "0.35rem", borderBottom: "1px solid var(--color-separator)", color: "var(--color-label-primary)" }} {...props}>{children}</h2>;
+  },
+  h3: ({ children, ...props }) => {
+    const id = "heading-" + String(children).replace(/\s+/g, "-");
+    return <h3 data-heading-id={id} style={{ fontSize: "0.95rem", fontWeight: 600, margin: "1.5rem 0 0.5rem", color: "var(--color-label-primary)" }} {...props}>{children}</h3>;
+  },
+  p: ({ children, ...props }) => (
+    <p style={{ margin: "0.6rem 0", lineHeight: 1.85, color: "var(--color-label-secondary)", fontSize: "0.82rem" }} {...props}>{children}</p>
+  ),
+  ul: ({ children, ...props }) => (
+    <ul style={{ margin: "0.5rem 0", paddingLeft: "1.5rem", lineHeight: 1.85 }} {...props}>{children}</ul>
+  ),
+  ol: ({ children, ...props }) => (
+    <ol style={{ margin: "0.5rem 0", paddingLeft: "1.5rem", lineHeight: 1.85 }} {...props}>{children}</ol>
+  ),
+  li: ({ children, ...props }) => (
+    <li style={{ margin: "0.3rem 0", fontSize: "0.82rem", color: "var(--color-label-secondary)" }} {...props}>{children}</li>
+  ),
+  strong: ({ children, ...props }) => (
+    <strong style={{ color: "var(--color-label-primary)", fontWeight: 600 }} {...props}>{children}</strong>
+  ),
+  blockquote: ({ children, ...props }) => (
+    <blockquote style={{ margin: "0.75rem 0", paddingLeft: "1rem", borderLeft: "3px solid var(--color-accent)", color: "var(--color-label-tertiary)", fontStyle: "italic" }} {...props}>{children}</blockquote>
+  ),
+  hr: (props) => (
+    <hr style={{ border: "none", borderTop: "1px solid var(--color-separator)", margin: "1.5rem 0" }} {...props} />
+  ),
+  a: ({ children, href, ...props }) => (
+    <a href={href} style={{ color: "var(--color-accent)", textDecoration: "none" }} {...props}>{children}</a>
+  ),
+};
 
-      <SectionTitle>收录电影</SectionTitle>
-      {genre.films.length === 0 ? (
-        <p style={{ fontSize: "0.78rem", color: "var(--color-label-quaternary)" }}>暂无收录电影</p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-          {genre.films.map((f) => (
-            <div key={f.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem" }}>
-              <span>{f.title}</span>
-              {f.year && <span style={{ color: "var(--color-label-quaternary)" }}>({f.year})</span>}
-              {f.tmdb_rating && <span style={{ color: "var(--color-accent)", fontSize: "0.72rem" }}>★ {f.tmdb_rating.toFixed(1)}</span>}
-            </div>
-          ))}
-        </div>
-      )}
+// ── Wiki Preview ─────────────────────────────────────────────────
 
-      {genre.children.length > 0 && (
-        <>
-          <SectionTitle>子流派</SectionTitle>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-            {genre.children.map((c) => (
-              <span key={c.id} style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)", borderRadius: 4, padding: "0.2rem 0.5rem", fontSize: "0.75rem", color: "var(--color-label-secondary)" }}>
-                {c.name} ({c.film_count})
-              </span>
-            ))}
-          </div>
-        </>
-      )}
+function WikiPreview({ content }: { content: string }) {
+  if (!content) {
+    return <p style={{ color: "var(--color-label-quaternary)", fontStyle: "italic", fontSize: "0.82rem" }}>（暂无内容）</p>;
+  }
+  return (
+    <div style={{ padding: "0 1rem" }}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
+
+// ── Genre Detail View (new layout) ──────────────────────────────
+
+function GenreDetailView({ genre, wikiContent, onWikiChange, onWikiSave, onDelete, onNavigatePerson }: {
+  genre: GenreDetail; wikiContent: string;
+  onWikiChange: (v: string) => void; onWikiSave: () => void; onDelete: () => void;
+  onNavigatePerson: (id: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Header: centered title + period */}
+      <div style={{ textAlign: "center", padding: "1.5rem 0 1rem", borderBottom: "1px solid var(--color-separator)" }}>
+        <h2 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700, letterSpacing: "-0.03em" }}>
+          {genre.name}
+        </h2>
+        {genre.period && (
+          <p style={{ margin: "0.3rem 0 0", fontSize: "0.8rem", color: "var(--color-label-tertiary)" }}>
+            {genre.period}
+          </p>
+        )}
+        {genre.description && (
+          <p style={{ margin: "0.4rem 0 0", fontSize: "0.78rem", color: "var(--color-label-secondary)", maxWidth: 500, marginInline: "auto" }}>
+            {genre.description}
+          </p>
+        )}
+      </div>
+
+      {/* Body: wiki content + outline */}
+      <div ref={contentRef} style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Main content area */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "2rem 0" }}>
+         <div style={{ maxWidth: 680, margin: "0 auto", padding: "0 3rem" }}>
+          {/* Edit/Preview toggle */}
+          <div style={{ display: "flex", gap: "0.25rem", marginBottom: "1rem", justifyContent: "flex-end" }}>
+            {(["preview", "edit"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setEditing(mode === "edit")}
+                style={{
+                  background: "none", border: "none",
+                  borderBottom: (editing ? "edit" : "preview") === mode ? "1px solid var(--color-accent)" : "1px solid transparent",
+                  padding: "0.2rem 0.6rem 0.3rem",
+                  cursor: "pointer", fontSize: "0.72rem",
+                  color: (editing ? "edit" : "preview") === mode ? "var(--color-accent)" : "var(--color-label-tertiary)",
+                  fontFamily: "inherit",
+                }}
+              >
+                {mode === "preview" ? "预览" : "编辑"}
+              </button>
+            ))}
+            <button onClick={onDelete} style={{
+              background: "none", border: "none", color: "var(--color-label-quaternary)",
+              cursor: "pointer", fontSize: "0.68rem", fontFamily: "inherit", marginLeft: "auto",
+            }}>
+              删除流派
+            </button>
+          </div>
+
+          {editing ? (
+            <textarea
+              value={wikiContent}
+              onChange={(e) => onWikiChange(e.target.value)}
+              onBlur={onWikiSave}
+              placeholder="支持 Markdown 格式..."
+              style={{
+                width: "100%", minHeight: 400, resize: "vertical", outline: "none",
+                background: "var(--color-bg-elevated)",
+                border: "1px solid var(--color-separator)",
+                borderRadius: 6, padding: "0.75rem",
+                color: "var(--color-label-primary)",
+                fontSize: "0.8rem", fontFamily: "monospace",
+                lineHeight: 1.65, boxSizing: "border-box",
+              }}
+            />
+          ) : (
+            <WikiPreview content={wikiContent} />
+          )}
+         </div>
+        </div>
+
+        {/* Right outline sidebar */}
+        {!editing && wikiContent && (
+          <div style={{
+            width: 180, flexShrink: 0,
+            borderLeft: "1px solid var(--color-separator)",
+            padding: "1.25rem 0.75rem",
+            overflowY: "auto",
+          }}>
+            <Outline content={wikiContent} containerRef={contentRef} />
+          </div>
+        )}
+      </div>
+
+      {/* Footer: associated people + films */}
+      <div style={{ borderTop: "1px solid var(--color-separator)", padding: "0.75rem 1.5rem" }}>
+        {/* People row */}
+        <div style={{ marginBottom: genre.films.length > 0 ? "0.6rem" : 0 }}>
+          <span style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", marginRight: "0.75rem" }}>
+            关联影人
+          </span>
+          {genre.people.length === 0 ? (
+            <span style={{ fontSize: "0.75rem", color: "var(--color-label-quaternary)" }}>暂无</span>
+          ) : (
+            genre.people.map((p, i) => (
+              <span key={p.id}>
+                <span
+                  onClick={() => onNavigatePerson(p.id)}
+                  style={{
+                    fontSize: "0.78rem", color: "var(--color-accent)",
+                    cursor: "pointer", textDecoration: "none",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}
+                >
+                  {p.name}
+                </span>
+                {i < genre.people.length - 1 && (
+                  <span style={{ color: "var(--color-label-quaternary)", margin: "0 0.35rem" }}>·</span>
+                )}
+              </span>
+            ))
+          )}
+        </div>
+
+        {/* Films row */}
+        {genre.films.length > 0 && (
+          <div>
+            <span style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", marginRight: "0.75rem" }}>
+              收录电影
+            </span>
+            {genre.films.map((f, i) => (
+              <span key={f.id}>
+                <span style={{ fontSize: "0.78rem", color: "var(--color-label-secondary)" }}>
+                  《{f.title}》
+                  {f.year && <span style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>({f.year})</span>}
+                </span>
+                {i < genre.films.length - 1 && (
+                  <span style={{ color: "var(--color-separator)", margin: "0 0.25rem" }}>·</span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Add Genre Modal ──────────────────────────────────────────────
 
 function AddGenreModal({ parentId, onClose, onAdded }: { parentId?: number; onClose: () => void; onAdded: () => void }) {
   const [name, setName] = useState("");
@@ -151,6 +346,8 @@ function AddGenreModal({ parentId, onClose, onAdded }: { parentId?: number; onCl
   );
 }
 
+// ── Main Page ────────────────────────────────────────────────────
+
 export default function Genres() {
   const [tree, setTree] = useState<GenreTreeNode[]>([]);
   const [selected, setSelected] = useState<GenreDetail | null>(null);
@@ -165,8 +362,14 @@ export default function Genres() {
 
   useEffect(() => { loadTree(); }, [loadTree]);
 
+  const handleNavigatePerson = useCallback((_personId: number) => {
+    // TODO: navigate to /people and select this person
+    // For now, this is a placeholder for cross-page navigation
+  }, []);
+
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* Left sidebar: genre tree */}
       <div style={{ width: 260, flexShrink: 0, borderRight: "1px solid var(--color-separator)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "1.2rem 1rem 0.75rem", borderBottom: "1px solid var(--color-separator)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h1 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700 }}>流派</h1>
@@ -187,15 +390,19 @@ export default function Genres() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
+      {/* Right: detail view */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {!selected ? (
-          <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>选择左侧流派查看详情</p>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>选择左侧流派查看详情</p>
+          </div>
         ) : (
           <GenreDetailView
             genre={selected} wikiContent={wikiContent}
             onWikiChange={setWikiContent}
             onWikiSave={async () => { if (selected) await library.updateGenreWiki(selected.id, wikiContent).catch(console.error); }}
             onDelete={async () => { await library.deleteGenre(selected.id); setSelected(null); loadTree(); }}
+            onNavigatePerson={handleNavigatePerson}
           />
         )}
       </div>
