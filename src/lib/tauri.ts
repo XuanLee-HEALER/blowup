@@ -188,6 +188,14 @@ export interface MovieResult {
   seeds: number;
 }
 
+export interface SubtitleStreamInfo {
+  index: number;
+  codec_name: string;
+  duration: number;
+  language: string | null;
+  title: string | null;
+}
+
 // ── Invoke wrappers ───────────────────────────────────────────────
 export const tmdb = {
   searchMovies: (apiKey: string, query: string, filters: SearchFilters) =>
@@ -286,4 +294,17 @@ export const yts = {
 export const tracker = {
   update: (source?: string) =>
     invoke<void>("update_trackers", { source }),
+};
+
+export const subtitle = {
+  fetch: (video: string, lang: string) =>
+    invoke<void>("fetch_subtitle_cmd", { video, lang, apiKey: "" }),
+  align: (video: string, srt: string) =>
+    invoke<void>("align_subtitle_cmd", { video, srt }),
+  extract: (video: string, stream?: number) =>
+    invoke<void>("extract_subtitle_cmd", { video, stream }),
+  listStreams: (video: string) =>
+    invoke<SubtitleStreamInfo[]>("list_subtitle_streams_cmd", { video }),
+  shift: (srt: string, offsetMs: number) =>
+    invoke<void>("shift_subtitle_cmd", { srt, offsetMs }),
 };
