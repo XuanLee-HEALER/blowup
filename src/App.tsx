@@ -8,6 +8,7 @@ import Placeholder from "./pages/Placeholder";
 import People from "./pages/People";
 import Genres from "./pages/Genres";
 import Graph from "./pages/Graph";
+import Library from "./pages/Library";
 import { MusicPlayer } from "./components/MusicPlayer";
 import { config, type MusicTrack } from "./lib/tauri";
 
@@ -27,7 +28,7 @@ const NAV_SECTIONS = [
   {
     label: "资源",
     items: [
-      { icon: "⊞", label: "我的库", path: "/library", disabled: true },
+      { icon: "⊞", label: "我的库", path: "/library" },
       { icon: "↓", label: "下载", path: "/download", disabled: true },
     ],
   },
@@ -40,7 +41,7 @@ const NAV_SECTIONS = [
   },
 ];
 
-const KB_PATHS = ["/", "/people", "/genres", "/graph"];
+const KB_PATHS = ["/", "/people", "/genres", "/graph", "/library"];
 
 export default function App() {
   const navigate = useNavigate();
@@ -134,7 +135,7 @@ export default function App() {
             <Route path="/people"   element={<People />} />
             <Route path="/genres"   element={<Genres />} />
             <Route path="/graph"    element={<Graph />} />
-            <Route path="/library"  element={<Placeholder title="我的库" milestone="M3" />} />
+            <Route path="/library"  element={<Library />} />
             <Route path="/download" element={<Placeholder title="下载" milestone="M3" />} />
             <Route path="/subtitle" element={<Placeholder title="字幕" milestone="M4" />} />
             <Route path="/media"    element={<Placeholder title="媒体工具" milestone="M4" />} />
