@@ -1,8 +1,7 @@
-// src/pages/People.tsx
 import { useState, useEffect, useCallback } from "react";
 import { library } from "../lib/tauri";
 import type { PersonSummary, PersonDetail } from "../lib/tauri";
-import { WikiEditor } from "../components/WikiEditor";
+import { WikiDetailView } from "../components/WikiDetailView";
 
 const ROLE_LABELS: Record<string, string> = {
   director: "导演", cinematographer: "摄影", composer: "音乐",
@@ -13,8 +12,8 @@ const PRIMARY_ROLES = Object.keys(ROLE_LABELS);
 // ── Shared modal primitives ───────────────────────────────────────
 const inputStyle: React.CSSProperties = {
   background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)",
-  borderRadius: 5, padding: "0.4rem 0.6rem",
-  color: "var(--color-label-primary)", fontSize: "0.82rem", fontFamily: "inherit", outline: "none",
+  borderRadius: 5, padding: "0.4rem 0.6rem", color: "var(--color-label-primary)",
+  fontSize: "0.82rem", fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box",
 };
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
@@ -39,18 +38,10 @@ function ModalField({ label, children }: { label: string; children: React.ReactN
 
 function ModalActions({ onCancel, onConfirm, confirmLabel }: { onCancel: () => void; onConfirm: () => void; confirmLabel: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "0.25rem" }}>
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
       <button onClick={onCancel} style={{ background: "none", border: "none", color: "var(--color-label-tertiary)", cursor: "pointer", fontSize: "0.8rem", fontFamily: "inherit" }}>取消</button>
       <button onClick={onConfirm} style={{ background: "var(--color-accent)", border: "none", borderRadius: 6, padding: "0.3rem 0.9rem", color: "#0B1628", fontWeight: 600, cursor: "pointer", fontSize: "0.8rem", fontFamily: "inherit" }}>{confirmLabel}</button>
     </div>
-  );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <p style={{ margin: "1.25rem 0 0.5rem", fontSize: "0.72rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
-      {children}
-    </p>
   );
 }
 
@@ -102,7 +93,7 @@ function AddRelationModal({ fromId, onClose, onAdded }: { fromId: number; onClos
     <Modal title="添加影人关系" onClose={onClose}>
       <ModalField label="关联影人">
         <select value={toId ?? ""} onChange={(e) => setToId(parseInt(e.target.value))} style={{ ...inputStyle, cursor: "pointer" }}>
-          <option value="">请选择…</option>
+          <option value="">请选择...</option>
           {allPeople.filter((p) => p.id !== fromId).map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
@@ -120,7 +111,7 @@ function AddRelationModal({ fromId, onClose, onAdded }: { fromId: number; onClos
   );
 }
 
-// ── Person detail view ────────────────────────────────────────────
+// ── Person detail (using shared WikiDetailView) ──────────────────
 function PersonDetailView({
   person, wikiContent, onWikiChange, onWikiSave, onDelete, onRelationAdded,
 }: {
@@ -130,64 +121,64 @@ function PersonDetailView({
 }) {
   const [showRelModal, setShowRelModal] = useState(false);
 
-  return (
-    <div style={{ maxWidth: 680 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 700, letterSpacing: "-0.03em" }}>{person.name}</h2>
-          <p style={{ margin: "0.2rem 0 0", fontSize: "0.78rem", color: "var(--color-accent)" }}>{ROLE_LABELS[person.primary_role] ?? person.primary_role}</p>
-        </div>
-        <button onClick={onDelete} style={{ background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>删除</button>
+  const subtitle = [
+    ROLE_LABELS[person.primary_role] ?? person.primary_role,
+    person.nationality,
+    person.born_date ? `出生：${person.born_date}` : null,
+  ].filter(Boolean).join("  ·  ");
+
+  const footer = (
+    <>
+      {/* Films */}
+      <div style={{ marginBottom: person.relations.length > 0 ? "0.6rem" : 0 }}>
+        <span style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", marginRight: "0.75rem" }}>作品</span>
+        {person.films.length === 0 ? (
+          <span style={{ fontSize: "0.75rem", color: "var(--color-label-quaternary)" }}>暂无</span>
+        ) : person.films.map((f, i) => (
+          <span key={f.film_id}>
+            <span style={{ fontSize: "0.78rem", color: "var(--color-label-secondary)" }}>
+              《{f.title}》{f.year && <span style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>({f.year})</span>}
+              <span style={{ fontSize: "0.65rem", color: "var(--color-label-quaternary)" }}> {f.role}</span>
+            </span>
+            {i < person.films.length - 1 && <span style={{ color: "var(--color-separator)", margin: "0 0.25rem" }}>·</span>}
+          </span>
+        ))}
       </div>
 
-      {(person.born_date || person.nationality) && (
-        <p style={{ margin: "0 0 1rem", fontSize: "0.75rem", color: "var(--color-label-tertiary)" }}>
-          {person.born_date && `出生：${person.born_date}`}
-          {person.born_date && person.nationality && "  "}
-          {person.nationality && `国籍：${person.nationality}`}
-        </p>
-      )}
-
-      <SectionTitle>传记 Wiki</SectionTitle>
-      <WikiEditor value={wikiContent} onChange={onWikiChange} onSave={onWikiSave} />
-
-      <SectionTitle>作品列表</SectionTitle>
-      {person.films.length === 0 ? (
-        <p style={{ fontSize: "0.78rem", color: "var(--color-label-quaternary)" }}>暂无作品</p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
-          {person.films.map((f) => (
-            <div key={f.film_id} style={{ display: "flex", alignItems: "center", gap: "0.6rem", fontSize: "0.8rem" }}>
-              <span style={{ color: "var(--color-label-secondary)" }}>{f.title}</span>
-              {f.year && <span style={{ color: "var(--color-label-quaternary)" }}>({f.year})</span>}
-              <span style={{ color: "var(--color-label-tertiary)", fontSize: "0.7rem" }}>· {f.role}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "1.25rem 0 0.5rem" }}>
-        <SectionTitle>影人关系</SectionTitle>
-        <button onClick={() => setShowRelModal(true)} style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>+ 添加关系</button>
+      {/* Relations */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        <span style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>关系</span>
+        {person.relations.length === 0 ? (
+          <span style={{ fontSize: "0.75rem", color: "var(--color-label-quaternary)" }}>暂无</span>
+        ) : person.relations.map((r) => (
+          <span key={`${r.direction}-${r.target_id}-${r.relation_type}`} style={{ fontSize: "0.75rem", color: "var(--color-label-secondary)" }}>
+            <span style={{ color: "var(--color-label-quaternary)", fontSize: "0.68rem" }}>
+              {r.direction === "to" ? "→" : r.direction === "from" ? "←" : "↔"}
+            </span>{" "}
+            <span style={{ color: "var(--color-accent)" }}>{r.target_name}</span>
+          </span>
+        ))}
+        <button onClick={() => setShowRelModal(true)} style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", fontSize: "0.68rem", fontFamily: "inherit" }}>+ 添加</button>
       </div>
-      {person.relations.length === 0 ? (
-        <p style={{ fontSize: "0.78rem", color: "var(--color-label-quaternary)" }}>暂无关系</p>
-      ) : (
-        person.relations.map((r) => (
-          <div key={`${r.direction}-${r.target_id}-${r.relation_type}`} style={{ fontSize: "0.78rem", color: "var(--color-label-secondary)", marginBottom: "0.25rem" }}>
-            <span style={{ color: "var(--color-label-quaternary)" }}>
-              {r.direction === "to" ? "→ 影响了" : r.direction === "from" ? "← 受影响于" : "↔ 合作"}
-            </span>{" "}{r.target_name}
-            <span style={{ color: "var(--color-label-quaternary)", fontSize: "0.7rem" }}> ({r.relation_type})</span>
-          </div>
-        ))
-      )}
 
       {showRelModal && (
         <AddRelationModal fromId={person.id} onClose={() => setShowRelModal(false)}
           onAdded={() => { onRelationAdded(); setShowRelModal(false); }} />
       )}
-    </div>
+    </>
+  );
+
+  return (
+    <WikiDetailView
+      title={person.name}
+      subtitle={subtitle}
+      wikiContent={wikiContent}
+      onWikiChange={onWikiChange}
+      onWikiSave={onWikiSave}
+      onDelete={onDelete}
+      deleteLabel="删除影人"
+      footer={footer}
+    />
   );
 }
 
@@ -225,28 +216,33 @@ export default function People() {
           {people.length === 0 ? (
             <p style={{ padding: "1rem", color: "var(--color-label-tertiary)", fontSize: "0.8rem" }}>知识库中暂无影人</p>
           ) : people.map((p) => (
-            <div key={p.id} onClick={() => loadPerson(p.id)}
-              style={{ padding: "0.5rem 0.65rem", borderRadius: 6, cursor: "pointer", background: selected?.id === p.id ? "var(--color-bg-elevated)" : "transparent" }}
+            <div key={p.id}
+              onClick={() => loadPerson(p.id)}
+              style={{ padding: "0.45rem 0.75rem", borderRadius: 5, cursor: "pointer", background: selected?.id === p.id ? "var(--color-bg-elevated)" : "transparent" }}
               onMouseEnter={(e) => { if (selected?.id !== p.id) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)"; }}
               onMouseLeave={(e) => { if (selected?.id !== p.id) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
             >
-              <p style={{ margin: 0, fontSize: "0.84rem", fontWeight: 500 }}>{p.name}</p>
-              <p style={{ margin: 0, fontSize: "0.68rem", color: "var(--color-label-tertiary)" }}>
-                {ROLE_LABELS[p.primary_role] ?? p.primary_role} · {p.film_count} 部
-              </p>
+              <div style={{ fontSize: "0.82rem" }}>{p.name}</div>
+              <div style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>
+                {ROLE_LABELS[p.primary_role] ?? p.primary_role}
+                {p.film_count > 0 && ` · ${p.film_count} 部`}
+              </div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Right detail */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {!selected ? (
-          <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>选择左侧影人查看详情</p>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>选择左侧影人查看详情</p>
+          </div>
         ) : (
           <PersonDetailView
             person={selected} wikiContent={wikiContent}
-            onWikiChange={setWikiContent} onWikiSave={saveWiki}
+            onWikiChange={setWikiContent}
+            onWikiSave={saveWiki}
             onDelete={async () => { await library.deletePerson(selected.id); setSelected(null); loadPeople(); }}
             onRelationAdded={() => loadPerson(selected.id)}
           />
