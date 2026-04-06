@@ -70,13 +70,7 @@ pub async fn update_tracker_list(_source: Option<String>) -> anyhow::Result<()> 
         .await?;
 
     // 更新时间记录
-    let mut f = File::options()
-        .create(true)
-        .write(true)
-        .append(true)
-        .open(&update_record)
-        .await?;
-    f.write_all(format!("{}\n", last_modified.format(TIME_FMT)).as_bytes())
+    tokio::fs::write(&update_record, format!("{}\n", last_modified.format(TIME_FMT)))
         .await?;
 
     Ok(())

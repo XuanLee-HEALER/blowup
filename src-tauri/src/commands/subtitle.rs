@@ -147,9 +147,9 @@ fn extract_xmlrpc_string(xml: &str, member_name: &str) -> Option<String> {
 
 fn parse_xmlrpc_search_results(xml: &str) -> Result<Vec<SubtitleResult>, SubError> {
     let name_re =
-        Regex::new(r"<name>SubFileName</name><value><string>([^<]+)</string>").unwrap();
+        Regex::new(r"<name>SubFileName</name><value><string>([^<]+)</string>").expect("valid regex");
     let link_re =
-        Regex::new(r"<name>SubDownloadLink</name><value><string>([^<]+)</string>").unwrap();
+        Regex::new(r"<name>SubDownloadLink</name><value><string>([^<]+)</string>").expect("valid regex");
 
     let names: Vec<&str> = name_re
         .captures_iter(xml)
@@ -176,7 +176,7 @@ fn parse_xmlrpc_search_results(xml: &str) -> Result<Vec<SubtitleResult>, SubErro
 fn strip_session_from_url(url: &str) -> String {
     // OpenSubtitles embeds the session token as a path segment like /sid-TOKEN/
     // which triggers a restricted "VIP only" download; remove it.
-    let re = Regex::new(r"/sid-[^/]+").unwrap();
+    let re = Regex::new(r"/sid-[^/]+").expect("valid regex");
     re.replace(url, "").to_string()
 }
 
@@ -259,7 +259,7 @@ pub fn shift_srt(srt_path: &Path, offset_ms: i64) -> Result<(), SubError> {
 
 fn apply_offset(content: &str, offset_ms: i64) -> Result<String, SubError> {
     let re =
-        Regex::new(r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})").unwrap();
+        Regex::new(r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})").expect("valid regex");
 
     let result = re.replace_all(content, |caps: &regex::Captures| {
         let start = parse_ts(caps, 1) + offset_ms;
@@ -344,8 +344,8 @@ pub struct SubtitleStreamInfo {
     pub title: Option<String>,
 }
 
-/// 列出视频文件中所有的字幕流信息并打印（列表格式）。
-pub async fn list_all_subtitle_stream(file: impl AsRef<Path>) -> anyhow::Result<()> {
+/// 列出视频文件中所有的字幕流信息并返回。
+pub async fn list_all_subtitle_stream(file: impl AsRef<Path>) -> anyhow::Result<Vec<SubtitleStreamInfo>> {
     let file_path = file.as_ref();
     if !file_path.exists() {
         anyhow::bail!("文件不存在: {}", file_path.display());
@@ -368,29 +368,22 @@ pub async fn list_all_subtitle_stream(file: impl AsRef<Path>) -> anyhow::Result<
         .await?;
 
     if stdout.is_empty() {
-        println!("未找到任何字幕流。");
-        return Ok(());
+        return Ok(vec![]);
     }
 
     let output: FfprobeOutput = serde_json::from_str(&stdout)?;
-    for stream in output.streams {
-        let language = stream
-            .tags
-            .as_ref()
-            .and_then(|t| t.language.as_deref())
-            .unwrap_or("N/A");
-        let title = stream
-            .tags
-            .as_ref()
-            .and_then(|t| t.title.as_deref())
-            .unwrap_or("N/A");
-        println!(
-            "Index({}) Codec({}) Duration({}ms) Language({}) Title({})",
-            stream.index, stream.codec_name, stream.duration_ts, language, title
-        );
-    }
-
-    Ok(())
+    let streams = output
+        .streams
+        .into_iter()
+        .map(|stream| SubtitleStreamInfo {
+            index: stream.index,
+            codec_name: stream.codec_name,
+            duration: stream.duration_ts,
+            language: stream.tags.as_ref().and_then(|t| t.language.clone()),
+            title: stream.tags.as_ref().and_then(|t| t.title.clone()),
+        })
+        .collect();
+    Ok(streams)
 }
 
 // ── Tauri commands ──────────────────────────────────────────────────────────
@@ -430,7 +423,7 @@ pub async fn extract_subtitle_cmd(
 }
 
 #[tauri::command]
-pub async fn list_subtitle_streams_cmd(video: String) -> std::result::Result<(), String> {
+pub async fn list_subtitle_streams_cmd(video: String) -> std::result::Result<Vec<SubtitleStreamInfo>, String> {
     list_all_subtitle_stream(std::path::Path::new(&video))
         .await
         .map_err(|e| e.to_string())
