@@ -304,9 +304,6 @@ pub async fn search_movies(
         ("query", query.clone()),
         ("page", page.to_string()),
     ];
-    if let Some(y) = filters.year_from {
-        params.push(("year", y.to_string()));
-    }
     let title_resp: ListResponse = client
         .get("https://api.themoviedb.org/3/search/movie")
         .query(&params)
@@ -391,7 +388,7 @@ pub async fn list_genres(api_key: String) -> std::result::Result<Vec<TmdbGenre>,
     let client = reqwest::Client::new();
     let resp: GenreListResponse = client
         .get("https://api.themoviedb.org/3/genre/movie/list")
-        .query(&[("api_key", &api_key), ("language", &"en-US".to_string())])
+        .query(&[("api_key", api_key.as_str()), ("language", "en-US")])
         .send()
         .await
         .map_err(|e| e.to_string())?
