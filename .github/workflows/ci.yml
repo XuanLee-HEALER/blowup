@@ -48,7 +48,7 @@ jobs:
 
       - name: Rust clippy
         working-directory: src-tauri
-        run: cargo clippy -- -D warnings -A clippy::too_many_arguments -A clippy::collapsible_if -A clippy::collapsible_else_if
+        run: cargo clippy -- -W clippy::all
 
       - name: Rust tests
         working-directory: src-tauri
