@@ -8,7 +8,7 @@ pub struct MovieListItem {
     pub id: u64,
     pub title: String,
     pub original_title: String,
-    pub year: String,          // empty string if unknown
+    pub year: String, // empty string if unknown
     pub overview: String,
     pub vote_average: f64,
     pub poster_path: Option<String>,
@@ -21,7 +21,7 @@ pub struct SearchFilters {
     pub year_to: Option<u32>,
     pub genre_ids: Vec<u64>,
     pub min_rating: Option<f32>,
-    pub sort_by: Option<String>,   // "popularity.desc" | "vote_average.desc" | "release_date.desc"
+    pub sort_by: Option<String>, // "popularity.desc" | "vote_average.desc" | "release_date.desc"
     pub page: Option<u32>,
 }
 
@@ -118,11 +118,11 @@ struct PersonItem {
 
 pub struct TmdbMovie {
     pub title: String,
-    pub year: String,    // 4-digit year extracted from release_date
-    pub genres: String,  // comma-separated genre names
+    pub year: String,     // 4-digit year extracted from release_date
+    pub genres: String,   // comma-separated genre names
     pub director: String, // first crew member where job == "Director", or "N/A"
-    pub actors: String,  // top 3 cast members by order, comma-separated
-    pub rating: String,  // vote_average formatted to 1 decimal, e.g. "7.2"
+    pub actors: String,   // top 3 cast members by order, comma-separated
+    pub rating: String,   // vote_average formatted to 1 decimal, e.g. "7.2"
     pub overview: String,
 }
 
@@ -240,10 +240,7 @@ pub async fn query_tmdb(
 
     // Step 2: movie details with credits
     let details: MovieDetails = client
-        .get(format!(
-            "https://api.themoviedb.org/3/movie/{}",
-            movie_id
-        ))
+        .get(format!("https://api.themoviedb.org/3/movie/{}", movie_id))
         .query(&[
             ("api_key", api_key),
             ("append_to_response", "credits"),
@@ -265,7 +262,9 @@ fn build_discover_params(api_key: &str, f: &SearchFilters) -> Vec<(&'static str,
         ("page", f.page.unwrap_or(1).to_string()),
         (
             "sort_by",
-            f.sort_by.clone().unwrap_or_else(|| "vote_average.desc".to_string()),
+            f.sort_by
+                .clone()
+                .unwrap_or_else(|| "vote_average.desc".to_string()),
         ),
         ("vote_count.gte", "50".to_string()), // avoid films with 1 vote
     ];
@@ -318,7 +317,10 @@ pub async fn search_movies(
     let mut results: Vec<MovieListItem> = title_resp
         .results
         .into_iter()
-        .map(|i| { seen.insert(i.id); to_list_item(i) })
+        .map(|i| {
+            seen.insert(i.id);
+            to_list_item(i)
+        })
         .collect();
 
     // ② Person search → discover
@@ -395,7 +397,14 @@ pub async fn list_genres(api_key: String) -> std::result::Result<Vec<TmdbGenre>,
         .json()
         .await
         .map_err(|e| e.to_string())?;
-    Ok(resp.genres.into_iter().map(|g| TmdbGenre { id: g.id, name: g.name }).collect())
+    Ok(resp
+        .genres
+        .into_iter()
+        .map(|g| TmdbGenre {
+            id: g.id,
+            name: g.name,
+        })
+        .collect())
 }
 
 #[derive(Serialize)]
@@ -470,28 +479,64 @@ pub async fn get_tmdb_movie_credits(
         tmdb_id, api_key
     );
 
-    let resp: MovieDetailsResponse = client.get(&url).send().await
-        .map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
+    let resp: MovieDetailsResponse = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let year = resp.release_date.as_deref()
+    let year = resp
+        .release_date
+        .as_deref()
         .and_then(|d| d.get(..4))
         .and_then(|y| y.parse::<i64>().ok());
 
-    let key_jobs = ["Director", "Director of Photography", "Original Music Composer",
-                    "Editor", "Screenplay", "Writer"];
-    let crew: Vec<TmdbCrewMember> = resp.credits.crew.into_iter()
+    let key_jobs = [
+        "Director",
+        "Director of Photography",
+        "Original Music Composer",
+        "Editor",
+        "Screenplay",
+        "Writer",
+    ];
+    let crew: Vec<TmdbCrewMember> = resp
+        .credits
+        .crew
+        .into_iter()
         .filter(|m| key_jobs.contains(&m.job.as_str()))
-        .map(|m| TmdbCrewMember { id: m.id, name: m.name, job: m.job, department: m.department })
+        .map(|m| TmdbCrewMember {
+            id: m.id,
+            name: m.name,
+            job: m.job,
+            department: m.department,
+        })
         .collect();
 
-    let cast: Vec<TmdbCastMember> = resp.credits.cast.into_iter().take(5)
-        .map(|m| TmdbCastMember { id: m.id, name: m.name, character: m.character })
+    let cast: Vec<TmdbCastMember> = resp
+        .credits
+        .cast
+        .into_iter()
+        .take(5)
+        .map(|m| TmdbCastMember {
+            id: m.id,
+            name: m.name,
+            character: m.character,
+        })
         .collect();
 
     Ok(TmdbMovieCredits {
-        tmdb_id: resp.id, title: resp.title, original_title: resp.original_title,
-        year, overview: resp.overview, vote_average: resp.vote_average,
-        poster_path: resp.poster_path, crew, cast,
+        tmdb_id: resp.id,
+        title: resp.title,
+        original_title: resp.original_title,
+        year,
+        overview: resp.overview,
+        vote_average: resp.vote_average,
+        poster_path: resp.poster_path,
+        crew,
+        cast,
     })
 }
 
@@ -543,7 +588,10 @@ mod tests {
     fn parse_movie_details_takes_top_3_actors() {
         let details = sample_details();
         let movie = parse_movie_details(&details);
-        assert_eq!(movie.actors, "David Hemmings, Vanessa Redgrave, Sarah Miles");
+        assert_eq!(
+            movie.actors,
+            "David Hemmings, Vanessa Redgrave, Sarah Miles"
+        );
     }
 
     #[test]

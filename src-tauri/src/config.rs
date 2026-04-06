@@ -12,14 +12,11 @@ pub fn init_app_data_dir(dir: PathBuf) {
 }
 
 fn app_data_dir() -> PathBuf {
-    APP_DATA_DIR
-        .get()
-        .cloned()
-        .unwrap_or_else(|| {
-            dirs::data_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("blowup")
-        })
+    APP_DATA_DIR.get().cloned().unwrap_or_else(|| {
+        dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("blowup")
+    })
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]

@@ -136,9 +136,7 @@ async fn xmlrpc_search(
 }
 
 fn extract_xmlrpc_string(xml: &str, member_name: &str) -> Option<String> {
-    let pattern = format!(
-        r"<name>{member_name}</name><value><string>([^<]+)</string>"
-    );
+    let pattern = format!(r"<name>{member_name}</name><value><string>([^<]+)</string>");
     let re = Regex::new(&pattern).ok()?;
     re.captures(xml)
         .and_then(|c| c.get(1))
@@ -146,10 +144,10 @@ fn extract_xmlrpc_string(xml: &str, member_name: &str) -> Option<String> {
 }
 
 fn parse_xmlrpc_search_results(xml: &str) -> Result<Vec<SubtitleResult>, SubError> {
-    let name_re =
-        Regex::new(r"<name>SubFileName</name><value><string>([^<]+)</string>").expect("valid regex");
-    let link_re =
-        Regex::new(r"<name>SubDownloadLink</name><value><string>([^<]+)</string>").expect("valid regex");
+    let name_re = Regex::new(r"<name>SubFileName</name><value><string>([^<]+)</string>")
+        .expect("valid regex");
+    let link_re = Regex::new(r"<name>SubDownloadLink</name><value><string>([^<]+)</string>")
+        .expect("valid regex");
 
     let names: Vec<&str> = name_re
         .captures_iter(xml)
@@ -258,8 +256,8 @@ pub fn shift_srt(srt_path: &Path, offset_ms: i64) -> Result<(), SubError> {
 }
 
 fn apply_offset(content: &str, offset_ms: i64) -> Result<String, SubError> {
-    let re =
-        Regex::new(r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})").expect("valid regex");
+    let re = Regex::new(r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})")
+        .expect("valid regex");
 
     let result = re.replace_all(content, |caps: &regex::Captures| {
         let start = parse_ts(caps, 1) + offset_ms;
@@ -345,7 +343,9 @@ pub struct SubtitleStreamInfo {
 }
 
 /// 列出视频文件中所有的字幕流信息并返回。
-pub async fn list_all_subtitle_stream(file: impl AsRef<Path>) -> anyhow::Result<Vec<SubtitleStreamInfo>> {
+pub async fn list_all_subtitle_stream(
+    file: impl AsRef<Path>,
+) -> anyhow::Result<Vec<SubtitleStreamInfo>> {
     let file_path = file.as_ref();
     if !file_path.exists() {
         anyhow::bail!("文件不存在: {}", file_path.display());
@@ -423,7 +423,9 @@ pub async fn extract_subtitle_cmd(
 }
 
 #[tauri::command]
-pub async fn list_subtitle_streams_cmd(video: String) -> std::result::Result<Vec<SubtitleStreamInfo>, String> {
+pub async fn list_subtitle_streams_cmd(
+    video: String,
+) -> std::result::Result<Vec<SubtitleStreamInfo>, String> {
     list_all_subtitle_stream(std::path::Path::new(&video))
         .await
         .map_err(|e| e.to_string())
@@ -468,7 +470,8 @@ mod tests {
 
     #[test]
     fn strip_session_removes_sid_segment() {
-        let url = "https://dl.opensubtitles.org/en/download/src-api/vrf-abc/sid-TOK,EN/filead/123.gz";
+        let url =
+            "https://dl.opensubtitles.org/en/download/src-api/vrf-abc/sid-TOK,EN/filead/123.gz";
         let clean = strip_session_from_url(url);
         assert_eq!(
             clean,

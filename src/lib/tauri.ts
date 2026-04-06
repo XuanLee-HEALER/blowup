@@ -233,6 +233,13 @@ export const tmdb = {
 export const config = {
   get: () => invoke<AppConfig>("get_config"),
   save: (newConfig: AppConfig) => invoke<void>("save_config_cmd", { newConfig }),
+  exportConfig: (path: string) => invoke<void>("export_config", { path }),
+  importConfig: (path: string) => invoke<void>("import_config", { path }),
+};
+
+export const dataIO = {
+  exportKnowledgeBase: (path: string) => invoke<void>("export_knowledge_base", { path }),
+  importKnowledgeBase: (path: string) => invoke<string>("import_knowledge_base", { path }),
 };
 
 export const library = {

@@ -1,6 +1,7 @@
 // src-tauri/src/commands/mod.rs
 pub mod config;
 pub mod download;
+pub mod export;
 pub mod library;
 pub mod media;
 pub mod search;

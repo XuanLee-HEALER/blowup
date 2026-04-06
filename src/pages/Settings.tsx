@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { TextInput } from "../components/ui/TextInput";
 import { Button } from "../components/ui/Button";
-import { config, type AppConfig, type MusicTrack } from "../lib/tauri";
+import { config, dataIO, type AppConfig, type MusicTrack } from "../lib/tauri";
 
 const LANG_OPTIONS = [
   { value: "zh", label: "中文 (zh)" },
@@ -227,6 +227,41 @@ export default function Settings() {
             >
               + 添加曲目
             </button>
+          </div>
+        </Field>
+      </Section>
+
+      <Section title="数据管理">
+        <Field label="知识库">
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <Button onClick={async () => {
+              const path = await save({ defaultPath: "blowup-knowledge-base.json", filters: [{ name: "JSON", extensions: ["json"] }] });
+              if (path) { await dataIO.exportKnowledgeBase(path); alert("知识库导出成功"); }
+            }}>导出</Button>
+            <Button onClick={async () => {
+              const path = await open({ filters: [{ name: "JSON", extensions: ["json"] }] });
+              if (path) {
+                const msg = await dataIO.importKnowledgeBase(path as string);
+                alert(msg);
+                config.get().then(setCfg);
+              }
+            }}>导入</Button>
+          </div>
+        </Field>
+        <Field label="配置文件">
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <Button onClick={async () => {
+              const path = await save({ defaultPath: "blowup-config.toml", filters: [{ name: "TOML", extensions: ["toml"] }] });
+              if (path) { await config.exportConfig(path); alert("配置导出成功"); }
+            }}>导出</Button>
+            <Button onClick={async () => {
+              const path = await open({ filters: [{ name: "TOML", extensions: ["toml"] }] });
+              if (path) {
+                await config.importConfig(path as string);
+                config.get().then(setCfg);
+                alert("配置导入成功，部分设置需重启生效");
+              }
+            }}>导入</Button>
           </div>
         </Field>
       </Section>

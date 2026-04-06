@@ -1,9 +1,9 @@
-use crate::error::DownloadError;
-use crate::config::load_config;
 use super::tracker::load_trackers;
-use std::path::Path;
+use crate::config::load_config;
+use crate::error::DownloadError;
 use serde::Serialize;
 use sqlx::SqlitePool;
+use std::path::Path;
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct DownloadRecord {
@@ -172,18 +172,14 @@ pub async fn list_downloads(
 }
 
 #[tauri::command]
-pub async fn cancel_download(
-    id: i64,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<(), String> {
-    let pid: Option<i64> = sqlx::query_scalar(
-        "SELECT pid FROM downloads WHERE id = ? AND status = 'downloading'",
-    )
-    .bind(id)
-    .fetch_optional(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?
-    .flatten();
+pub async fn cancel_download(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<(), String> {
+    let pid: Option<i64> =
+        sqlx::query_scalar("SELECT pid FROM downloads WHERE id = ? AND status = 'downloading'")
+            .bind(id)
+            .fetch_optional(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?
+            .flatten();
 
     if let Some(pid) = pid {
         kill_process(pid as u32);

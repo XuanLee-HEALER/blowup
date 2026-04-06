@@ -21,7 +21,14 @@ const VIDEO_EXTENSIONS: &[&str] = &[
 
 async fn probe_video_file(path: &str) -> Result<VideoProbe, String> {
     let args: Vec<String> = vec![
-        "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", path,
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+        "--",
+        path,
     ]
     .iter()
     .map(|s| s.to_string())
@@ -36,9 +43,7 @@ async fn probe_video_file(path: &str) -> Result<VideoProbe, String> {
         serde_json::from_str(&stdout).map_err(|e| format!("ffprobe parse error: {}", e))?;
 
     let format = &json["format"];
-    let file_size = format["size"]
-        .as_str()
-        .and_then(|s| s.parse::<i64>().ok());
+    let file_size = format["size"].as_str().and_then(|s| s.parse::<i64>().ok());
     let duration_secs = format["duration"]
         .as_str()
         .and_then(|s| s.parse::<f64>().ok())
@@ -239,10 +244,7 @@ pub async fn scan_library_directory(
     let mut skipped: i64 = 0;
     let mut errors = Vec::new();
 
-    for entry in WalkDir::new(&dir_path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
+    for entry in WalkDir::new(&dir_path).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if !path.is_file() || !is_video_file(path) {
             continue;
@@ -335,9 +337,7 @@ pub async fn remove_library_asset(
 // ── Library stats ───────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn get_library_stats(
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<LibraryStats, String> {
+pub async fn get_library_stats(pool: tauri::State<'_, SqlitePool>) -> Result<LibraryStats, String> {
     #[derive(sqlx::FromRow)]
     struct StatsRow {
         total_films: i64,
@@ -486,15 +486,13 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query(
-            "INSERT INTO library_assets (item_id, asset_type, file_path) VALUES (?, ?, ?)",
-        )
-        .bind(1_i64)
-        .bind("subtitle")
-        .bind("/movies/test.srt")
-        .execute(&pool)
-        .await
-        .unwrap();
+        sqlx::query("INSERT INTO library_assets (item_id, asset_type, file_path) VALUES (?, ?, ?)")
+            .bind(1_i64)
+            .bind("subtitle")
+            .bind("/movies/test.srt")
+            .execute(&pool)
+            .await
+            .unwrap();
 
         sqlx::query("DELETE FROM library_assets WHERE item_id = 1")
             .execute(&pool)
@@ -569,30 +567,53 @@ mod tests {
     async fn test_library_stats() {
         let pool = setup_pool().await;
         sqlx::query("INSERT INTO films (title, year) VALUES (?, ?)")
-            .bind("Film 1").bind(2024_i64).execute(&pool).await.unwrap();
+            .bind("Film 1")
+            .bind(2024_i64)
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query("INSERT INTO films (title, year) VALUES (?, ?)")
-            .bind("Film 2").bind(1995_i64).execute(&pool).await.unwrap();
+            .bind("Film 2")
+            .bind(1995_i64)
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query("INSERT INTO library_items (film_id, file_path, file_size, resolution) VALUES (?, ?, ?, ?)")
             .bind(1_i64).bind("/movies/film1.mkv").bind(5000000_i64).bind("1920x1080")
             .execute(&pool).await.unwrap();
-        sqlx::query("INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)")
-            .bind("/movies/unknown.mp4").bind(3000000_i64).bind("1280x720")
-            .execute(&pool).await.unwrap();
+        sqlx::query(
+            "INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)",
+        )
+        .bind("/movies/unknown.mp4")
+        .bind(3000000_i64)
+        .bind("1280x720")
+        .execute(&pool)
+        .await
+        .unwrap();
 
         let total_films: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM films")
-            .fetch_one(&pool).await.unwrap();
+            .fetch_one(&pool)
+            .await
+            .unwrap();
         assert_eq!(total_films, 2);
         let films_with_files: i64 = sqlx::query_scalar(
-            "SELECT COUNT(DISTINCT film_id) FROM library_items WHERE film_id IS NOT NULL"
-        ).fetch_one(&pool).await.unwrap();
+            "SELECT COUNT(DISTINCT film_id) FROM library_items WHERE film_id IS NOT NULL",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(films_with_files, 1);
-        let total_size: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(file_size), 0) FROM library_items"
-        ).fetch_one(&pool).await.unwrap();
+        let total_size: i64 =
+            sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM library_items")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(total_size, 8000000);
-        let unlinked: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM library_items WHERE film_id IS NULL"
-        ).fetch_one(&pool).await.unwrap();
+        let unlinked: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM library_items WHERE film_id IS NULL")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(unlinked, 1);
     }
 }
