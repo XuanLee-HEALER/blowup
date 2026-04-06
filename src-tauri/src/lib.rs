@@ -44,8 +44,7 @@ pub fn run() {
             commands::media::probe_media_detail,
             commands::media::open_in_player,
             commands::config::get_config,
-            commands::config::set_config_key,
-            commands::config::set_music_playlist,
+            commands::config::save_config_cmd,
             // M2 library — people
             commands::library::people::list_people,
             commands::library::people::get_person,

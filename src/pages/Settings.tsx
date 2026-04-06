@@ -1,10 +1,9 @@
-// src/pages/Settings.tsx
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { TextInput } from "../components/ui/TextInput";
 import { Button } from "../components/ui/Button";
-import { config, type AppConfig } from "../lib/tauri";
+import { config, type AppConfig, type MusicTrack } from "../lib/tauri";
 
 const LANG_OPTIONS = [
   { value: "zh", label: "中文 (zh)" },
@@ -13,42 +12,41 @@ const LANG_OPTIONS = [
 ];
 
 export default function Settings() {
-  const [cfg, setCfg]         = useState<AppConfig | null>(null);
+  const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [showKey, setShowKey] = useState(false);
-  const [saving, setSaving]   = useState<string | null>(null);
 
   useEffect(() => {
     config.get().then(setCfg);
   }, []);
 
-  const save = async (key: string, value: string) => {
-    setSaving(key);
-    try {
-      await config.set(key, value);
-      setCfg((prev) => {
-        if (!prev) return prev;
-        const [section, field] = key.split(".");
-        return { ...prev, [section]: { ...(prev as AppConfig)[section as keyof AppConfig], [field]: value } };
-      });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(null);
-    }
+  const update = (mutate: (draft: AppConfig) => void) => {
+    setCfg((prev) => {
+      if (!prev) return prev;
+      const next = structuredClone(prev);
+      mutate(next);
+      config.save(next).catch(console.error);
+      return next;
+    });
   };
 
   const pickDir = async () => {
     const dir = await open({ directory: true, multiple: false });
-    if (typeof dir === "string") save("library.root_dir", dir);
+    if (typeof dir === "string") {
+      update((c) => { c.library.root_dir = dir; });
+    }
   };
 
   if (!cfg) {
     return (
       <div style={{ padding: "2rem", color: "var(--color-label-tertiary)", fontSize: "0.82rem" }}>
-        加载中…
+        加载中...
       </div>
     );
   }
+
+  const updatePlaylist = (newPlaylist: MusicTrack[]) => {
+    update((c) => { c.music.playlist = newPlaylist; });
+  };
 
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "1.4rem 1.75rem 3rem" }}>
@@ -71,7 +69,7 @@ export default function Settings() {
               defaultValue={cfg.tmdb.api_key}
               placeholder="在 themoviedb.org 免费申请"
               style={{ flex: 1 }}
-              onBlur={(e) => save("tmdb.api_key", e.currentTarget.value)}
+              onBlur={(e) => update((c) => { c.tmdb.api_key = e.currentTarget.value; })}
             />
             <Button onClick={() => setShowKey((v) => !v)}>
               {showKey ? "隐藏" : "显示"}
@@ -80,11 +78,22 @@ export default function Settings() {
         </Field>
       </Section>
 
+      <Section title="OpenSubtitles">
+        <Field label="API Key">
+          <TextInput
+            type="password"
+            defaultValue={cfg.opensubtitles.api_key}
+            placeholder="可选"
+            onBlur={(e) => update((c) => { c.opensubtitles.api_key = e.currentTarget.value; })}
+          />
+        </Field>
+      </Section>
+
       <Section title="字幕">
         <Field label="默认语言">
           <select
             value={cfg.subtitle.default_lang}
-            onChange={(e) => save("subtitle.default_lang", e.target.value)}
+            onChange={(e) => update((c) => { c.subtitle.default_lang = e.target.value; })}
             style={{
               background: "var(--color-bg-control)",
               border: "1px solid var(--color-separator)",
@@ -111,7 +120,7 @@ export default function Settings() {
             <TextInput
               defaultValue={cfg.tools[tool]}
               placeholder={tool}
-              onBlur={(e) => save(`tools.${tool}`, e.currentTarget.value)}
+              onBlur={(e) => update((c) => { c.tools[tool] = e.currentTarget.value; })}
             />
           </Field>
         ))}
@@ -120,39 +129,41 @@ export default function Settings() {
       <Section title="库目录">
         <Field label="本地库根目录">
           <div style={{ display: "flex", gap: "0.5rem" }}>
-            <TextInput
-              value={cfg.library.root_dir}
-              readOnly
-              style={{ flex: 1 }}
-              onChange={() => {}}
-            />
-            <Button onClick={pickDir}>选择…</Button>
+            <TextInput value={cfg.library.root_dir} readOnly style={{ flex: 1 }} onChange={() => {}} />
+            <Button onClick={pickDir}>选择...</Button>
           </div>
         </Field>
       </Section>
 
+      <Section title="搜索">
+        <Field label="请求间隔（秒）">
+          <TextInput
+            type="number"
+            defaultValue={String(cfg.search.rate_limit_secs)}
+            onBlur={(e) => {
+              const v = parseInt(e.currentTarget.value, 10);
+              if (!isNaN(v) && v >= 0) update((c) => { c.search.rate_limit_secs = v; });
+            }}
+            style={{ width: 80 }}
+          />
+        </Field>
+      </Section>
+
       <Section title="背景音乐">
-        <Field label="启用背景音乐">
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-            <input
-              type="checkbox"
-              checked={!!cfg.music?.enabled}
-              onChange={async (e) => {
-                await config.set("music.enabled", e.target.checked ? "true" : "false");
-                setCfg((prev) => prev ? { ...prev, music: { ...prev.music, enabled: e.target.checked } } : prev);
-              }}
-              style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
-            />
-            <span style={{ fontSize: "0.72rem", color: "var(--color-label-tertiary)" }}>在影人/流派/关系图页面播放</span>
-          </div>
+        <Field label="启用">
+          <input
+            type="checkbox"
+            checked={!!cfg.music?.enabled}
+            onChange={(e) => update((c) => { c.music.enabled = e.target.checked; })}
+            style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
+          />
         </Field>
         <Field label="播放模式">
           <select
             value={cfg.music?.mode ?? "sequential"}
-            onChange={async (e) => {
-              await config.set("music.mode", e.target.value);
+            onChange={(e) => {
               const mode = e.target.value === "random" ? "random" as const : "sequential" as const;
-              setCfg((prev) => prev ? { ...prev, music: { ...prev.music, mode } } : prev);
+              update((c) => { c.music.mode = mode; });
             }}
             style={{
               background: "var(--color-bg-control)",
@@ -177,31 +188,26 @@ export default function Settings() {
                   placeholder="曲目名称"
                   defaultValue={track.name}
                   style={{ width: 120, flexShrink: 0 }}
-                  onBlur={async (e) => {
-                    const newPlaylist = (cfg.music?.playlist ?? []).map((t, idx) =>
-                      idx === i ? { ...t, name: e.currentTarget.value } : t
-                    );
-                    setCfg((prev) => prev ? { ...prev, music: { ...prev.music, playlist: newPlaylist } } : prev);
-                    await config.setMusicPlaylist(newPlaylist);
+                  onBlur={(e) => {
+                    const pl = [...(cfg.music?.playlist ?? [])];
+                    pl[i] = { ...pl[i], name: e.currentTarget.value };
+                    updatePlaylist(pl);
                   }}
                 />
                 <TextInput
                   placeholder="文件路径或 URL"
                   defaultValue={track.src}
                   style={{ flex: 1 }}
-                  onBlur={async (e) => {
-                    const newPlaylist = (cfg.music?.playlist ?? []).map((t, idx) =>
-                      idx === i ? { ...t, src: e.currentTarget.value } : t
-                    );
-                    setCfg((prev) => prev ? { ...prev, music: { ...prev.music, playlist: newPlaylist } } : prev);
-                    await config.setMusicPlaylist(newPlaylist);
+                  onBlur={(e) => {
+                    const pl = [...(cfg.music?.playlist ?? [])];
+                    pl[i] = { ...pl[i], src: e.currentTarget.value };
+                    updatePlaylist(pl);
                   }}
                 />
                 <button
-                  onClick={async () => {
-                    const newPlaylist = (cfg.music?.playlist ?? []).filter((_, idx) => idx !== i);
-                    setCfg((prev) => prev ? { ...prev, music: { ...prev.music, playlist: newPlaylist } } : prev);
-                    await config.setMusicPlaylist(newPlaylist);
+                  onClick={() => {
+                    const pl = (cfg.music?.playlist ?? []).filter((_, idx) => idx !== i);
+                    updatePlaylist(pl);
                   }}
                   style={{ background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.8rem" }}
                 >
@@ -211,7 +217,8 @@ export default function Settings() {
             ))}
             <button
               onClick={() => {
-                setCfg((prev) => prev ? { ...prev, music: { ...prev.music, playlist: [...(prev.music?.playlist ?? []), { name: "", src: "" }] } } : prev);
+                const pl = [...(cfg.music?.playlist ?? []), { name: "", src: "" }];
+                updatePlaylist(pl);
               }}
               style={{ background: "none", border: "1px dashed var(--color-separator)", borderRadius: 5, padding: "0.3rem 0.75rem", color: "var(--color-label-tertiary)", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", marginTop: "0.25rem" }}
             >
@@ -220,12 +227,6 @@ export default function Settings() {
           </div>
         </Field>
       </Section>
-
-      {saving && (
-        <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.72rem", marginTop: "1rem" }}>
-          保存中…
-        </p>
-      )}
     </div>
   );
 }

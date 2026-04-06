@@ -232,8 +232,7 @@ export const tmdb = {
 
 export const config = {
   get: () => invoke<AppConfig>("get_config"),
-  set: (key: string, value: string) => invoke<void>("set_config_key", { key, value }),
-  setMusicPlaylist: (tracks: MusicTrack[]) => invoke<void>("set_music_playlist", { tracks }),
+  save: (newConfig: AppConfig) => invoke<void>("save_config_cmd", { newConfig }),
 };
 
 export const library = {
