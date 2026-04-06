@@ -123,23 +123,10 @@ pub async fn start_download(
     tokio::spawn(async move {
         let wait_result = child.wait().await;
 
-        let current_status: Option<String> = sqlx::query_scalar(
-            "SELECT status FROM downloads WHERE id = ?",
-        )
-        .bind(download_id)
-        .fetch_optional(&pool_clone)
-        .await
-        .ok()
-        .flatten();
-
-        if current_status.as_deref() == Some("cancelled") {
-            return;
-        }
-
         match wait_result {
             Ok(status) if status.success() => {
                 let _ = sqlx::query(
-                    "UPDATE downloads SET status = 'completed', completed_at = datetime('now'), pid = NULL WHERE id = ?",
+                    "UPDATE downloads SET status = 'completed', completed_at = datetime('now'), pid = NULL WHERE id = ? AND status = 'downloading'",
                 )
                 .bind(download_id)
                 .execute(&pool_clone)
@@ -148,7 +135,7 @@ pub async fn start_download(
             Ok(status) => {
                 let msg = format!("aria2c exited with code {}", status.code().unwrap_or(-1));
                 let _ = sqlx::query(
-                    "UPDATE downloads SET status = 'failed', completed_at = datetime('now'), pid = NULL, error_message = ? WHERE id = ?",
+                    "UPDATE downloads SET status = 'failed', completed_at = datetime('now'), pid = NULL, error_message = ? WHERE id = ? AND status = 'downloading'",
                 )
                 .bind(&msg)
                 .bind(download_id)
@@ -157,7 +144,7 @@ pub async fn start_download(
             }
             Err(e) => {
                 let _ = sqlx::query(
-                    "UPDATE downloads SET status = 'failed', completed_at = datetime('now'), pid = NULL, error_message = ? WHERE id = ?",
+                    "UPDATE downloads SET status = 'failed', completed_at = datetime('now'), pid = NULL, error_message = ? WHERE id = ? AND status = 'downloading'",
                 )
                 .bind(e.to_string())
                 .bind(download_id)

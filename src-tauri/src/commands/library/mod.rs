@@ -237,6 +237,45 @@ pub struct ScanResult {
     pub errors: Vec<String>,
 }
 
+// ── Wiki helpers ────────────────────────────────────────────────
+
+pub(crate) async fn get_wiki_content(
+    pool: &sqlx::SqlitePool,
+    entity_type: &str,
+    entity_id: i64,
+) -> Result<String, String> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT content FROM wiki_entries WHERE entity_type = ? AND entity_id = ?",
+    )
+    .bind(entity_type)
+    .bind(entity_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())
+    .map(|opt| opt.unwrap_or_default())
+}
+
+pub(crate) async fn upsert_wiki(
+    pool: &sqlx::SqlitePool,
+    entity_type: &str,
+    entity_id: i64,
+    content: &str,
+) -> Result<(), String> {
+    sqlx::query(
+        "INSERT INTO wiki_entries (entity_type, entity_id, content, updated_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(entity_type, entity_id)
+         DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+    )
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(content)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[derive(Serialize, sqlx::FromRow)]
 pub struct FilmListEntry {
     pub id: i64,
