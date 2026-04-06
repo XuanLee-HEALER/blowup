@@ -1,5 +1,5 @@
 use crate::error::DownloadError;
-use crate::tracker::load_trackers;
+use super::tracker::load_trackers;
 use std::path::Path;
 
 pub struct DownloadArgs<'a> {
@@ -36,6 +36,22 @@ fn build_aria2c_command(args: &DownloadArgs<'_>, trackers: &[String]) -> std::pr
 
     cmd.arg(args.target);
     cmd
+}
+
+#[tauri::command]
+pub async fn download_target(
+    target: String,
+    output_dir: String,
+    aria2c_bin: String,
+) -> std::result::Result<(), String> {
+    let path = std::path::PathBuf::from(&output_dir);
+    download(DownloadArgs {
+        target: &target,
+        output_dir: &path,
+        aria2c_bin: &aria2c_bin,
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
