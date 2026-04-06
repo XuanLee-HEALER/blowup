@@ -1,0 +1,289 @@
+import { useState, useEffect } from "react";
+import type { ReactNode } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { TextInput } from "../components/ui/TextInput";
+import { Button } from "../components/ui/Button";
+import { config, type AppConfig, type MusicTrack } from "../lib/tauri";
+
+const LANG_OPTIONS = [
+  { value: "zh", label: "中文 (zh)" },
+  { value: "en", label: "English (en)" },
+  { value: "ja", label: "日本語 (ja)" },
+];
+
+export default function Settings() {
+  const [cfg, setCfg] = useState<AppConfig | null>(null);
+  const [showKey, setShowKey] = useState(false);
+
+  useEffect(() => {
+    config.get().then(setCfg);
+  }, []);
+
+  const update = (mutate: (draft: AppConfig) => void) => {
+    setCfg((prev) => {
+      if (!prev) return null;
+      const next: AppConfig = JSON.parse(JSON.stringify(prev));
+      mutate(next);
+      config.save(next).catch(console.error);
+      return next;
+    });
+  };
+
+  const pickDir = async () => {
+    const dir = await open({ directory: true, multiple: false });
+    if (typeof dir === "string") {
+      update((c) => { c.library.root_dir = dir; });
+    }
+  };
+
+  if (!cfg) {
+    return (
+      <div style={{ padding: "2rem", color: "var(--color-label-tertiary)", fontSize: "0.82rem" }}>
+        加载中...
+      </div>
+    );
+  }
+
+  const updatePlaylist = (newPlaylist: MusicTrack[]) => {
+    update((c) => { c.music.playlist = newPlaylist; });
+  };
+
+  return (
+    <div style={{ flex: 1, overflowY: "auto", padding: "1.4rem 1.75rem 3rem" }}>
+      <h1
+        style={{
+          fontSize: "1.6rem",
+          fontWeight: 700,
+          letterSpacing: "-0.035em",
+          marginBottom: "2rem",
+        }}
+      >
+        设置
+      </h1>
+
+      <Section title="TMDB">
+        <Field label="API Key">
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <TextInput
+              type={showKey ? "text" : "password"}
+              defaultValue={cfg.tmdb.api_key}
+              placeholder="在 themoviedb.org 免费申请"
+              style={{ flex: 1 }}
+              onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.tmdb.api_key = v; }); }}
+            />
+            <Button onClick={() => setShowKey((v) => !v)}>
+              {showKey ? "隐藏" : "显示"}
+            </Button>
+          </div>
+        </Field>
+      </Section>
+
+      <Section title="OpenSubtitles">
+        <Field label="API Key">
+          <TextInput
+            type="password"
+            defaultValue={cfg.opensubtitles.api_key}
+            placeholder="可选"
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.opensubtitles.api_key = v; }); }}
+          />
+        </Field>
+      </Section>
+
+      <Section title="字幕">
+        <Field label="默认语言">
+          <select
+            value={cfg.subtitle.default_lang}
+            onChange={(e) => update((c) => { c.subtitle.default_lang = e.target.value; })}
+            style={{
+              background: "var(--color-bg-control)",
+              border: "1px solid var(--color-separator)",
+              borderRadius: 8,
+              padding: "0 0.75rem",
+              height: 34,
+              color: "var(--color-label-primary)",
+              fontSize: "0.85rem",
+              fontFamily: "inherit",
+              colorScheme: "dark",
+            }}
+          >
+            {LANG_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </Section>
+
+      <Section title="工具路径">
+        {(["aria2c", "alass", "ffmpeg", "player"] as const).map((tool) => (
+          <Field key={tool} label={tool}>
+            <TextInput
+              defaultValue={cfg.tools[tool]}
+              placeholder={tool}
+              onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.tools[tool] = v; }); }}
+            />
+          </Field>
+        ))}
+      </Section>
+
+      <Section title="库目录">
+        <Field label="本地库根目录">
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <TextInput value={cfg.library.root_dir} readOnly style={{ flex: 1 }} onChange={() => {}} />
+            <Button onClick={pickDir}>选择...</Button>
+          </div>
+        </Field>
+      </Section>
+
+      <Section title="搜索">
+        <Field label="请求间隔（秒）">
+          <TextInput
+            type="number"
+            defaultValue={String(cfg.search.rate_limit_secs)}
+            onBlur={(e) => {
+              const v = parseInt(e.currentTarget.value, 10);
+              if (!isNaN(v) && v >= 0) { const n = v; update((c) => { c.search.rate_limit_secs = n; }); }
+            }}
+            style={{ width: 80 }}
+          />
+        </Field>
+      </Section>
+
+      <Section title="背景音乐">
+        <Field label="启用">
+          <input
+            type="checkbox"
+            checked={!!cfg.music?.enabled}
+            onChange={(e) => update((c) => { c.music.enabled = e.target.checked; })}
+            style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
+          />
+        </Field>
+        <Field label="播放模式">
+          <select
+            value={cfg.music?.mode ?? "sequential"}
+            onChange={(e) => {
+              const mode = e.target.value === "random" ? "random" as const : "sequential" as const;
+              update((c) => { c.music.mode = mode; });
+            }}
+            style={{
+              background: "var(--color-bg-control)",
+              border: "1px solid var(--color-separator)",
+              borderRadius: 8,
+              padding: "0 0.75rem",
+              height: 34,
+              color: "var(--color-label-primary)",
+              fontSize: "0.85rem",
+              fontFamily: "inherit",
+            }}
+          >
+            <option value="sequential">顺序播放</option>
+            <option value="random">随机播放</option>
+          </select>
+        </Field>
+        <Field label="播放列表">
+          <div>
+            {(cfg.music?.playlist ?? []).map((track, i) => (
+              <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.4rem", alignItems: "center" }}>
+                <TextInput
+                  placeholder="曲目名称"
+                  defaultValue={track.name}
+                  style={{ width: 120, flexShrink: 0 }}
+                  onBlur={(e) => {
+                    const v = e.currentTarget.value;
+                    const pl = [...(cfg.music?.playlist ?? [])];
+                    pl[i] = { ...pl[i], name: v };
+                    updatePlaylist(pl);
+                  }}
+                />
+                <TextInput
+                  placeholder="文件路径或 URL"
+                  defaultValue={track.src}
+                  style={{ flex: 1 }}
+                  onBlur={(e) => {
+                    const v = e.currentTarget.value;
+                    const pl = [...(cfg.music?.playlist ?? [])];
+                    pl[i] = { ...pl[i], src: v };
+                    updatePlaylist(pl);
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const pl = (cfg.music?.playlist ?? []).filter((_, idx) => idx !== i);
+                    updatePlaylist(pl);
+                  }}
+                  style={{ background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.8rem" }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => {
+                const pl = [...(cfg.music?.playlist ?? []), { name: "", src: "" }];
+                updatePlaylist(pl);
+              }}
+              style={{ background: "none", border: "1px dashed var(--color-separator)", borderRadius: 5, padding: "0.3rem 0.75rem", color: "var(--color-label-tertiary)", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", marginTop: "0.25rem" }}
+            >
+              + 添加曲目
+            </button>
+          </div>
+        </Field>
+      </Section>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div style={{ marginBottom: "2rem" }}>
+      <p
+        style={{
+          margin: "0 0 0.75rem",
+          fontSize: "0.7rem",
+          color: "var(--color-label-quaternary)",
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+        }}
+      >
+        {title}
+      </p>
+      <div
+        style={{
+          background: "var(--color-bg-secondary)",
+          border: "1px solid var(--color-separator)",
+          borderRadius: 10,
+          padding: "0.1rem 1rem",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "1rem",
+        padding: "0.65rem 0",
+        borderBottom: "1px solid var(--color-separator)",
+      }}
+    >
+      <span
+        style={{
+          width: 120,
+          flexShrink: 0,
+          fontSize: "0.82rem",
+          color: "var(--color-label-secondary)",
+        }}
+      >
+        {label}
+      </span>
+      <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  );
+}
