@@ -21,8 +21,8 @@ export default function Settings() {
 
   const update = (mutate: (draft: AppConfig) => void) => {
     setCfg((prev) => {
-      if (!prev) return prev;
-      const next = structuredClone(prev);
+      if (!prev) return null;
+      const next: AppConfig = JSON.parse(JSON.stringify(prev));
       mutate(next);
       config.save(next).catch(console.error);
       return next;
@@ -69,7 +69,7 @@ export default function Settings() {
               defaultValue={cfg.tmdb.api_key}
               placeholder="在 themoviedb.org 免费申请"
               style={{ flex: 1 }}
-              onBlur={(e) => update((c) => { c.tmdb.api_key = e.currentTarget.value; })}
+              onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.tmdb.api_key = v; }); }}
             />
             <Button onClick={() => setShowKey((v) => !v)}>
               {showKey ? "隐藏" : "显示"}
@@ -84,7 +84,7 @@ export default function Settings() {
             type="password"
             defaultValue={cfg.opensubtitles.api_key}
             placeholder="可选"
-            onBlur={(e) => update((c) => { c.opensubtitles.api_key = e.currentTarget.value; })}
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.opensubtitles.api_key = v; }); }}
           />
         </Field>
       </Section>
@@ -103,6 +103,7 @@ export default function Settings() {
               color: "var(--color-label-primary)",
               fontSize: "0.85rem",
               fontFamily: "inherit",
+              colorScheme: "dark",
             }}
           >
             {LANG_OPTIONS.map((o) => (
@@ -120,7 +121,7 @@ export default function Settings() {
             <TextInput
               defaultValue={cfg.tools[tool]}
               placeholder={tool}
-              onBlur={(e) => update((c) => { c.tools[tool] = e.currentTarget.value; })}
+              onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.tools[tool] = v; }); }}
             />
           </Field>
         ))}
@@ -142,7 +143,7 @@ export default function Settings() {
             defaultValue={String(cfg.search.rate_limit_secs)}
             onBlur={(e) => {
               const v = parseInt(e.currentTarget.value, 10);
-              if (!isNaN(v) && v >= 0) update((c) => { c.search.rate_limit_secs = v; });
+              if (!isNaN(v) && v >= 0) { const n = v; update((c) => { c.search.rate_limit_secs = n; }); }
             }}
             style={{ width: 80 }}
           />
@@ -189,8 +190,9 @@ export default function Settings() {
                   defaultValue={track.name}
                   style={{ width: 120, flexShrink: 0 }}
                   onBlur={(e) => {
+                    const v = e.currentTarget.value;
                     const pl = [...(cfg.music?.playlist ?? [])];
-                    pl[i] = { ...pl[i], name: e.currentTarget.value };
+                    pl[i] = { ...pl[i], name: v };
                     updatePlaylist(pl);
                   }}
                 />
@@ -199,8 +201,9 @@ export default function Settings() {
                   defaultValue={track.src}
                   style={{ flex: 1 }}
                   onBlur={(e) => {
+                    const v = e.currentTarget.value;
                     const pl = [...(cfg.music?.playlist ?? [])];
-                    pl[i] = { ...pl[i], src: e.currentTarget.value };
+                    pl[i] = { ...pl[i], src: v };
                     updatePlaylist(pl);
                   }}
                 />
