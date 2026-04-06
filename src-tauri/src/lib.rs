@@ -23,10 +23,12 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            // M1 commands
             commands::search::search_yify_cmd,
             commands::tmdb::search_movies,
             commands::tmdb::discover_movies,
             commands::tmdb::list_genres,
+            commands::tmdb::get_tmdb_movie_credits,
             commands::download::download_target,
             commands::tracker::update_trackers,
             commands::subtitle::fetch_subtitle_cmd,
@@ -37,6 +39,37 @@ pub fn run() {
             commands::media::probe_media,
             commands::config::get_config,
             commands::config::set_config_key,
+            commands::config::set_music_playlist,
+            // M2 library — people
+            commands::library::people::list_people,
+            commands::library::people::get_person,
+            commands::library::people::create_person,
+            commands::library::people::update_person_wiki,
+            commands::library::people::delete_person,
+            commands::library::people::add_person_relation,
+            commands::library::people::remove_person_relation,
+            // M2 library — films
+            commands::library::films::list_films,
+            commands::library::films::get_film,
+            commands::library::films::add_film_from_tmdb,
+            commands::library::films::update_film_wiki,
+            commands::library::films::delete_film,
+            // M2 library — genres
+            commands::library::genres::list_genres_tree,
+            commands::library::genres::get_genre,
+            commands::library::genres::create_genre,
+            commands::library::genres::update_genre_wiki,
+            commands::library::genres::delete_genre,
+            commands::library::genres::link_film_genre,
+            commands::library::genres::unlink_film_genre,
+            commands::library::genres::link_person_genre,
+            commands::library::genres::unlink_person_genre,
+            // M2 library — reviews
+            commands::library::reviews::add_review,
+            commands::library::reviews::update_review,
+            commands::library::reviews::delete_review,
+            // M2 library — graph
+            commands::library::graph::get_graph_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

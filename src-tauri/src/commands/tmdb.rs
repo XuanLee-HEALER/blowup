@@ -398,6 +398,103 @@ pub async fn list_genres(api_key: String) -> std::result::Result<Vec<TmdbGenre>,
     Ok(resp.genres.into_iter().map(|g| TmdbGenre { id: g.id, name: g.name }).collect())
 }
 
+#[derive(Serialize)]
+pub struct TmdbCrewMember {
+    pub id: i64,
+    pub name: String,
+    pub job: String,
+    pub department: String,
+}
+
+#[derive(Serialize)]
+pub struct TmdbCastMember {
+    pub id: i64,
+    pub name: String,
+    pub character: String,
+}
+
+#[derive(Serialize)]
+pub struct TmdbMovieCredits {
+    pub tmdb_id: i64,
+    pub title: String,
+    pub original_title: Option<String>,
+    pub year: Option<i64>,
+    pub overview: Option<String>,
+    pub vote_average: Option<f64>,
+    pub poster_path: Option<String>,
+    pub crew: Vec<TmdbCrewMember>,
+    pub cast: Vec<TmdbCastMember>,
+}
+
+#[derive(Deserialize)]
+struct CreditsResponse {
+    crew: Vec<CrewItem>,
+    cast: Vec<CastItem>,
+}
+
+#[derive(Deserialize)]
+struct CrewItem {
+    id: i64,
+    name: String,
+    job: String,
+    department: String,
+}
+
+#[derive(Deserialize)]
+struct CastItem {
+    id: i64,
+    name: String,
+    character: String,
+}
+
+#[derive(Deserialize)]
+struct MovieDetailsResponse {
+    id: i64,
+    title: String,
+    original_title: Option<String>,
+    release_date: Option<String>,
+    overview: Option<String>,
+    vote_average: Option<f64>,
+    poster_path: Option<String>,
+    credits: CreditsResponse,
+}
+
+#[tauri::command]
+pub async fn get_tmdb_movie_credits(
+    api_key: String,
+    tmdb_id: i64,
+) -> Result<TmdbMovieCredits, String> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "https://api.themoviedb.org/3/movie/{}?append_to_response=credits&api_key={}&language=en-US",
+        tmdb_id, api_key
+    );
+
+    let resp: MovieDetailsResponse = client.get(&url).send().await
+        .map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
+
+    let year = resp.release_date.as_deref()
+        .and_then(|d| d.get(..4))
+        .and_then(|y| y.parse::<i64>().ok());
+
+    let key_jobs = ["Director", "Director of Photography", "Original Music Composer",
+                    "Editor", "Screenplay", "Writer"];
+    let crew: Vec<TmdbCrewMember> = resp.credits.crew.into_iter()
+        .filter(|m| key_jobs.contains(&m.job.as_str()))
+        .map(|m| TmdbCrewMember { id: m.id, name: m.name, job: m.job, department: m.department })
+        .collect();
+
+    let cast: Vec<TmdbCastMember> = resp.credits.cast.into_iter().take(5)
+        .map(|m| TmdbCastMember { id: m.id, name: m.name, character: m.character })
+        .collect();
+
+    Ok(TmdbMovieCredits {
+        tmdb_id: resp.id, title: resp.title, original_title: resp.original_title,
+        year, overview: resp.overview, vote_average: resp.vote_average,
+        poster_path: resp.poster_path, crew, cast,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
