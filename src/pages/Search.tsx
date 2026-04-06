@@ -80,7 +80,7 @@ export default function Search() {
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => runSearch(query, 1, false), 400);
     return () => clearTimeout(searchTimer.current);
-  }, [query, yearFrom, yearTo, genreIds, minRating, sortBy, apiKey]);
+  }, [query, yearFrom, yearTo, genreIds, minRating, sortBy, apiKey, runSearch]);
 
   const loadMore = () => runSearch(query, page + 1, true);
 

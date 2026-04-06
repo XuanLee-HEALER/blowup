@@ -52,7 +52,7 @@ function AddToLibraryModal({ film, apiKey, onClose, onAdded }: { film: MovieList
       setCast(credits.cast.map((m) => ({ tmdbId: m.id, name: m.name, job: m.character, primary_role: "actor", selected: false })));
       setLoading(false);
     }).catch((e) => { setError(String(e)); setLoading(false); });
-  }, []);
+  }, [apiKey, film.id]);
 
   const confirm = async () => {
     setSaving(true);
