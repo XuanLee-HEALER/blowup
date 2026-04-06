@@ -85,6 +85,83 @@ export interface GraphNode { id: string; label: string; node_type: string; role:
 export interface GraphLink { source: string; target: string; role: string; }
 export interface GraphData { nodes: GraphNode[]; links: GraphLink[]; }
 
+export interface LibraryItemSummary {
+  id: number;
+  film_id: number | null;
+  file_path: string;
+  file_size: number | null;
+  duration_secs: number | null;
+  video_codec: string | null;
+  audio_codec: string | null;
+  resolution: string | null;
+  added_at: string;
+  film_title: string | null;
+  film_year: number | null;
+}
+
+export interface LibraryItemDetail extends LibraryItemSummary {
+  assets: LibraryAssetEntry[];
+}
+
+export interface LibraryAssetEntry {
+  id: number;
+  asset_type: string;
+  file_path: string;
+  lang: string | null;
+  created_at: string;
+}
+
+export interface LibraryStats {
+  total_films: number;
+  films_with_files: number;
+  total_file_size: number;
+  unlinked_files: number;
+  by_decade: StatEntry[];
+  by_genre: StatEntry[];
+  by_resolution: StatEntry[];
+}
+
+export interface StatEntry {
+  label: string;
+  count: number;
+}
+
+export interface ScanResult {
+  added: number;
+  skipped: number;
+  errors: string[];
+}
+
+export interface FilmListEntry {
+  id: number;
+  title: string;
+  original_title: string | null;
+  year: number | null;
+  tmdb_rating: number | null;
+  poster_cache_path: string | null;
+  has_file: number;
+}
+
+export interface FilmFilterResult {
+  films: FilmListEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface FilmFilterParams {
+  query?: string;
+  genreId?: number;
+  yearFrom?: number;
+  yearTo?: number;
+  minRating?: number;
+  hasFile?: boolean;
+  sortBy?: string;
+  sortDesc?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
 // ── Invoke wrappers ───────────────────────────────────────────────
 export const tmdb = {
   searchMovies: (apiKey: string, query: string, filters: SearchFilters) =>
@@ -138,4 +215,28 @@ export const library = {
   deleteReview: (id: number) => invoke<void>("delete_review", { id }),
 
   getGraphData: () => invoke<GraphData>("get_graph_data"),
+
+  // Library items
+  listLibraryItems: () =>
+    invoke<LibraryItemSummary[]>("list_library_items"),
+  getLibraryItem: (id: number) =>
+    invoke<LibraryItemDetail>("get_library_item", { id }),
+  addLibraryItem: (filePath: string, filmId?: number) =>
+    invoke<number>("add_library_item", { filePath, filmId }),
+  linkItemToFilm: (itemId: number, filmId: number) =>
+    invoke<void>("link_item_to_film", { itemId, filmId }),
+  unlinkItemFromFilm: (itemId: number) =>
+    invoke<void>("unlink_item_from_film", { itemId }),
+  removeLibraryItem: (id: number) =>
+    invoke<void>("remove_library_item", { id }),
+  scanLibraryDirectory: (dirPath: string) =>
+    invoke<ScanResult>("scan_library_directory", { dirPath }),
+  addLibraryAsset: (itemId: number, assetType: string, filePath: string, lang?: string) =>
+    invoke<number>("add_library_asset", { itemId, assetType, filePath, lang }),
+  removeLibraryAsset: (id: number) =>
+    invoke<void>("remove_library_asset", { id }),
+  getLibraryStats: () =>
+    invoke<LibraryStats>("get_library_stats"),
+  listFilmsFiltered: (params: FilmFilterParams) =>
+    invoke<FilmFilterResult>("list_films_filtered", params as Record<string, unknown>),
 };
