@@ -28,7 +28,7 @@ export default function Settings() {
       setCfg((prev) => {
         if (!prev) return prev;
         const [section, field] = key.split(".");
-        return { ...prev, [section]: { ...(prev as never)[section], [field]: value } };
+        return { ...prev, [section]: { ...(prev as AppConfig)[section as keyof AppConfig], [field]: value } };
       });
     } catch (e) {
       console.error(e);
