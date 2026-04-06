@@ -1,5 +1,26 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+/// Resolved app data directory, set once during Tauri setup.
+static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Called during Tauri setup to store the resolved app data dir.
+/// Config and DB will both live under this directory.
+pub fn init_app_data_dir(dir: PathBuf) {
+    APP_DATA_DIR.set(dir).ok();
+}
+
+fn app_data_dir() -> PathBuf {
+    APP_DATA_DIR
+        .get()
+        .cloned()
+        .unwrap_or_else(|| {
+            dirs::data_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("blowup")
+        })
+}
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Config {
@@ -152,14 +173,26 @@ impl Default for MusicConfig {
 }
 
 pub fn config_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("blowup")
-        .join("config.toml")
+    app_data_dir().join("config.toml")
 }
 
 pub fn load_config() -> Config {
     let path = config_path();
+
+    // Migrate from old location if new path doesn't exist yet
+    if !path.exists() {
+        let old_path = dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("blowup")
+            .join("config.toml");
+        if old_path.exists() {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+            std::fs::copy(&old_path, &path).ok();
+        }
+    }
+
     if !path.exists() {
         return Config::default();
     }
