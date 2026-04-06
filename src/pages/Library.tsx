@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { library } from "../lib/tauri";
+import { library, media } from "../lib/tauri";
 import type {
   FilmListEntry,
   FilmFilterResult,
@@ -251,6 +251,20 @@ function FilmDetailView({
               <span>{formatDuration(item.duration_secs)}</span>
             </div>
             <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+              <button
+                onClick={() => media.openInPlayer(item.file_path)}
+                style={{
+                  background: "var(--color-accent)",
+                  border: "none",
+                  borderRadius: 4,
+                  padding: "2px 8px",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                ▶ 播放
+              </button>
               <button
                 onClick={() => onUnlink(item.id)}
                 style={{
