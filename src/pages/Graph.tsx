@@ -32,6 +32,7 @@ export default function Graph() {
 
   const buildGraph = useCallback(() => {
     if (!data || !svgRef.current) return;
+    let unmounted = false;
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
     const width = svgRef.current.clientWidth;
@@ -103,6 +104,7 @@ export default function Graph() {
     nodes.forEach((n) => angles.set(n.id, Math.random() * Math.PI * 2));
 
     simulation.on("end", () => {
+      if (unmounted) return;
       if (timerRef.current) timerRef.current.stop();
       timerRef.current = d3.timer(() => {
         if (orbitPausedRef.current) return;
@@ -123,7 +125,7 @@ export default function Graph() {
       });
     });
 
-    return () => { simulation.stop(); timerRef.current?.stop(); };
+    return () => { unmounted = true; simulation.stop(); timerRef.current?.stop(); };
   }, [data]);
 
   useEffect(() => { const cleanup = buildGraph(); return cleanup; }, [buildGraph]);

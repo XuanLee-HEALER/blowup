@@ -270,7 +270,13 @@ export default function Download() {
   const [updating, setUpdating] = useState(false);
 
   const refresh = useCallback(() => {
-    download.listDownloads().then(setDownloads);
+    download.listDownloads().then((newList) => {
+      setDownloads((prev) => {
+        const prevKey = prev.map(d => `${d.id}:${d.status}`).join(",");
+        const newKey = newList.map(d => `${d.id}:${d.status}`).join(",");
+        return prevKey === newKey ? prev : newList;
+      });
+    });
   }, []);
 
   useEffect(() => {

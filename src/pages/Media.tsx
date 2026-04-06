@@ -2,37 +2,7 @@ import { useState } from "react";
 import { media } from "../lib/tauri";
 import type { MediaInfo, StreamInfo } from "../lib/tauri";
 import { open } from "@tauri-apps/plugin-dialog";
-
-function formatSize(bytes: number | null): string {
-  if (!bytes) return "—";
-  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + " GB";
-  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + " MB";
-  return (bytes / 1e3).toFixed(0) + " KB";
-}
-
-function formatDuration(secs: number | null): string {
-  if (!secs) return "—";
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.floor(secs % 60);
-  return h > 0 ? `${h}h${m}m${s}s` : `${m}m${s}s`;
-}
-
-function formatBitrate(bps: number | null): string {
-  if (!bps) return "—";
-  if (bps >= 1e6) return (bps / 1e6).toFixed(1) + " Mbps";
-  return (bps / 1e3).toFixed(0) + " kbps";
-}
-
-function formatFrameRate(fr: string | null): string {
-  if (!fr) return "—";
-  const parts = fr.split("/");
-  if (parts.length === 2) {
-    const fps = parseFloat(parts[0]) / parseFloat(parts[1]);
-    return fps.toFixed(2) + " fps";
-  }
-  return fr + " fps";
-}
+import { formatSize, formatDuration, formatBitrate, formatFrameRate } from "../lib/format";
 
 function StreamCard({ stream }: { stream: StreamInfo }) {
   const isVideo = stream.codec_type === "video";
