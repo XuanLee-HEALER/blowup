@@ -70,6 +70,19 @@ pub fn run() {
             commands::library::reviews::delete_review,
             // M2 library — graph
             commands::library::graph::get_graph_data,
+            // M3 library — items
+            commands::library::items::add_library_item,
+            commands::library::items::list_library_items,
+            commands::library::items::get_library_item,
+            commands::library::items::link_item_to_film,
+            commands::library::items::unlink_item_from_film,
+            commands::library::items::remove_library_item,
+            commands::library::items::scan_library_directory,
+            commands::library::items::add_library_asset,
+            commands::library::items::remove_library_asset,
+            commands::library::items::get_library_stats,
+            // M3 library — films filter
+            commands::library::films::list_films_filtered,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
