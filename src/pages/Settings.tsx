@@ -131,6 +131,95 @@ export default function Settings() {
         </Field>
       </Section>
 
+      <Section title="背景音乐">
+        <Field label="启用背景音乐">
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+            <input
+              type="checkbox"
+              checked={!!cfg.music?.enabled}
+              onChange={async (e) => {
+                await config.set("music.enabled", e.target.checked ? "true" : "false");
+                setCfg((prev) => prev ? { ...prev, music: { ...prev.music, enabled: e.target.checked } } : prev);
+              }}
+              style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "0.72rem", color: "var(--color-label-tertiary)" }}>在影人/流派/关系图页面播放</span>
+          </div>
+        </Field>
+        <Field label="播放模式">
+          <select
+            value={cfg.music?.mode ?? "sequential"}
+            onChange={async (e) => {
+              await config.set("music.mode", e.target.value);
+              setCfg((prev) => prev ? { ...prev, music: { ...prev.music, mode: e.target.value } } : prev);
+            }}
+            style={{
+              background: "var(--color-bg-control)",
+              border: "1px solid var(--color-separator)",
+              borderRadius: 8,
+              padding: "0 0.75rem",
+              height: 34,
+              color: "var(--color-label-primary)",
+              fontSize: "0.85rem",
+              fontFamily: "inherit",
+            }}
+          >
+            <option value="sequential">顺序播放</option>
+            <option value="random">随机播放</option>
+          </select>
+        </Field>
+        <Field label="播放列表">
+          <div>
+            {(cfg.music?.playlist ?? []).map((track, i) => (
+              <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.4rem", alignItems: "center" }}>
+                <TextInput
+                  placeholder="曲目名称"
+                  defaultValue={track.name}
+                  style={{ width: 120, flexShrink: 0 }}
+                  onBlur={async (e) => {
+                    const newPlaylist = (cfg.music?.playlist ?? []).map((t, idx) =>
+                      idx === i ? { ...t, name: e.currentTarget.value } : t
+                    );
+                    setCfg((prev) => prev ? { ...prev, music: { ...prev.music, playlist: newPlaylist } } : prev);
+                    await config.setMusicPlaylist(newPlaylist);
+                  }}
+                />
+                <TextInput
+                  placeholder="文件路径或 URL"
+                  defaultValue={track.src}
+                  style={{ flex: 1 }}
+                  onBlur={async (e) => {
+                    const newPlaylist = (cfg.music?.playlist ?? []).map((t, idx) =>
+                      idx === i ? { ...t, src: e.currentTarget.value } : t
+                    );
+                    setCfg((prev) => prev ? { ...prev, music: { ...prev.music, playlist: newPlaylist } } : prev);
+                    await config.setMusicPlaylist(newPlaylist);
+                  }}
+                />
+                <button
+                  onClick={async () => {
+                    const newPlaylist = (cfg.music?.playlist ?? []).filter((_, idx) => idx !== i);
+                    setCfg((prev) => prev ? { ...prev, music: { ...prev.music, playlist: newPlaylist } } : prev);
+                    await config.setMusicPlaylist(newPlaylist);
+                  }}
+                  style={{ background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.8rem" }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => {
+                setCfg((prev) => prev ? { ...prev, music: { ...prev.music, playlist: [...(prev.music?.playlist ?? []), { name: "", src: "" }] } } : prev);
+              }}
+              style={{ background: "none", border: "1px dashed var(--color-separator)", borderRadius: 5, padding: "0.3rem 0.75rem", color: "var(--color-label-tertiary)", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", marginTop: "0.25rem" }}
+            >
+              + 添加曲目
+            </button>
+          </div>
+        </Field>
+      </Section>
+
       {saving && (
         <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.72rem", marginTop: "1rem" }}>
           保存中…
