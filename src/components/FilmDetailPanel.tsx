@@ -1,7 +1,7 @@
 // src/components/FilmDetailPanel.tsx
 import { useState, useEffect } from "react";
-import { tmdb, library, config } from "../lib/tauri";
-import type { MovieListItem, TmdbPersonInput, TmdbMovieInput } from "../lib/tauri";
+import { tmdb, library, config, yts, download } from "../lib/tauri";
+import type { MovieListItem, TmdbPersonInput, TmdbMovieInput, MovieResult } from "../lib/tauri";
 
 const JOB_TO_ROLE: Record<string, string> = {
   "Director": "director",
@@ -123,6 +123,151 @@ function AddToLibraryModal({ film, apiKey, onClose, onAdded }: { film: MovieList
   );
 }
 
+function TorrentSearchModal({
+  title,
+  filmId,
+  onClose,
+}: {
+  title: string;
+  filmId?: number;
+  onClose: () => void;
+}) {
+  const [results, setResults] = useState<MovieResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [started, setStarted] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    yts
+      .search(title)
+      .then(setResults)
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  }, [title]);
+
+  const handleDownload = async (r: MovieResult) => {
+    const target = r.magnet ?? r.torrent_url;
+    if (!target) return;
+    await download.startDownload(
+      `${r.title} (${r.year})`,
+      target,
+      r.quality,
+      filmId
+    );
+    setStarted((prev) => new Set(prev).add(target));
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--color-bg-primary)",
+          borderRadius: 12,
+          padding: 24,
+          width: 480,
+          maxHeight: "70vh",
+          overflowY: "auto",
+        }}
+      >
+        <h3 style={{ margin: "0 0 12px" }}>搜索资源: {title}</h3>
+
+        {loading && (
+          <div style={{ color: "var(--color-label-secondary)", fontSize: 13 }}>
+            搜索中...
+          </div>
+        )}
+
+        {error && (
+          <div style={{ color: "#e53935", fontSize: 13 }}>
+            {error.includes("NoResults") ? "未找到资源" : `搜索失败: ${error}`}
+          </div>
+        )}
+
+        {!loading && !error && results.length === 0 && (
+          <div style={{ color: "var(--color-label-tertiary)", fontSize: 13 }}>
+            未找到资源
+          </div>
+        )}
+
+        {results.map((r, i) => {
+          const target = r.magnet ?? r.torrent_url ?? "";
+          const isStarted = started.has(target);
+          return (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 0",
+                borderBottom: "1px solid var(--color-separator)",
+                fontSize: 13,
+              }}
+            >
+              <div>
+                <span style={{ fontWeight: 500 }}>{r.quality}</span>
+                <span style={{ color: "var(--color-label-secondary)", marginLeft: 12 }}>
+                  {r.seeds} seeds
+                </span>
+              </div>
+              {isStarted ? (
+                <span style={{ color: "var(--color-accent)", fontSize: 12 }}>
+                  ✓ 已添加
+                </span>
+              ) : (
+                <button
+                  onClick={() => handleDownload(r)}
+                  disabled={!target}
+                  style={{
+                    background: "var(--color-accent)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "3px 12px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  下载
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 16,
+            background: "var(--color-bg-control)",
+            border: "1px solid var(--color-separator)",
+            borderRadius: 6,
+            padding: "6px 16px",
+            color: "var(--color-label-primary)",
+            cursor: "pointer",
+            fontSize: 13,
+            width: "100%",
+          }}
+        >
+          关闭
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface FilmDetailPanelProps {
   film: MovieListItem;
   onClose: () => void;
@@ -132,6 +277,7 @@ export function FilmDetailPanel({ film, onClose }: FilmDetailPanelProps) {
   const [apiKey, setApiKey] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [addedToLibrary, setAddedToLibrary] = useState(false);
+  const [showTorrentModal, setShowTorrentModal] = useState(false);
 
   useEffect(() => { config.get().then((cfg) => setApiKey(cfg.tmdb.api_key)); }, []);
 
@@ -172,8 +318,19 @@ export function FilmDetailPanel({ film, onClose }: FilmDetailPanelProps) {
               加入知识库
             </button>
           )}
-          <button disabled style={{ background: "var(--color-bg-control)", border: "none", borderRadius: 6, padding: "0.4rem 0.75rem", color: "var(--color-label-quaternary)", fontSize: "0.78rem", cursor: "default", fontFamily: "inherit", textAlign: "left", opacity: 0.4 }}>
-            搜索资源（M3）
+          <button
+            onClick={() => setShowTorrentModal(true)}
+            style={{
+              background: "var(--color-bg-control)",
+              border: "1px solid var(--color-separator)",
+              borderRadius: 8,
+              padding: "0.4rem 0.75rem",
+              color: "var(--color-label-primary)",
+              cursor: "pointer",
+              fontSize: "0.78rem",
+            }}
+          >
+            搜索资源
           </button>
         </div>
       </div>
@@ -182,6 +339,14 @@ export function FilmDetailPanel({ film, onClose }: FilmDetailPanelProps) {
         <AddToLibraryModal film={film} apiKey={apiKey}
           onClose={() => setShowAddModal(false)}
           onAdded={() => setAddedToLibrary(true)}
+        />
+      )}
+
+      {showTorrentModal && (
+        <TorrentSearchModal
+          title={film.title}
+          filmId={undefined}
+          onClose={() => setShowTorrentModal(false)}
         />
       )}
     </>
