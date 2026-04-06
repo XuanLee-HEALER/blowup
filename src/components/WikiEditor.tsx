@@ -1,6 +1,10 @@
 // src/components/WikiEditor.tsx
 import { useState } from "react";
 import { marked } from "marked";
+import DOMPurify from "dompurify";
+
+// Configure marked to NOT render raw HTML (prevents XSS)
+marked.use({ breaks: true });
 
 interface WikiEditorProps {
   value: string;
@@ -52,7 +56,7 @@ export function WikiEditor({ value, onChange, onSave, minHeight = 200 }: WikiEdi
       ) : (
         <div
           dangerouslySetInnerHTML={{
-            __html: marked.parse(value || "_（暂无内容）_") as string,
+            __html: DOMPurify.sanitize(marked.parse(value || "_（暂无内容）_") as string),
           }}
           style={{
             minHeight, overflowY: "auto",

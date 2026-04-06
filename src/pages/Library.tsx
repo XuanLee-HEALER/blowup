@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { library, media } from "../lib/tauri";
+import { formatSize, formatDuration } from "../lib/format";
 import type {
   FilmListEntry,
   FilmFilterResult,
@@ -11,20 +12,6 @@ import type {
 import { open } from "@tauri-apps/plugin-dialog";
 
 // ── Helpers ──────────────────────────────────────────────────────
-
-function formatSize(bytes: number | null): string {
-  if (!bytes) return "—";
-  if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + " GB";
-  if (bytes >= 1e6) return (bytes / 1e6).toFixed(0) + " MB";
-  return (bytes / 1e3).toFixed(0) + " KB";
-}
-
-function formatDuration(secs: number | null): string {
-  if (!secs) return "—";
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  return h > 0 ? `${h}h${m}m` : `${m}m`;
-}
 
 function flattenGenres(
   nodes: GenreTreeNode[]
@@ -423,6 +410,8 @@ function FileDetailView({
 export default function Library() {
   const [tab, setTab] = useState<"films" | "files">("films");
   const [stats, setStats] = useState<LibraryStats | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Films tab state
   const [filmResult, setFilmResult] = useState<FilmFilterResult | null>(null);
@@ -456,6 +445,8 @@ export default function Library() {
       .listGenresTree()
       .then((tree) => setGenres(flattenGenres(tree)));
   }, [refresh]);
+
+  useEffect(() => () => clearTimeout(searchTimer.current), []);
 
   // Reload films when filters change
   useEffect(() => {
@@ -575,14 +566,18 @@ export default function Library() {
               <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--color-separator)" }}>
                 <input
                   placeholder="搜索影片..."
-                  value={filters.query ?? ""}
-                  onChange={(e) =>
-                    setFilters((prev) => ({
-                      ...prev,
-                      query: e.target.value || undefined,
-                      page: 1,
-                    }))
-                  }
+                  value={searchText}
+                  onChange={(e) => {
+                    setSearchText(e.target.value);
+                    clearTimeout(searchTimer.current);
+                    searchTimer.current = setTimeout(() => {
+                      setFilters((prev) => ({
+                        ...prev,
+                        query: e.target.value || undefined,
+                        page: 1,
+                      }));
+                    }, 300);
+                  }}
                   style={{
                     width: "100%",
                     padding: "6px 10px",
