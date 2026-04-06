@@ -1,5 +1,35 @@
 use crate::error::TmdbError;
 use serde::Deserialize;
+use serde::Serialize;
+
+/// Lightweight result row shown in the search list.
+#[derive(Debug, Serialize)]
+pub struct MovieListItem {
+    pub id: u64,
+    pub title: String,
+    pub original_title: String,
+    pub year: String,          // empty string if unknown
+    pub overview: String,
+    pub vote_average: f64,
+    pub poster_path: Option<String>,
+    pub genre_ids: Vec<u64>,
+}
+
+#[derive(Debug, serde::Deserialize, Serialize)]
+pub struct SearchFilters {
+    pub year_from: Option<u32>,
+    pub year_to: Option<u32>,
+    pub genre_ids: Vec<u64>,
+    pub min_rating: Option<f32>,
+    pub sort_by: Option<String>,   // "popularity.desc" | "vote_average.desc" | "release_date.desc"
+    pub page: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TmdbGenre {
+    pub id: u64,
+    pub name: String,
+}
 
 // Internal deserialization structs (private)
 
@@ -44,6 +74,44 @@ struct CrewMember {
 struct CastMember {
     name: String,
     order: u32,
+}
+
+#[derive(serde::Deserialize)]
+struct ListResponse {
+    results: Vec<ListItem>,
+}
+
+#[derive(serde::Deserialize)]
+struct ListItem {
+    id: u64,
+    title: String,
+    original_title: String,
+    release_date: Option<String>,
+    overview: String,
+    vote_average: f64,
+    poster_path: Option<String>,
+    genre_ids: Vec<u64>,
+}
+
+#[derive(serde::Deserialize)]
+struct GenreListResponse {
+    genres: Vec<GenreItem>,
+}
+
+#[derive(serde::Deserialize)]
+struct GenreItem {
+    id: u64,
+    name: String,
+}
+
+#[derive(serde::Deserialize)]
+struct PersonSearchResponse {
+    results: Vec<PersonItem>,
+}
+
+#[derive(serde::Deserialize)]
+struct PersonItem {
+    id: u64,
 }
 
 // Public output struct
@@ -115,6 +183,25 @@ fn parse_movie_details(details: &MovieDetails) -> TmdbMovie {
     }
 }
 
+fn to_list_item(item: ListItem) -> MovieListItem {
+    let year = item
+        .release_date
+        .as_deref()
+        .and_then(|d| d.get(..4))
+        .unwrap_or("")
+        .to_string();
+    MovieListItem {
+        id: item.id,
+        title: item.title,
+        original_title: item.original_title,
+        year,
+        overview: item.overview,
+        vote_average: item.vote_average,
+        poster_path: item.poster_path,
+        genre_ids: item.genre_ids,
+    }
+}
+
 pub async fn query_tmdb(
     api_key: &str,
     title: &str,
@@ -169,6 +256,149 @@ pub async fn query_tmdb(
         .await?;
 
     Ok(parse_movie_details(&details))
+}
+
+fn build_discover_params(api_key: &str, f: &SearchFilters) -> Vec<(&'static str, String)> {
+    let mut p: Vec<(&'static str, String)> = vec![
+        ("api_key", api_key.to_string()),
+        ("language", "en-US".to_string()),
+        ("page", f.page.unwrap_or(1).to_string()),
+        (
+            "sort_by",
+            f.sort_by.clone().unwrap_or_else(|| "vote_average.desc".to_string()),
+        ),
+        ("vote_count.gte", "50".to_string()), // avoid films with 1 vote
+    ];
+    if let Some(y) = f.year_from {
+        p.push(("primary_release_date.gte", format!("{y}-01-01")));
+    }
+    if let Some(y) = f.year_to {
+        p.push(("primary_release_date.lte", format!("{y}-12-31")));
+    }
+    if !f.genre_ids.is_empty() {
+        let ids: Vec<String> = f.genre_ids.iter().map(|id| id.to_string()).collect();
+        p.push(("with_genres", ids.join(",")));
+    }
+    if let Some(r) = f.min_rating {
+        p.push(("vote_average.gte", r.to_string()));
+    }
+    p
+}
+
+/// Search by title, optionally merge with director results.
+#[tauri::command]
+pub async fn search_movies(
+    api_key: String,
+    query: String,
+    filters: SearchFilters,
+) -> std::result::Result<Vec<MovieListItem>, String> {
+    if api_key.is_empty() {
+        return Err("TMDB API key not configured".into());
+    }
+    let client = reqwest::Client::new();
+    let page = filters.page.unwrap_or(1);
+
+    // ① Title search
+    let mut params: Vec<(&str, String)> = vec![
+        ("api_key", api_key.clone()),
+        ("query", query.clone()),
+        ("page", page.to_string()),
+    ];
+    if let Some(y) = filters.year_from {
+        params.push(("year", y.to_string()));
+    }
+    let title_resp: ListResponse = client
+        .get("https://api.themoviedb.org/3/search/movie")
+        .query(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let mut results: Vec<MovieListItem> = title_resp
+        .results
+        .into_iter()
+        .map(|i| { seen.insert(i.id); to_list_item(i) })
+        .collect();
+
+    // ② Person search → discover
+    let person_resp: Result<PersonSearchResponse, _> = client
+        .get("https://api.themoviedb.org/3/search/person")
+        .query(&[("api_key", &api_key), ("query", &query)])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await;
+
+    if let Ok(pr) = person_resp {
+        if let Some(person) = pr.results.first() {
+            let mut disc_params = build_discover_params(&api_key, &filters);
+            disc_params.push(("with_people", person.id.to_string()));
+            let disc_resp: Result<ListResponse, _> = client
+                .get("https://api.themoviedb.org/3/discover/movie")
+                .query(&disc_params)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?
+                .json()
+                .await;
+            if let Ok(dr) = disc_resp {
+                for item in dr.results {
+                    if seen.insert(item.id) {
+                        results.push(to_list_item(item));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+/// Pure filter-based discovery (no text query).
+#[tauri::command]
+pub async fn discover_movies(
+    api_key: String,
+    filters: SearchFilters,
+) -> std::result::Result<Vec<MovieListItem>, String> {
+    if api_key.is_empty() {
+        return Err("TMDB API key not configured".into());
+    }
+    let client = reqwest::Client::new();
+    let params = build_discover_params(&api_key, &filters);
+    let resp: ListResponse = client
+        .get("https://api.themoviedb.org/3/discover/movie")
+        .query(&params)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(resp.results.into_iter().map(to_list_item).collect())
+}
+
+/// Fetch TMDB genre list (call once and cache in frontend).
+#[tauri::command]
+pub async fn list_genres(api_key: String) -> std::result::Result<Vec<TmdbGenre>, String> {
+    if api_key.is_empty() {
+        return Err("TMDB API key not configured".into());
+    }
+    let client = reqwest::Client::new();
+    let resp: GenreListResponse = client
+        .get("https://api.themoviedb.org/3/genre/movie/list")
+        .query(&[("api_key", &api_key), ("language", &"en-US".to_string())])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(resp.genres.into_iter().map(|g| TmdbGenre { id: g.id, name: g.name }).collect())
 }
 
 #[cfg(test)]
