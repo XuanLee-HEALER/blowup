@@ -30,11 +30,7 @@ pub async fn get_film(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<Fil
     )
     .bind(id).fetch_one(pool.inner()).await.map_err(|e| e.to_string())?;
 
-    let wiki_content: String = sqlx::query_scalar(
-        "SELECT content FROM wiki_entries WHERE entity_type = 'film' AND entity_id = ?",
-    )
-    .bind(id).fetch_optional(pool.inner()).await.map_err(|e| e.to_string())?
-    .unwrap_or_default();
+    let wiki_content = super::get_wiki_content(pool.inner(), "film", id).await?;
 
     let people = sqlx::query_as::<_, FilmPersonEntry>(
         "SELECT p.id as person_id, p.name, pf.role
@@ -127,14 +123,7 @@ pub async fn add_film_from_tmdb(
 
 #[tauri::command]
 pub async fn update_film_wiki(id: i64, content: String, pool: tauri::State<'_, SqlitePool>) -> Result<(), String> {
-    sqlx::query(
-        "INSERT INTO wiki_entries (entity_type, entity_id, content, updated_at)
-         VALUES ('film', ?, ?, datetime('now'))
-         ON CONFLICT(entity_type, entity_id)
-         DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
-    )
-    .bind(id).bind(&content).execute(pool.inner()).await
-    .map(|_| ()).map_err(|e| e.to_string())
+    super::upsert_wiki(pool.inner(), "film", id, &content).await
 }
 
 #[tauri::command]
@@ -205,7 +194,7 @@ pub(crate) async fn list_films_filtered_inner(
     page_size: Option<i64>,
 ) -> Result<FilmFilterResult, String> {
     let pg = page.unwrap_or(1).max(1);
-    let ps = page_size.unwrap_or(20).clamp(1, 100);
+    let ps = page_size.unwrap_or(20).clamp(1, 10000);
     let offset = (pg - 1) * ps;
 
     // Count query

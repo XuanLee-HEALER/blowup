@@ -31,11 +31,7 @@ pub async fn get_person(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<P
     )
     .bind(id).fetch_one(pool.inner()).await.map_err(|e| e.to_string())?;
 
-    let wiki_content: String = sqlx::query_scalar(
-        "SELECT content FROM wiki_entries WHERE entity_type = 'person' AND entity_id = ?",
-    )
-    .bind(id).fetch_optional(pool.inner()).await.map_err(|e| e.to_string())?
-    .unwrap_or_default();
+    let wiki_content = super::get_wiki_content(pool.inner(), "person", id).await?;
 
     let films = sqlx::query_as::<_, PersonFilmEntry>(
         "SELECT f.id as film_id, f.title, f.year, pf.role, f.poster_cache_path
@@ -81,14 +77,7 @@ pub async fn create_person(
 
 #[tauri::command]
 pub async fn update_person_wiki(id: i64, content: String, pool: tauri::State<'_, SqlitePool>) -> Result<(), String> {
-    sqlx::query(
-        "INSERT INTO wiki_entries (entity_type, entity_id, content, updated_at)
-         VALUES ('person', ?, ?, datetime('now'))
-         ON CONFLICT(entity_type, entity_id)
-         DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
-    )
-    .bind(id).bind(&content).execute(pool.inner()).await
-    .map(|_| ()).map_err(|e| e.to_string())
+    super::upsert_wiki(pool.inner(), "person", id, &content).await
 }
 
 #[tauri::command]

@@ -118,8 +118,8 @@ pub async fn open_in_player(file_path: String) -> Result<(), String> {
 fn open_with_system_default(file_path: &str) -> Result<(), String> {
     #[cfg(target_family = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/c", "start", "", file_path])
+        std::process::Command::new("explorer")
+            .arg(file_path)
             .spawn()
             .map_err(|e| format!("打开文件失败: {}", e))?;
     }

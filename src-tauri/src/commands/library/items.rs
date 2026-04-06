@@ -338,26 +338,20 @@ pub async fn remove_library_asset(
 pub async fn get_library_stats(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<LibraryStats, String> {
-    let total_films = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM films")
-        .fetch_one(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
+    #[derive(sqlx::FromRow)]
+    struct StatsRow {
+        total_films: i64,
+        films_with_files: i64,
+        total_file_size: i64,
+        unlinked_files: i64,
+    }
 
-    let films_with_files = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(DISTINCT film_id) FROM library_items WHERE film_id IS NOT NULL",
-    )
-    .fetch_one(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let total_file_size =
-        sqlx::query_scalar::<_, i64>("SELECT COALESCE(SUM(file_size), 0) FROM library_items")
-            .fetch_one(pool.inner())
-            .await
-            .map_err(|e| e.to_string())?;
-
-    let unlinked_files = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM library_items WHERE film_id IS NULL",
+    let row = sqlx::query_as::<_, StatsRow>(
+        "SELECT
+            (SELECT COUNT(*) FROM films) AS total_films,
+            (SELECT COUNT(DISTINCT film_id) FROM library_items WHERE film_id IS NOT NULL) AS films_with_files,
+            (SELECT COALESCE(SUM(file_size), 0) FROM library_items) AS total_file_size,
+            (SELECT COUNT(*) FROM library_items WHERE film_id IS NULL) AS unlinked_files"
     )
     .fetch_one(pool.inner())
     .await
@@ -390,10 +384,10 @@ pub async fn get_library_stats(
     .map_err(|e| e.to_string())?;
 
     Ok(LibraryStats {
-        total_films,
-        films_with_files,
-        total_file_size,
-        unlinked_files,
+        total_films: row.total_films,
+        films_with_files: row.films_with_files,
+        total_file_size: row.total_file_size,
+        unlinked_files: row.unlinked_files,
         by_decade,
         by_genre,
         by_resolution,
