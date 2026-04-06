@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { TextInput } from "../components/ui/TextInput";
 import { Chip } from "../components/ui/Chip";
 import { tmdb, config, type MovieListItem, type TmdbGenre, type SearchFilters } from "../lib/tauri";
+import { FilmDetailPanel } from "../components/FilmDetailPanel";
 
 const SORT_OPTIONS = [
   { value: "vote_average.desc", label: "按评分排序" },
@@ -332,141 +333,6 @@ function FilmRow({
         </strong>{" "}
         / 10
       </span>
-    </div>
-  );
-}
-
-// ── FilmDetailPanel ───────────────────────────────────────────────
-function FilmDetailPanel({
-  film,
-  onClose,
-}: {
-  film: MovieListItem;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      style={{
-        width: 300,
-        flexShrink: 0,
-        borderLeft: "1px solid var(--color-separator)",
-        background: "var(--color-bg-secondary)",
-        overflowY: "auto",
-        padding: "1.25rem 1.25rem 2rem",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.75rem",
-      }}
-    >
-      {/* Close */}
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--color-label-tertiary)",
-            cursor: "pointer",
-            fontSize: "1rem",
-            lineHeight: 1,
-            padding: 0,
-          }}
-        >
-          ✕
-        </button>
-      </div>
-
-      {/* Poster */}
-      {film.poster_path && (
-        <img
-          src={`https://image.tmdb.org/t/p/w300${film.poster_path}`}
-          alt={film.title}
-          style={{ width: "100%", borderRadius: 6 }}
-        />
-      )}
-
-      {/* Title */}
-      <div>
-        <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, letterSpacing: "-0.02em" }}>
-          {film.title}
-        </h2>
-        {film.original_title !== film.title && (
-          <p style={{ margin: "0.15rem 0 0", fontSize: "0.72rem", color: "var(--color-label-tertiary)" }}>
-            {film.original_title}
-          </p>
-        )}
-      </div>
-
-      {/* Meta */}
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-        {film.year && (
-          <span style={{ fontSize: "0.75rem", color: "var(--color-label-secondary)" }}>
-            {film.year}
-          </span>
-        )}
-        <span style={{ fontSize: "0.75rem", color: "var(--color-label-tertiary)" }}>·</span>
-        <span style={{ fontSize: "0.75rem", color: "var(--color-accent)", fontWeight: 500 }}>
-          ★ {film.vote_average.toFixed(1)}
-        </span>
-      </div>
-
-      {/* Overview */}
-      <p
-        style={{
-          margin: 0,
-          fontSize: "0.78rem",
-          color: "var(--color-label-secondary)",
-          lineHeight: 1.6,
-        }}
-      >
-        {film.overview || "暂无简介。"}
-      </p>
-
-      {/* Actions — disabled until M2/M3 */}
-      <div
-        style={{
-          borderTop: "1px solid var(--color-separator)",
-          paddingTop: "0.75rem",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.4rem",
-        }}
-      >
-        <button
-          disabled
-          style={{
-            background: "var(--color-bg-control)",
-            border: "none",
-            borderRadius: 6,
-            padding: "0.4rem 0.75rem",
-            color: "var(--color-label-quaternary)",
-            fontSize: "0.78rem",
-            cursor: "default",
-            fontFamily: "inherit",
-            textAlign: "left",
-            opacity: 0.4,
-          }}
-        >
-          加入知识库（M2）
-        </button>
-        <button
-          disabled
-          style={{
-            background: "var(--color-bg-control)",
-            border: "none",
-            borderRadius: 6,
-            padding: "0.4rem 0.75rem",
-            color: "var(--color-label-quaternary)",
-            fontSize: "0.78rem",
-            cursor: "default",
-            fontFamily: "inherit",
-            textAlign: "left",
-            opacity: 0.4,
-          }}
-        >
-          搜索资源（M3）
-        </button>
-      </div>
     </div>
   );
 }
