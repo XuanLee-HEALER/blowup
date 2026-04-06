@@ -15,6 +15,8 @@ pub struct Config {
     pub tmdb: TmdbConfig,
     #[serde(default)]
     pub library: LibraryConfig,
+    #[serde(default)]
+    pub music: MusicConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -55,6 +57,26 @@ pub struct TmdbConfig {
 pub struct LibraryConfig {
     #[serde(default = "default_root_dir")]
     pub root_dir: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct MusicConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_music_mode")]
+    pub mode: String,
+    #[serde(default)]
+    pub playlist: Vec<MusicTrack>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct MusicTrack {
+    pub src: String,
+    pub name: String,
+}
+
+fn default_music_mode() -> String {
+    "sequential".to_string()
 }
 
 fn default_aria2c() -> String {
@@ -113,6 +135,15 @@ impl Default for LibraryConfig {
         }
     }
 }
+impl Default for MusicConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mode: default_music_mode(),
+            playlist: Vec::new(),
+        }
+    }
+}
 
 pub fn config_path() -> PathBuf {
     dirs::config_dir()
@@ -128,6 +159,16 @@ pub fn load_config() -> Config {
     }
     let content = std::fs::read_to_string(&path).unwrap_or_default();
     toml::from_str(&content).unwrap_or_default()
+}
+
+pub fn save_config(config: &Config) -> Result<(), String> {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let content = toml::to_string_pretty(config).map_err(|e| e.to_string())?;
+    std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -175,5 +216,31 @@ aria2c = "/usr/local/bin/aria2c"
         let serialized = toml::to_string(&cfg).unwrap();
         assert!(serialized.contains("aria2c"));
         assert!(serialized.contains("ffmpeg"));
+    }
+
+    #[test]
+    fn music_config_defaults() {
+        let cfg = Config::default();
+        assert!(!cfg.music.enabled);
+        assert_eq!(cfg.music.mode, "sequential");
+        assert!(cfg.music.playlist.is_empty());
+    }
+
+    #[test]
+    fn parse_music_config_from_toml() {
+        let toml_str = r#"
+[music]
+enabled = true
+mode = "random"
+
+[[music.playlist]]
+src = "/tmp/song.mp3"
+name = "Test Song"
+"#;
+        let cfg: Config = toml::from_str(toml_str).unwrap();
+        assert!(cfg.music.enabled);
+        assert_eq!(cfg.music.mode, "random");
+        assert_eq!(cfg.music.playlist.len(), 1);
+        assert_eq!(cfg.music.playlist[0].name, "Test Song");
     }
 }
