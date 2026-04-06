@@ -30,7 +30,9 @@ export function MusicPlayer({ enabled, mode, playlist, active }: MusicPlayerProp
   useEffect(() => {
     if (!audioRef.current) return;
     if (!active || !enabled || playlist.length === 0) {
-      audioRef.current.pause(); setIsPlaying(false);
+      audioRef.current.pause();
+      // Defer state update to avoid synchronous setState in effect body
+      queueMicrotask(() => setIsPlaying(false));
     }
   }, [active, enabled, playlist.length]);
 
@@ -83,7 +85,7 @@ export function MusicPlayer({ enabled, mode, playlist, active }: MusicPlayerProp
   const togglePlay = () => {
     const a = audioRef.current;
     if (!a) return;
-    isPlaying ? a.pause() : a.play().catch(() => {});
+    if (isPlaying) { a.pause(); } else { a.play().catch(() => {}); }
   };
 
   const btnStyle: React.CSSProperties = { background: "none", border: "none", color: "var(--color-label-secondary)", cursor: "pointer", fontSize: "0.8rem", padding: "0.1rem 0.2rem", lineHeight: 1 };
