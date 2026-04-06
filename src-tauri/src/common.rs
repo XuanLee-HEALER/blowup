@@ -1,7 +1,6 @@
 use std::{
     ffi::OsStr,
     io,
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::ExitStatus,
     result,
@@ -132,14 +131,14 @@ pub async fn read_multiple_file_to_string<P: AsRef<Path> + Send + 'static>(
 
 async fn read_file_to_string<P: AsRef<Path>>(idx: usize, file: P) -> Result<(usize, String)> {
     const SIZE_LIMIT: u64 = 1024 * 1024;
-    let mut res = String::new();
     let file_path = file.as_ref();
-    if !file_path.is_file() || file_path.metadata()?.size() > SIZE_LIMIT {
+    let meta = std::fs::metadata(file_path).map_err(|_| CommonError::IoError)?;
+    if !meta.is_file() || meta.len() > SIZE_LIMIT {
         return Err(CommonError::IoError);
-    } else {
-        let mut file = File::open(file_path).await?;
-        file.read_to_string(&mut res).await?;
     }
+    let mut res = String::new();
+    let mut f = File::open(file_path).await?;
+    f.read_to_string(&mut res).await?;
     Ok((idx, res))
 }
 
