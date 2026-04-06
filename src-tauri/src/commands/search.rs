@@ -1,7 +1,7 @@
 use crate::error::SearchError;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MovieResult {
     pub title: String,
     pub year: u32,
@@ -108,6 +108,12 @@ fn quality_rank(q: &str) -> u8 {
         "720p" => 2,
         _ => 1,
     }
+}
+
+// ── Tauri command ─────────────────────────────────────────────
+#[tauri::command]
+pub async fn search_yify_cmd(query: String, year: Option<u32>) -> Result<Vec<MovieResult>, String> {
+    search_yify(&query, year).await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
