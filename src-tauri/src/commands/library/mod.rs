@@ -3,6 +3,7 @@
 pub mod films;
 pub mod genres;
 pub mod graph;
+pub mod items;
 pub mod people;
 pub mod reviews;
 
@@ -168,4 +169,89 @@ pub struct GraphLink {
     pub source: String,
     pub target: String,
     pub role: String,
+}
+
+// ── Library Items ────────────────────────────────────────────────
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct LibraryItemSummary {
+    pub id: i64,
+    pub film_id: Option<i64>,
+    pub file_path: String,
+    pub file_size: Option<i64>,
+    pub duration_secs: Option<i64>,
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
+    pub resolution: Option<String>,
+    pub added_at: String,
+    pub film_title: Option<String>,
+    pub film_year: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct LibraryItemDetail {
+    pub id: i64,
+    pub film_id: Option<i64>,
+    pub file_path: String,
+    pub file_size: Option<i64>,
+    pub duration_secs: Option<i64>,
+    pub video_codec: Option<String>,
+    pub audio_codec: Option<String>,
+    pub resolution: Option<String>,
+    pub added_at: String,
+    pub film_title: Option<String>,
+    pub film_year: Option<i64>,
+    pub assets: Vec<LibraryAssetEntry>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct LibraryAssetEntry {
+    pub id: i64,
+    pub asset_type: String,
+    pub file_path: String,
+    pub lang: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Serialize)]
+pub struct LibraryStats {
+    pub total_films: i64,
+    pub films_with_files: i64,
+    pub total_file_size: i64,
+    pub unlinked_files: i64,
+    pub by_decade: Vec<StatEntry>,
+    pub by_genre: Vec<StatEntry>,
+    pub by_resolution: Vec<StatEntry>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct StatEntry {
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Serialize)]
+pub struct ScanResult {
+    pub added: i64,
+    pub skipped: i64,
+    pub errors: Vec<String>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct FilmListEntry {
+    pub id: i64,
+    pub title: String,
+    pub original_title: Option<String>,
+    pub year: Option<i64>,
+    pub tmdb_rating: Option<f64>,
+    pub poster_cache_path: Option<String>,
+    pub has_file: i64,
+}
+
+#[derive(Serialize)]
+pub struct FilmFilterResult {
+    pub films: Vec<FilmListEntry>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
 }
