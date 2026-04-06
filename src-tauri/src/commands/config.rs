@@ -1,4 +1,4 @@
-use crate::config::{load_config, save_config, Config};
+use crate::config::{Config, load_config, save_config};
 
 #[tauri::command]
 pub fn get_config() -> Result<Config, String> {

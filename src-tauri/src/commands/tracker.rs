@@ -70,8 +70,11 @@ pub async fn update_tracker_list(_source: Option<String>) -> anyhow::Result<()> 
         .await?;
 
     // 更新时间记录
-    tokio::fs::write(&update_record, format!("{}\n", last_modified.format(TIME_FMT)))
-        .await?;
+    tokio::fs::write(
+        &update_record,
+        format!("{}\n", last_modified.format(TIME_FMT)),
+    )
+    .await?;
 
     Ok(())
 }

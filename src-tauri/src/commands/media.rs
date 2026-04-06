@@ -1,7 +1,7 @@
 // src-tauri/src/commands/media.rs
+use crate::config::load_config;
 use crate::ffmpeg::FfmpegTool;
 use serde::Serialize;
-use crate::config::load_config;
 
 /// Returns JSON output from ffprobe for the given file (streams info).
 #[tauri::command]
@@ -50,7 +50,14 @@ pub struct StreamInfo {
 #[tauri::command]
 pub async fn probe_media_detail(file_path: String) -> Result<MediaInfo, String> {
     let args: Vec<String> = vec![
-        "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", "--", &file_path,
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+        "--",
+        &file_path,
     ]
     .iter()
     .map(|s| s.to_string())
