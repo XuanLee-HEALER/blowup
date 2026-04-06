@@ -1,14 +1,37 @@
+# Build outputs
 /target
-.serena/
-node_modules
-.husky
+dist/
 
-__pycache__
+# Tauri generated
+src-tauri/gen/
+src-tauri/target/
 
-*.txt
+# Dependencies
+node_modules/
+
+# Environment & secrets
 .env
-*.srt
+.env.*
 
-!parasite.srt
-!LICENSE.txt
+# IDE & editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tools
+.serena/
 .superpowers/
+.husky/
+
+# Python
+__pycache__/
+
+# Misc
+*.srt
+!LICENSE.txt
