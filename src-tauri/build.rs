@@ -1,10 +1,10 @@
 fn main() {
     tauri_build::build();
     link_libmpv();
-    compile_native_objc();
+    compile_native();
 }
 
-fn compile_native_objc() {
+fn compile_native() {
     #[cfg(target_os = "macos")]
     {
         println!("cargo:rerun-if-changed=native/metal_layer.m");
@@ -18,6 +18,20 @@ fn compile_native_objc() {
         println!("cargo:rustc-link-lib=framework=OpenGL");
         println!("cargo:rustc-link-lib=framework=QuartzCore");
         println!("cargo:rustc-link-lib=framework=AppKit");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        println!("cargo:rerun-if-changed=native/win_gl_layer.c");
+        println!("cargo:rerun-if-changed=native/win_gl_layer.h");
+        cc::Build::new()
+            .file("native/win_gl_layer.c")
+            .compile("native_win_gl");
+
+        println!("cargo:rustc-link-lib=opengl32");
+        println!("cargo:rustc-link-lib=user32");
+        println!("cargo:rustc-link-lib=gdi32");
+        println!("cargo:rustc-link-lib=comctl32");
     }
 }
 
@@ -44,7 +58,9 @@ fn link_libmpv() {
 
     #[cfg(target_os = "windows")]
     {
-        println!("cargo:rustc-link-search=native=lib");
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let lib_dir = std::path::Path::new(&manifest_dir).join("lib");
+        println!("cargo:rustc-link-search=native={}", lib_dir.display());
         println!("cargo:rustc-link-lib=dylib=mpv");
     }
 }

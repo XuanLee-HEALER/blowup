@@ -32,6 +32,9 @@ Thumbs.db
 # Python
 __pycache__/
 
+# libmpv runtime binaries (download separately per platform)
+src-tauri/lib/
+
 # Misc
 *.srt
 !LICENSE.txt
