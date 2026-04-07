@@ -18,7 +18,12 @@ pub async fn s3_put(cfg: &SyncConfig, key: &str, body: &[u8]) -> Result<(), Stri
     let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
     let content_hash = hex_sha256(body);
-    let url = format!("{}/{}/{}", cfg.endpoint.trim_end_matches('/'), cfg.bucket, key);
+    let url = format!(
+        "{}/{}/{}",
+        cfg.endpoint.trim_end_matches('/'),
+        cfg.bucket,
+        key
+    );
     let host = extract_host(&cfg.endpoint)?;
 
     let headers = vec![
@@ -69,7 +74,12 @@ pub async fn s3_get(cfg: &SyncConfig, key: &str) -> Result<Vec<u8>, String> {
     let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
     let content_hash = hex_sha256(b""); // empty body for GET
-    let url = format!("{}/{}/{}", cfg.endpoint.trim_end_matches('/'), cfg.bucket, key);
+    let url = format!(
+        "{}/{}/{}",
+        cfg.endpoint.trim_end_matches('/'),
+        cfg.bucket,
+        key
+    );
     let host = extract_host(&cfg.endpoint)?;
 
     let headers = vec![
@@ -123,7 +133,12 @@ pub async fn s3_head(cfg: &SyncConfig, key: &str) -> Result<bool, String> {
     let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
     let content_hash = hex_sha256(b"");
-    let url = format!("{}/{}/{}", cfg.endpoint.trim_end_matches('/'), cfg.bucket, key);
+    let url = format!(
+        "{}/{}/{}",
+        cfg.endpoint.trim_end_matches('/'),
+        cfg.bucket,
+        key
+    );
     let host = extract_host(&cfg.endpoint)?;
 
     let headers = vec![
@@ -164,6 +179,7 @@ pub async fn s3_head(cfg: &SyncConfig, key: &str) -> Result<bool, String> {
 
 // ── S3 V4 Signature ─────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn sign_v4(
     method: &str,
     path: &str,
@@ -212,7 +228,10 @@ fn sign_v4(
 }
 
 fn derive_signing_key(secret_key: &str, date_stamp: &str) -> Vec<u8> {
-    let k_date = hmac_sha256(format!("AWS4{}", secret_key).as_bytes(), date_stamp.as_bytes());
+    let k_date = hmac_sha256(
+        format!("AWS4{}", secret_key).as_bytes(),
+        date_stamp.as_bytes(),
+    );
     let k_region = hmac_sha256(&k_date, REGION.as_bytes());
     let k_service = hmac_sha256(&k_region, SERVICE.as_bytes());
     hmac_sha256(&k_service, b"aws4_request")
@@ -231,7 +250,9 @@ fn hex_sha256(data: &[u8]) -> String {
 }
 
 fn extract_host(endpoint: &str) -> Result<String, String> {
-    let url: url::Url = endpoint.parse().map_err(|e| format!("无效的 Endpoint URL: {}", e))?;
+    let url: url::Url = endpoint
+        .parse()
+        .map_err(|e| format!("无效的 Endpoint URL: {}", e))?;
     let host = url.host_str().ok_or("Endpoint 缺少 host")?.to_string();
     match url.port() {
         Some(port) => Ok(format!("{}:{}", host, port)),

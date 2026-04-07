@@ -405,9 +405,7 @@ fn load_sync_config() -> Result<crate::config::SyncConfig, String> {
 }
 
 #[tauri::command]
-pub async fn export_knowledge_base_s3(
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<(), String> {
+pub async fn export_knowledge_base_s3(pool: tauri::State<'_, SqlitePool>) -> Result<(), String> {
     let sync_cfg = load_sync_config()?;
     let json = serialize_knowledge_base(pool.inner()).await?;
     s3::s3_put(&sync_cfg, S3_KEY_KB, json.as_bytes()).await
@@ -446,18 +444,36 @@ pub async fn import_knowledge_base_s3(
 
     for g in &data.genres {
         let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM genres WHERE id = ?")
-            .bind(g.id).fetch_one(pool.inner()).await.unwrap_or(0);
-        if exists > 0 { continue; }
-        sqlx::query("INSERT INTO genres (id, name, description, parent_id, period) VALUES (?, ?, ?, ?, ?)")
-            .bind(g.id).bind(&g.name).bind(&g.description).bind(g.parent_id).bind(&g.period)
-            .execute(pool.inner()).await.map_err(|e| e.to_string())?;
+            .bind(g.id)
+            .fetch_one(pool.inner())
+            .await
+            .unwrap_or(0);
+        if exists > 0 {
+            continue;
+        }
+        sqlx::query(
+            "INSERT INTO genres (id, name, description, parent_id, period) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(g.id)
+        .bind(&g.name)
+        .bind(&g.description)
+        .bind(g.parent_id)
+        .bind(&g.period)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
         imported.genres += 1;
     }
 
     for f in &data.films {
         let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM films WHERE id = ?")
-            .bind(f.id).fetch_one(pool.inner()).await.unwrap_or(0);
-        if exists > 0 { continue; }
+            .bind(f.id)
+            .fetch_one(pool.inner())
+            .await
+            .unwrap_or(0);
+        if exists > 0 {
+            continue;
+        }
         sqlx::query(
             "INSERT INTO films (id, tmdb_id, title, original_title, year, overview, tmdb_rating, poster_cache_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         )
@@ -468,17 +484,31 @@ pub async fn import_knowledge_base_s3(
     }
 
     for pf in &data.person_films {
-        sqlx::query("INSERT OR IGNORE INTO person_films (person_id, film_id, role) VALUES (?, ?, ?)")
-            .bind(pf.person_id).bind(pf.film_id).bind(&pf.role)
-            .execute(pool.inner()).await.ok();
+        sqlx::query(
+            "INSERT OR IGNORE INTO person_films (person_id, film_id, role) VALUES (?, ?, ?)",
+        )
+        .bind(pf.person_id)
+        .bind(pf.film_id)
+        .bind(&pf.role)
+        .execute(pool.inner())
+        .await
+        .ok();
     }
     for fg in &data.film_genres {
         sqlx::query("INSERT OR IGNORE INTO film_genres (film_id, genre_id) VALUES (?, ?)")
-            .bind(fg.film_id).bind(fg.genre_id).execute(pool.inner()).await.ok();
+            .bind(fg.film_id)
+            .bind(fg.genre_id)
+            .execute(pool.inner())
+            .await
+            .ok();
     }
     for pg in &data.person_genres {
         sqlx::query("INSERT OR IGNORE INTO person_genres (person_id, genre_id) VALUES (?, ?)")
-            .bind(pg.person_id).bind(pg.genre_id).execute(pool.inner()).await.ok();
+            .bind(pg.person_id)
+            .bind(pg.genre_id)
+            .execute(pool.inner())
+            .await
+            .ok();
     }
     for pr in &data.person_relations {
         sqlx::query("INSERT OR IGNORE INTO person_relations (from_id, to_id, relation_type) VALUES (?, ?, ?)")
@@ -493,15 +523,24 @@ pub async fn import_knowledge_base_s3(
              ON CONFLICT(entity_type, entity_id)
              DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
         )
-        .bind(&w.entity_type).bind(w.entity_id).bind(&w.content)
-        .execute(pool.inner()).await.ok();
+        .bind(&w.entity_type)
+        .bind(w.entity_id)
+        .bind(&w.content)
+        .execute(pool.inner())
+        .await
+        .ok();
         imported.wiki += 1;
     }
 
     for r in &data.reviews {
         let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reviews WHERE id = ?")
-            .bind(r.id).fetch_one(pool.inner()).await.unwrap_or(0);
-        if exists > 0 { continue; }
+            .bind(r.id)
+            .fetch_one(pool.inner())
+            .await
+            .unwrap_or(0);
+        if exists > 0 {
+            continue;
+        }
         sqlx::query(
             "INSERT INTO reviews (id, film_id, is_personal, author, content, rating) VALUES (?, ?, ?, ?, ?, ?)",
         )

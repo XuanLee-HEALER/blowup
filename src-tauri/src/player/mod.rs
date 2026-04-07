@@ -23,10 +23,18 @@ unsafe impl Sync for RenderCtxPtr {}
 pub struct MpvPlayer {
     mpv: Mpv,
     _render_ctx: MpvRenderCtx,
-    window_label: String,
 }
 
 unsafe impl Send for MpvPlayer {}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TrackInfo {
+    pub id: i64,
+    pub track_type: String, // "video", "audio", "sub"
+    pub title: Option<String>,
+    pub lang: Option<String>,
+    pub selected: bool,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PlayerState {
@@ -39,11 +47,41 @@ pub struct PlayerState {
 }
 
 impl MpvPlayer {
+    fn get_tracks(&self) -> Vec<TrackInfo> {
+        // mpv's track-list is a structured property; read count then each track
+        let count = self.mpv.get_property_i64("track-list/count").unwrap_or(0);
+        let mut tracks = Vec::new();
+        for i in 0..count {
+            let prefix = format!("track-list/{i}");
+            let id = self
+                .mpv
+                .get_property_i64(&format!("{prefix}/id"))
+                .unwrap_or(0);
+            let track_type = self
+                .mpv
+                .get_property_string(&format!("{prefix}/type"))
+                .unwrap_or_default();
+            let title = self.mpv.get_property_string(&format!("{prefix}/title"));
+            let lang = self.mpv.get_property_string(&format!("{prefix}/lang"));
+            let selected = self
+                .mpv
+                .get_property_string(&format!("{prefix}/selected"))
+                .is_some_and(|v| v == "yes");
+            tracks.push(TrackInfo {
+                id,
+                track_type,
+                title,
+                lang,
+                selected,
+            });
+        }
+        tracks
+    }
+
     fn get_state(&self) -> PlayerState {
-        let paused = self
-            .mpv
-            .get_property_double("pause")
-            .is_some_and(|v| v != 0.0);
+        // pause is FLAG type — read as string ("yes"/"no") for reliability
+        let pause_str = self.mpv.get_property_string("pause");
+        let paused = pause_str.as_deref() == Some("yes");
         PlayerState {
             playing: !paused,
             position: self.mpv.get_property_double("time-pos").unwrap_or(0.0),
@@ -71,6 +109,12 @@ unsafe extern "C" fn on_mpv_render_update(_ctx: *mut c_void) {
 
 pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
     close_player_inner(app);
+
+    // Ensure previous player window is fully gone
+    if let Some(old_window) = app.get_webview_window("player") {
+        old_window.close().ok();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
 
     // 1. Create Tauri transparent webview window (controls overlay)
     let window = WebviewWindowBuilder::new(app, "player", WebviewUrl::App("player.html".into()))
@@ -114,7 +158,7 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
     // 6. Observe properties + load file
     mpv.observe_property("time-pos", MPV_FORMAT_DOUBLE, 1)?;
     mpv.observe_property("duration", MPV_FORMAT_DOUBLE, 2)?;
-    mpv.observe_property("pause", MPV_FORMAT_DOUBLE, 3)?;
+    mpv.observe_property("pause", ffi::MPV_FORMAT_FLAG, 3)?;
     mpv.observe_property("volume", MPV_FORMAT_DOUBLE, 4)?;
 
     mpv.command(&["loadfile", file_path])?;
@@ -124,13 +168,20 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
     let player = MpvPlayer {
         mpv,
         _render_ctx: render_ctx,
-        window_label: "player".to_string(),
     };
 
     {
         let mut guard = PLAYER.lock().unwrap();
         *guard = Some(player);
     }
+
+    // When the user closes the window, clean up player resources
+    window.on_window_event(move |event| {
+        if let tauri::WindowEvent::Destroyed = event {
+            tracing::info!("player window destroyed, cleaning up");
+            cleanup_player_resources();
+        }
+    });
 
     let app_handle = app.clone();
     std::thread::spawn(move || {
@@ -170,7 +221,7 @@ fn event_loop(app: &AppHandle) {
             let Some(player) = guard.as_ref() else {
                 break;
             };
-            let (event_id, _) = player.mpv.wait_event(0.2);
+            let (event_id, _) = player.mpv.wait_event(0.05);
 
             should_break = event_id == MPV_EVENT_SHUTDOWN || event_id == MPV_EVENT_END_FILE;
 
@@ -181,7 +232,8 @@ fn event_loop(app: &AppHandle) {
             player.get_state()
         };
 
-        app.emit("player-state", &state).ok();
+        // Emit to the player window specifically
+        app.emit_to("player", "player-state", &state).ok();
 
         if should_break {
             tracing::info!("mpv event loop ending");
@@ -196,25 +248,33 @@ pub fn close_player(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn close_player_inner(app: &AppHandle) {
-    // Clear render context first (stops rendering)
+/// Clean up mpv + GL resources without touching the Tauri window.
+/// Called from window Destroyed event.
+fn cleanup_player_resources() {
+    // 1. Stop render callbacks
     *RENDER_CTX.lock().unwrap() = None;
 
+    // 2. Brief wait for in-flight render
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // 3. Remove GL view
+    native::remove_gl_view();
+
+    // 4. Destroy mpv
     let mut guard = PLAYER.lock().unwrap();
     if let Some(player) = guard.take() {
-        let label = player.window_label.clone();
-
-        // Drop player (mpv + render context)
         drop(player);
+        tracing::info!("player resources cleaned up");
+    }
+}
 
-        // Remove GL view
-        native::remove_gl_view();
+fn close_player_inner(app: &AppHandle) {
+    cleanup_player_resources();
 
-        // Close Tauri window
-        if let Some(window) = app.get_webview_window(&label) {
-            window.close().ok();
-        }
-        tracing::info!("player closed");
+    // Also close the Tauri window if still open
+    if let Some(window) = app.get_webview_window("player") {
+        window.close().ok();
+        tracing::info!("player window closed");
     }
 }
 

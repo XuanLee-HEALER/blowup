@@ -1,4 +1,4 @@
-use super::{PlayerState, close_player, open_player, with_player};
+use super::{PlayerState, TrackInfo, close_player, open_player, with_player};
 use tauri::Manager;
 
 #[tauri::command]
@@ -54,6 +54,11 @@ pub fn cmd_player_set_subtitle_track(track_id: i64) -> Result<(), String> {
 #[tauri::command]
 pub fn cmd_player_set_audio_track(track_id: i64) -> Result<(), String> {
     with_player(|p| p.mpv.set_property_string("aid", &track_id.to_string()))
+}
+
+#[tauri::command]
+pub fn cmd_player_get_tracks() -> Result<Vec<TrackInfo>, String> {
+    with_player(|p| Ok(p.get_tracks()))
 }
 
 #[tauri::command]

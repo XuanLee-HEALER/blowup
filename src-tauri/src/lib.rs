@@ -178,6 +178,7 @@ pub fn run() {
             player::commands::cmd_player_get_state,
             player::commands::cmd_player_set_subtitle_track,
             player::commands::cmd_player_set_audio_track,
+            player::commands::cmd_player_get_tracks,
             player::commands::cmd_player_toggle_fullscreen,
         ])
         .build(tauri::generate_context!())
