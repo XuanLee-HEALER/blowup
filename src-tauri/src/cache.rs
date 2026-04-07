@@ -55,11 +55,11 @@ fn load_from_disk() -> CreditsCache {
     let path = cache_path();
     let max = load_config().cache.max_entries;
 
+    let empty = || CreditsCache { max_entries: max, ..CreditsCache::default() };
+
     if !path.exists() {
         tracing::debug!("cache file not found, creating new");
-        let mut cache = CreditsCache::default();
-        cache.max_entries = max;
-        return cache;
+        return empty();
     }
 
     let content = match std::fs::read_to_string(&path) {
@@ -67,9 +67,7 @@ fn load_from_disk() -> CreditsCache {
         Err(e) => {
             tracing::warn!(error = %e, "failed to read cache file, rebuilding");
             std::fs::remove_file(&path).ok();
-            let mut cache = CreditsCache::default();
-            cache.max_entries = max;
-            return cache;
+            return empty();
         }
     };
 
@@ -86,20 +84,18 @@ fn load_from_disk() -> CreditsCache {
         Err(e) => {
             tracing::warn!(error = %e, "cache file corrupted, rebuilding");
             std::fs::remove_file(&path).ok();
-            let mut cache = CreditsCache::default();
-            cache.max_entries = max;
-            cache
+            empty()
         }
     }
 }
 
 fn save_to_disk(cache: &CreditsCache) {
     let path = cache_path();
-    if let Some(parent) = path.parent() {
-        if let Err(e) = std::fs::create_dir_all(parent) {
-            tracing::error!(error = %e, "failed to create cache directory");
-            return;
-        }
+    if let Some(parent) = path.parent()
+        && let Err(e) = std::fs::create_dir_all(parent)
+    {
+        tracing::error!(error = %e, "failed to create cache directory");
+        return;
     }
     match serde_json::to_string(cache) {
         Ok(content) => {

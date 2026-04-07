@@ -62,11 +62,10 @@ struct SubtitleResult {
 }
 
 fn clean_query(stem: &str) -> String {
-    let s = stem
-        .replace('.', " ")
-        .replace('-', " ")
-        .replace('[', " ")
-        .replace(']', " ");
+    let s: String = stem
+        .chars()
+        .map(|c| if matches!(c, '.' | '-' | '[' | ']') { ' ' } else { c })
+        .collect();
     let mut out = Vec::new();
     for t in s.split_whitespace() {
         if matches!(

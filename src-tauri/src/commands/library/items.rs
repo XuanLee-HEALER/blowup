@@ -20,7 +20,7 @@ const VIDEO_EXTENSIONS: &[&str] = &[
 ];
 
 async fn probe_video_file(path: &str) -> Result<VideoProbe, String> {
-    let args: Vec<String> = vec![
+    let args: Vec<String> = [
         "-v",
         "quiet",
         "-print_format",

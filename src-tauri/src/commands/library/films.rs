@@ -217,14 +217,14 @@ fn apply_film_filters(
     min_rating: Option<f64>,
     has_file: Option<bool>,
 ) {
-    if let Some(q) = query {
-        if !q.is_empty() {
-            qb.push(" AND (f.title LIKE '%' || ");
-            qb.push_bind(q.clone());
-            qb.push(" || '%' OR f.original_title LIKE '%' || ");
-            qb.push_bind(q.clone());
-            qb.push(" || '%')");
-        }
+    if let Some(q) = query
+        && !q.is_empty()
+    {
+        qb.push(" AND (f.title LIKE '%' || ");
+        qb.push_bind(q.clone());
+        qb.push(" || '%' OR f.original_title LIKE '%' || ");
+        qb.push_bind(q.clone());
+        qb.push(" || '%')");
     }
     if let Some(gid) = genre_id {
         qb.push(" AND fg.genre_id = ");
@@ -251,6 +251,7 @@ fn apply_film_filters(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn list_films_filtered_inner(
     pool: &SqlitePool,
     query: Option<String>,
@@ -335,6 +336,7 @@ pub(crate) async fn list_films_filtered_inner(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn list_films_filtered(
     pool: tauri::State<'_, SqlitePool>,

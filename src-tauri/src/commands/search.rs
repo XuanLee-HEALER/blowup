@@ -25,11 +25,11 @@ pub async fn search_yify(
         tracing::debug!(tmdb_id = id, "fetching IMDB ID from TMDB");
         if let Some(imdb_id) = fetch_imdb_id(&client, id).await {
             tracing::debug!(imdb_id = %imdb_id, "got IMDB ID, searching YTS");
-            if let Ok(results) = search_via_api(&client, &imdb_id, None).await {
-                if !results.is_empty() {
-                    tracing::info!(count = results.len(), "found via IMDB ID");
-                    return Ok(results);
-                }
+            if let Ok(results) = search_via_api(&client, &imdb_id, None).await
+                && !results.is_empty()
+            {
+                tracing::info!(count = results.len(), "found via IMDB ID");
+                return Ok(results);
             }
             tracing::debug!("IMDB ID search returned no results");
         } else {
@@ -39,22 +39,22 @@ pub async fn search_yify(
 
     // 2. Try original title
     tracing::debug!(query, "searching by original title");
-    if let Ok(results) = search_via_api(&client, query, year).await {
-        if !results.is_empty() {
-            tracing::info!(count = results.len(), "found via original title");
-            return Ok(results);
-        }
+    if let Ok(results) = search_via_api(&client, query, year).await
+        && !results.is_empty()
+    {
+        tracing::info!(count = results.len(), "found via original title");
+        return Ok(results);
     }
 
     // 3. Fallback: strip special characters and retry
     let sanitized = sanitize_query(query);
     if sanitized != query {
         tracing::debug!(sanitized, "retrying with sanitized title");
-        if let Ok(results) = search_via_api(&client, &sanitized, year).await {
-            if !results.is_empty() {
-                tracing::info!(count = results.len(), "found via sanitized title");
-                return Ok(results);
-            }
+        if let Ok(results) = search_via_api(&client, &sanitized, year).await
+            && !results.is_empty()
+        {
+            tracing::info!(count = results.len(), "found via sanitized title");
+            return Ok(results);
         }
     }
 

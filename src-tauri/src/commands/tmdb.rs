@@ -339,23 +339,23 @@ pub async fn search_movies(
         .json()
         .await;
 
-    if let Ok(pr) = person_resp {
-        if let Some(person) = pr.results.first() {
-            let mut disc_params = build_discover_params(&api_key, &filters);
-            disc_params.push(("with_people", person.id.to_string()));
-            let disc_resp: Result<ListResponse, _> = client
-                .get("https://api.themoviedb.org/3/discover/movie")
-                .query(&disc_params)
-                .send()
-                .await
-                .map_err(|e| e.to_string())?
-                .json()
-                .await;
-            if let Ok(dr) = disc_resp {
-                for item in dr.results {
-                    if seen.insert(item.id) {
-                        results.push(to_list_item(item));
-                    }
+    if let Ok(pr) = person_resp
+        && let Some(person) = pr.results.first()
+    {
+        let mut disc_params = build_discover_params(&api_key, &filters);
+        disc_params.push(("with_people", person.id.to_string()));
+        let disc_resp: Result<ListResponse, _> = client
+            .get("https://api.themoviedb.org/3/discover/movie")
+            .query(&disc_params)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .json()
+            .await;
+        if let Ok(dr) = disc_resp {
+            for item in dr.results {
+                if seen.insert(item.id) {
+                    results.push(to_list_item(item));
                 }
             }
         }

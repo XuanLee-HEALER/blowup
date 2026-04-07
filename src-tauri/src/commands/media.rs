@@ -49,7 +49,7 @@ pub struct StreamInfo {
 
 #[tauri::command]
 pub async fn probe_media_detail(file_path: String) -> Result<MediaInfo, String> {
-    let args: Vec<String> = vec![
+    let args: Vec<String> = [
         "-v",
         "quiet",
         "-print_format",
