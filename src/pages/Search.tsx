@@ -236,7 +236,7 @@ export default function Search() {
             placeholder="电影名称、导演… (回车搜索)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") doSearch(); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) doSearch(); }}
             style={{ marginBottom: "0.7rem" }}
           />
 

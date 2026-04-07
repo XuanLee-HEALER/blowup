@@ -44,7 +44,8 @@ export interface TmdbMovieCredits {
 export interface MusicTrack { src: string; name: string; }
 
 export interface AppConfig {
-  tools: { aria2c: string; alass: string; ffmpeg: string; player: string };
+  tools: { alass: string; ffmpeg: string; player: string };
+  download: { max_concurrent: number; enable_dht: boolean; persist_session: boolean };
   search: { rate_limit_secs: number };
   subtitle: { default_lang: string };
   opensubtitles: { api_key: string };
@@ -175,17 +176,47 @@ export interface FilmFilterParams {
 
 export interface DownloadRecord {
   id: number;
-  film_id: number | null;
+  tmdb_id: number | null;
   title: string;
+  director: string | null;
   quality: string | null;
   target: string;
-  output_dir: string;
-  status: "pending" | "downloading" | "completed" | "failed" | "cancelled";
-  pid: number | null;
-  file_path: string | null;
+  status: "pending" | "downloading" | "paused" | "completed" | "failed";
+  torrent_id: number | null;
+  progress_bytes: number;
+  total_bytes: number;
   error_message: string | null;
   started_at: string;
   completed_at: string | null;
+}
+
+export interface TorrentFileInfo {
+  index: number;
+  name: string;
+  size: number;
+}
+
+export interface StartDownloadRequest {
+  title: string;
+  target: string;
+  director: string;
+  tmdbId: number;
+  year?: number;
+  genres?: string[];
+  quality?: string;
+  onlyFiles?: number[];
+}
+
+export interface IndexEntry {
+  tmdb_id: number;
+  title: string;
+  director: string;
+  director_display: string;
+  year: number | null;
+  genres: string[];
+  path: string;
+  files: string[];
+  added_at: string;
 }
 
 export interface MovieResult {
@@ -314,17 +345,33 @@ export const library = {
     invoke<LibraryStats>("get_library_stats"),
   listFilmsFiltered: (params: FilmFilterParams) =>
     invoke<FilmFilterResult>("list_films_filtered", params as Record<string, unknown>),
+
+  // Library index
+  listIndexEntries: () =>
+    invoke<IndexEntry[]>("list_index_entries"),
+  listIndexByDirector: () =>
+    invoke<Record<string, IndexEntry[]>>("list_index_by_director"),
+  searchIndex: (query?: string, yearFrom?: number, yearTo?: number, genre?: string) =>
+    invoke<IndexEntry[]>("search_index", { query, yearFrom, yearTo, genre }),
+  rebuildIndex: () =>
+    invoke<void>("rebuild_index"),
 };
 
 export const download = {
-  startDownload: (title: string, target: string, quality?: string, filmId?: number) =>
-    invoke<number>("start_download", { title, target, quality, filmId }),
+  startDownload: (req: StartDownloadRequest) =>
+    invoke<number>("start_download", { req }),
+  getTorrentFiles: (target: string) =>
+    invoke<TorrentFileInfo[]>("get_torrent_files", { target }),
   listDownloads: () =>
     invoke<DownloadRecord[]>("list_downloads"),
-  cancelDownload: (id: number) =>
-    invoke<void>("cancel_download", { id }),
-  deleteDownloadRecord: (id: number) =>
-    invoke<void>("delete_download_record", { id }),
+  pauseDownload: (id: number) =>
+    invoke<void>("pause_download", { id }),
+  resumeDownload: (id: number) =>
+    invoke<void>("resume_download", { id }),
+  deleteDownload: (id: number) =>
+    invoke<void>("delete_download", { id }),
+  redownload: (id: number) =>
+    invoke<number>("redownload", { id }),
 };
 
 export const yts = {

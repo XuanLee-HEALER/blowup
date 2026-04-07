@@ -37,12 +37,12 @@ pub struct Config {
     pub music: MusicConfig,
     #[serde(default)]
     pub cache: CacheConfig,
+    #[serde(default)]
+    pub download: DownloadConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ToolsConfig {
-    #[serde(default = "default_aria2c")]
-    pub aria2c: String,
     #[serde(default = "default_alass")]
     pub alass: String,
     #[serde(default = "default_ffmpeg")]
@@ -115,15 +115,40 @@ fn default_cache_max_entries() -> usize {
     200
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DownloadConfig {
+    #[serde(default = "default_max_concurrent")]
+    pub max_concurrent: usize,
+    #[serde(default = "default_enable_dht")]
+    pub enable_dht: bool,
+    #[serde(default)]
+    pub persist_session: bool,
+}
+
+impl Default for DownloadConfig {
+    fn default() -> Self {
+        Self {
+            max_concurrent: default_max_concurrent(),
+            enable_dht: default_enable_dht(),
+            persist_session: false,
+        }
+    }
+}
+
+fn default_max_concurrent() -> usize {
+    3
+}
+
+fn default_enable_dht() -> bool {
+    true
+}
+
 fn default_music_mode() -> String {
     "sequential".to_string()
 }
 
 fn default_player() -> String {
     "mpv".to_string()
-}
-fn default_aria2c() -> String {
-    "aria2c".to_string()
 }
 fn default_alass() -> String {
     "alass".to_string()
@@ -151,7 +176,6 @@ fn default_root_dir() -> String {
 impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
-            aria2c: default_aria2c(),
             alass: default_alass(),
             ffmpeg: default_ffmpeg(),
             player: default_player(),
@@ -234,7 +258,6 @@ mod tests {
     #[test]
     fn default_config_has_sane_values() {
         let cfg = Config::default();
-        assert_eq!(cfg.tools.aria2c, "aria2c");
         assert_eq!(cfg.tools.alass, "alass");
         assert_eq!(cfg.tools.ffmpeg, "ffmpeg");
         assert_eq!(cfg.tools.player, "mpv");
@@ -252,11 +275,10 @@ mod tests {
     fn parse_partial_toml() {
         let toml = r#"
 [tools]
-aria2c = "/usr/local/bin/aria2c"
+alass = "/usr/local/bin/alass"
 "#;
         let cfg: Config = toml::from_str(toml).unwrap();
-        assert_eq!(cfg.tools.aria2c, "/usr/local/bin/aria2c");
-        assert_eq!(cfg.tools.alass, "alass");
+        assert_eq!(cfg.tools.alass, "/usr/local/bin/alass");
         assert_eq!(cfg.tools.ffmpeg, "ffmpeg");
         assert_eq!(cfg.search.rate_limit_secs, 5);
     }
@@ -271,8 +293,8 @@ aria2c = "/usr/local/bin/aria2c"
     fn config_is_serializable() {
         let cfg = Config::default();
         let serialized = toml::to_string(&cfg).unwrap();
-        assert!(serialized.contains("aria2c"));
         assert!(serialized.contains("ffmpeg"));
+        assert!(serialized.contains("max_concurrent"));
     }
 
     #[test]

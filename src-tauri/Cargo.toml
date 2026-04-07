@@ -1,6 +1,6 @@
 [package]
 name = "blowup"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2024"
 
 [lib]
@@ -29,10 +29,13 @@ toml           = "0.8"
 dirs           = "5"
 anyhow         = "1"
 flate2         = "1"
-octocrab       = "0.44"
+librqbit       = "8.1"
+unicode-normalization = "0.1"
+url            = "2"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "migrate", "derive"] }
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tempfile = "3"
+serial_test = "3"

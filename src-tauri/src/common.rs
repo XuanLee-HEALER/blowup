@@ -142,6 +142,32 @@ async fn read_file_to_string<P: AsRef<Path>>(idx: usize, file: P) -> Result<(usi
     Ok((idx, res))
 }
 
+/// Normalize director name(s) for use as a filesystem directory name.
+pub fn normalize_director_name(raw: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+
+    let illegal = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
+    let mut names: Vec<String> = raw
+        .split(',')
+        .map(|s| {
+            s.nfc()
+                .collect::<String>()
+                .trim()
+                .chars()
+                .filter(|c| !illegal.contains(c))
+                .collect::<String>()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    names.sort();
+    names.join(", ")
+}
+
 #[cfg(test)]
 mod tests {
     use std::{fs, str::FromStr};
@@ -389,5 +415,45 @@ mod tests {
         } else {
             panic!("Expected an Io error, but got a different error.");
         }
+    }
+
+    #[test]
+    fn normalize_single_director() {
+        assert_eq!(
+            super::normalize_director_name("Stanley Kubrick"),
+            "Stanley Kubrick"
+        );
+    }
+
+    #[test]
+    fn normalize_multiple_directors_sorted() {
+        assert_eq!(
+            super::normalize_director_name("Joel Coen, Ethan Coen"),
+            "Ethan Coen, Joel Coen"
+        );
+    }
+
+    #[test]
+    fn normalize_strips_illegal_chars() {
+        assert_eq!(
+            super::normalize_director_name("Jean-Luc Godard: A Life"),
+            "Jean-Luc Godard A Life"
+        );
+    }
+
+    #[test]
+    fn normalize_trims_and_collapses_spaces() {
+        assert_eq!(
+            super::normalize_director_name("  Stanley   Kubrick  "),
+            "Stanley Kubrick"
+        );
+    }
+
+    #[test]
+    fn normalize_empty_segments_filtered() {
+        assert_eq!(
+            super::normalize_director_name("Stanley Kubrick, , "),
+            "Stanley Kubrick"
+        );
     }
 }

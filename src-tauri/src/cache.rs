@@ -47,7 +47,10 @@ pub fn flush_cache() {
     let guard = CACHE.lock().unwrap();
     if let Some(cache) = guard.as_ref() {
         save_to_disk(cache);
-        tracing::info!(entries = cache.entries.len(), "credits cache flushed to disk");
+        tracing::info!(
+            entries = cache.entries.len(),
+            "credits cache flushed to disk"
+        );
     }
 }
 
@@ -55,7 +58,10 @@ fn load_from_disk() -> CreditsCache {
     let path = cache_path();
     let max = load_config().cache.max_entries;
 
-    let empty = || CreditsCache { max_entries: max, ..CreditsCache::default() };
+    let empty = || CreditsCache {
+        max_entries: max,
+        ..CreditsCache::default()
+    };
 
     if !path.exists() {
         tracing::debug!("cache file not found, creating new");
@@ -146,6 +152,7 @@ pub fn credits_put(id: u64, director: Option<String>, cast: Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     fn setup_test_cache() {
         let mut guard = CACHE.lock().unwrap();
@@ -156,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn put_and_get() {
         setup_test_cache();
         credits_put(1, Some("Director A".into()), vec!["Actor 1".into()]);
@@ -165,6 +173,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn lru_eviction() {
         setup_test_cache();
         credits_put(1, None, vec![]);
@@ -177,6 +186,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn lru_touch_on_get() {
         setup_test_cache();
         credits_put(1, None, vec![]);
@@ -191,6 +201,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn update_existing_entry() {
         setup_test_cache();
         credits_put(1, Some("Old".into()), vec![]);

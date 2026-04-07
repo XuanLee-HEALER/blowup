@@ -19,16 +19,6 @@ pub enum SearchError {
 }
 
 #[derive(Debug, Error)]
-pub enum DownloadError {
-    #[error("aria2c not found in PATH")]
-    Aria2cNotFound,
-    #[error("aria2c failed: {0}")]
-    Aria2cFailed(String),
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-}
-
-#[derive(Debug, Error)]
 pub enum SubError {
     #[error("Subtitle source returned no results")]
     NoSubtitleFound,
@@ -78,12 +68,6 @@ mod tests {
     fn search_error_display() {
         let e = SearchError::NoResults("Blow-Up 1966".to_string());
         assert_eq!(e.to_string(), "No results found for query: Blow-Up 1966");
-    }
-
-    #[test]
-    fn download_error_display() {
-        let e = DownloadError::Aria2cNotFound;
-        assert_eq!(e.to_string(), "aria2c not found in PATH");
     }
 
     #[test]

@@ -118,7 +118,7 @@ export default function Settings() {
       </Section>
 
       <Section title="工具路径">
-        {(["aria2c", "alass", "ffmpeg", "player"] as const).map((tool) => (
+        {(["alass", "ffmpeg", "player"] as const).map((tool) => (
           <Field key={tool} label={tool}>
             <TextInput
               defaultValue={cfg.tools[tool]}
@@ -127,6 +127,36 @@ export default function Settings() {
             />
           </Field>
         ))}
+      </Section>
+
+      <Section title="下载">
+        <Field label="最大并发数">
+          <TextInput
+            type="number"
+            defaultValue={String(cfg.download?.max_concurrent ?? 3)}
+            onBlur={(e) => {
+              const v = parseInt(e.currentTarget.value, 10);
+              if (!isNaN(v) && v >= 1 && v <= 10) { const n = v; update((c) => { c.download.max_concurrent = n; }); }
+            }}
+            style={{ width: 80 }}
+          />
+        </Field>
+        <Field label="启用 DHT">
+          <input
+            type="checkbox"
+            checked={cfg.download?.enable_dht ?? true}
+            onChange={(e) => update((c) => { c.download.enable_dht = e.target.checked; })}
+            style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
+          />
+        </Field>
+        <Field label="会话持久化">
+          <input
+            type="checkbox"
+            checked={cfg.download?.persist_session ?? false}
+            onChange={(e) => update((c) => { c.download.persist_session = e.target.checked; })}
+            style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
+          />
+        </Field>
       </Section>
 
       <Section title="库目录">

@@ -394,6 +394,41 @@ pub async fn get_library_stats(pool: tauri::State<'_, SqlitePool>) -> Result<Lib
     })
 }
 
+// ── Library Index Commands ───────────────────────────────────────
+
+#[tauri::command]
+pub fn list_index_entries(
+    index: tauri::State<'_, crate::library_index::LibraryIndex>,
+) -> Result<Vec<crate::library_index::IndexEntry>, String> {
+    Ok(index.list_entries())
+}
+
+#[tauri::command]
+pub fn list_index_by_director(
+    index: tauri::State<'_, crate::library_index::LibraryIndex>,
+) -> Result<std::collections::BTreeMap<String, Vec<crate::library_index::IndexEntry>>, String> {
+    Ok(index.list_by_director())
+}
+
+#[tauri::command]
+pub fn search_index(
+    index: tauri::State<'_, crate::library_index::LibraryIndex>,
+    query: Option<String>,
+    year_from: Option<u32>,
+    year_to: Option<u32>,
+    genre: Option<String>,
+) -> Result<Vec<crate::library_index::IndexEntry>, String> {
+    Ok(index.search(query.as_deref(), year_from, year_to, genre.as_deref()))
+}
+
+#[tauri::command]
+pub fn rebuild_index(
+    index: tauri::State<'_, crate::library_index::LibraryIndex>,
+) -> Result<(), String> {
+    index.rebuild_from_disk();
+    Ok(())
+}
+
 // ── Tests ───────────────────────────────────────────────────────
 
 #[cfg(test)]

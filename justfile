@@ -28,8 +28,8 @@ build-web:
 
 # ── Quality ───────────────────────────────────────────────────────
 
-# Run all checks (lint + typecheck + test)
-check: lint typecheck test
+# Run all checks (lint + typecheck + clippy + fmt + test)
+check: lint typecheck clippy fmt-check test
 
 # TypeScript type check
 typecheck:
@@ -43,9 +43,9 @@ lint:
 lint-fix:
     bunx eslint src/ --fix
 
-# Rust clippy
+# Rust clippy (warnings as errors)
 clippy:
-    cd src-tauri && cargo clippy
+    cd src-tauri && cargo clippy -- -D warnings
 
 # Rust format check
 fmt-check:

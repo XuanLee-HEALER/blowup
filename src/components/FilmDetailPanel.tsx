@@ -3,42 +3,56 @@ import { useState, useEffect } from "react";
 import { yts, download } from "../lib/tauri";
 import type { MovieListItem, MovieResult } from "../lib/tauri";
 
+const pulseStyle = document.createElement("style");
+pulseStyle.textContent = `@keyframes pulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`;
+if (!document.head.querySelector("[data-blowup-pulse]")) {
+  pulseStyle.setAttribute("data-blowup-pulse", "");
+  document.head.appendChild(pulseStyle);
+}
+
 function TorrentSearchModal({
-  title,
-  year,
-  tmdbId,
-  filmId,
+  film,
   onClose,
 }: {
-  title: string;
-  year?: number;
-  tmdbId?: number;
-  filmId?: number;
+  film: MovieListItem;
   onClose: () => void;
 }) {
   const [results, setResults] = useState<MovieResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [starting, setStarting] = useState<Set<string>>(new Set());
   const [started, setStarted] = useState<Set<string>>(new Set());
+
+  const year = film.year ? parseInt(film.year) : undefined;
 
   useEffect(() => {
     yts
-      .search(title, year, tmdbId)
+      .search(film.title, year, film.id)
       .then(setResults)
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [title, year, tmdbId]);
+  }, [film.title, year, film.id]);
 
   const handleDownload = async (r: MovieResult) => {
     const target = r.magnet ?? r.torrent_url;
     if (!target) return;
-    await download.startDownload(
-      `${r.title} (${r.year})`,
-      target,
-      r.quality,
-      filmId
-    );
-    setStarted((prev) => new Set(prev).add(target));
+    setStarting((prev) => new Set(prev).add(target));
+    try {
+      await download.startDownload({
+        title: film.title,
+        target,
+        director: film.director ?? "Unknown",
+        tmdbId: film.id,
+        year: year,
+        genres: [],
+        quality: r.quality,
+      });
+      setStarted((prev) => new Set(prev).add(target));
+    } catch (e) {
+      console.error("download failed:", e);
+    } finally {
+      setStarting((prev) => { const next = new Set(prev); next.delete(target); return next; });
+    }
   };
 
   return (
@@ -65,7 +79,7 @@ function TorrentSearchModal({
           overflowY: "auto",
         }}
       >
-        <h3 style={{ margin: "0 0 12px" }}>搜索资源: {title}</h3>
+        <h3 style={{ margin: "0 0 12px" }}>搜索资源: {film.title}</h3>
 
         {loading && (
           <div style={{ color: "var(--color-label-secondary)", fontSize: 13 }}>
@@ -108,7 +122,17 @@ function TorrentSearchModal({
               </div>
               {isStarted ? (
                 <span style={{ color: "var(--color-accent)", fontSize: 12 }}>
-                  ✓ 已添加
+                  下载中
+                </span>
+              ) : starting.has(target) ? (
+                <span style={{ fontSize: 12, display: "inline-flex", gap: 3 }}>
+                  {[0, 1, 2].map((i) => (
+                    <span key={i} style={{
+                      width: 4, height: 4, borderRadius: "50%", background: "var(--color-accent)",
+                      animation: "pulse 1.2s ease-in-out infinite",
+                      animationDelay: `${i * 0.2}s`,
+                    }} />
+                  ))}
                 </span>
               ) : (
                 <button
@@ -215,9 +239,7 @@ export function FilmDetailPanel({ film, onClose }: FilmDetailPanelProps) {
 
       {showTorrentModal && (
         <TorrentSearchModal
-          title={film.title}
-          year={film.year ? parseInt(film.year) : undefined}
-          tmdbId={film.id}
+          film={film}
           onClose={() => setShowTorrentModal(false)}
         />
       )}
