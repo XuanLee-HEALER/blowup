@@ -14,9 +14,11 @@ const LANG_OPTIONS = [
 export default function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [showKey, setShowKey] = useState(false);
+  const [cachePath, setCachePath] = useState("");
 
   useEffect(() => {
     config.get().then(setCfg);
+    config.getCachePath().then(setCachePath);
   }, []);
 
   const update = (mutate: (draft: AppConfig) => void) => {
@@ -146,6 +148,28 @@ export default function Settings() {
               if (!isNaN(v) && v >= 0) { const n = v; update((c) => { c.search.rate_limit_secs = n; }); }
             }}
             style={{ width: 80 }}
+          />
+        </Field>
+      </Section>
+
+      <Section title="缓存">
+        <Field label="缓存文件路径">
+          <TextInput
+            value={cachePath}
+            readOnly
+            style={{ flex: 1, color: "var(--color-label-tertiary)" }}
+            onChange={() => {}}
+          />
+        </Field>
+        <Field label="最大缓存条目">
+          <TextInput
+            type="number"
+            defaultValue={String(cfg.cache?.max_entries ?? 200)}
+            onBlur={(e) => {
+              const v = parseInt(e.currentTarget.value, 10);
+              if (!isNaN(v) && v > 0) { const n = v; update((c) => { c.cache.max_entries = n; }); }
+            }}
+            style={{ width: 100 }}
           />
         </Field>
       </Section>

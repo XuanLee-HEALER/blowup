@@ -71,6 +71,7 @@ pub fn run() {
             commands::media::open_in_player,
             commands::config::get_config,
             commands::config::save_config_cmd,
+            commands::config::get_cache_path,
             commands::export::export_knowledge_base,
             commands::export::import_knowledge_base,
             commands::export::export_config,

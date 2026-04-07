@@ -51,6 +51,7 @@ export interface AppConfig {
   tmdb: { api_key: string };
   library: { root_dir: string };
   music: { enabled: boolean; mode: "sequential" | "random"; playlist: MusicTrack[] };
+  cache: { max_entries: number };
 }
 
 // ── Library types ─────────────────────────────────────────────────
@@ -245,6 +246,7 @@ export const config = {
   save: (newConfig: AppConfig) => invoke<void>("save_config_cmd", { newConfig }),
   exportConfig: (path: string) => invoke<void>("export_config", { path }),
   importConfig: (path: string) => invoke<void>("import_config", { path }),
+  getCachePath: () => invoke<string>("get_cache_path"),
 };
 
 export const dataIO = {
