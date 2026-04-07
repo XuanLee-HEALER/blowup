@@ -23,7 +23,8 @@
     "react-dom": "^19",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "vidstack": "^0.6.15"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",

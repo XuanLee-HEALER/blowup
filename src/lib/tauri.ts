@@ -401,5 +401,5 @@ export const media = {
   probeDetail: (filePath: string) =>
     invoke<MediaInfo>("probe_media_detail", { filePath }),
   openInPlayer: (filePath: string) =>
-    invoke<void>("open_in_player", { filePath }),
+    invoke<void>("cmd_open_player", { filePath }),
 };

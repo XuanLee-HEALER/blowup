@@ -6,6 +6,7 @@ pub mod db;
 pub mod error;
 pub mod ffmpeg;
 pub mod library_index;
+pub mod player;
 pub mod torrent;
 
 use tauri::Manager;
@@ -162,6 +163,17 @@ pub fn run() {
             commands::library::items::list_index_by_director,
             commands::library::items::search_index,
             commands::library::items::rebuild_index,
+            // Player
+            player::commands::cmd_open_player,
+            player::commands::cmd_close_player,
+            player::commands::cmd_player_play_pause,
+            player::commands::cmd_player_seek,
+            player::commands::cmd_player_seek_relative,
+            player::commands::cmd_player_set_volume,
+            player::commands::cmd_player_get_state,
+            player::commands::cmd_player_set_subtitle_track,
+            player::commands::cmd_player_set_audio_track,
+            player::commands::cmd_player_toggle_fullscreen,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

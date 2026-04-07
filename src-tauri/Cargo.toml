@@ -9,9 +9,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+cc = "1"
 
 [dependencies]
-tauri          = { version = "2.10", features = [] }
+tauri          = { version = "2.10", features = ["macos-private-api"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2              = "0.6"
+objc2-app-kit      = { version = "0.3", features = ["NSView", "NSWindow", "NSColor", "NSResponder"] }
+objc2-foundation   = "0.3"
 tauri-plugin-dialog = "2.7"
 tauri-plugin-opener = "2.5"
 serde          = { version = "1", features = ["derive"] }
