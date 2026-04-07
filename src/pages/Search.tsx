@@ -179,6 +179,20 @@ export default function Search() {
         setResults(append ? (prev) => [...prev, ...items] : items);
         setPage(p);
         setHasMore(items.length >= 20);
+
+        // Async enrich credits for top 3 results
+        const top3Ids = items.slice(0, 3).map((m) => m.id);
+        if (top3Ids.length > 0) {
+          tmdb.enrichCredits(apiKey, top3Ids).then((credits) => {
+            const map = new Map(credits.map((c) => [c.id, c]));
+            setResults((prev) =>
+              prev.map((m) => {
+                const c = map.get(m.id);
+                return c ? { ...m, director: c.director ?? undefined, cast: c.cast } : m;
+              })
+            );
+          }).catch(() => { /* credits enrichment is best-effort */ });
+        }
       } catch { /* */ } finally {
         setLoading(false);
       }
@@ -339,6 +353,16 @@ export default function Search() {
                     </span>
                   )}
                 </div>
+                {m.director && (
+                  <div style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", marginTop: "0.15rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    导演: {m.director}
+                  </div>
+                )}
+                {m.cast && m.cast.length > 0 && (
+                  <div style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", marginTop: "0.1rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    主演: {m.cast.join(", ")}
+                  </div>
+                )}
               </div>
             </div>
           ))}

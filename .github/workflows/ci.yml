@@ -18,11 +18,8 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install Linux dependencies
         run: |
@@ -34,13 +31,13 @@ jobs:
             patchelf
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: TypeScript check
-        run: npx tsc --noEmit
+        run: bunx tsc --noEmit
 
       - name: ESLint
-        run: npx eslint src/
+        run: bunx eslint src/
 
       - name: Rust fmt check
         working-directory: src-tauri

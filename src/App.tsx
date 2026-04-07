@@ -30,7 +30,7 @@ const NAV_SECTIONS = [
   {
     label: "资源",
     items: [
-      { icon: "⊞", label: "我的库", path: "/library" },
+      { icon: "⊞", label: "电影库", path: "/library" },
       { icon: "↓", label: "下载", path: "/download" },
     ],
   },

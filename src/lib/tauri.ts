@@ -20,6 +20,14 @@ export interface MovieListItem {
   vote_average: number;
   poster_path: string | null;
   genre_ids: number[];
+  director?: string;
+  cast?: string[];
+}
+
+export interface MovieCreditsEnriched {
+  id: number;
+  director: string | null;
+  cast: string[];
 }
 
 export interface TmdbGenre { id: number; name: string; }
@@ -228,6 +236,8 @@ export const tmdb = {
   listGenres: (apiKey: string) => invoke<TmdbGenre[]>("list_genres", { apiKey }),
   getMovieCredits: (apiKey: string, tmdbId: number) =>
     invoke<TmdbMovieCredits>("get_tmdb_movie_credits", { apiKey, tmdbId }),
+  enrichCredits: (apiKey: string, ids: number[]) =>
+    invoke<MovieCreditsEnriched[]>("enrich_movie_credits", { apiKey, ids }),
 };
 
 export const config = {
@@ -316,8 +326,8 @@ export const download = {
 };
 
 export const yts = {
-  search: (query: string, year?: number) =>
-    invoke<MovieResult[]>("search_yify_cmd", { query, year }),
+  search: (query: string, year?: number, tmdbId?: number) =>
+    invoke<MovieResult[]>("search_yify_cmd", { query, year, tmdbId }),
 };
 
 export const tracker = {

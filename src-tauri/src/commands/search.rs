@@ -1,3 +1,4 @@
+use crate::config::load_config;
 use crate::error::SearchError;
 use serde::{Deserialize, Serialize};
 
@@ -11,13 +12,86 @@ pub struct MovieResult {
     pub seeds: u32,
 }
 
-pub async fn search_yify(query: &str, year: Option<u32>) -> Result<Vec<MovieResult>, SearchError> {
+pub async fn search_yify(
+    query: &str,
+    year: Option<u32>,
+    tmdb_id: Option<u64>,
+) -> Result<Vec<MovieResult>, SearchError> {
+    tracing::info!(query, ?year, ?tmdb_id, "yify search started");
     let client = reqwest::Client::new();
-    match search_via_api(&client, query, year).await {
-        Ok(results) if !results.is_empty() => Ok(results),
-        Ok(_) => Err(SearchError::NoResults(query.to_string())),
-        Err(_) => Err(SearchError::NoResults(query.to_string())),
+
+    // 1. Try IMDB ID from TMDB (most reliable)
+    if let Some(id) = tmdb_id {
+        tracing::debug!(tmdb_id = id, "fetching IMDB ID from TMDB");
+        if let Some(imdb_id) = fetch_imdb_id(&client, id).await {
+            tracing::debug!(imdb_id = %imdb_id, "got IMDB ID, searching YTS");
+            if let Ok(results) = search_via_api(&client, &imdb_id, None).await {
+                if !results.is_empty() {
+                    tracing::info!(count = results.len(), "found via IMDB ID");
+                    return Ok(results);
+                }
+            }
+            tracing::debug!("IMDB ID search returned no results");
+        } else {
+            tracing::debug!("could not resolve IMDB ID");
+        }
     }
+
+    // 2. Try original title
+    tracing::debug!(query, "searching by original title");
+    if let Ok(results) = search_via_api(&client, query, year).await {
+        if !results.is_empty() {
+            tracing::info!(count = results.len(), "found via original title");
+            return Ok(results);
+        }
+    }
+
+    // 3. Fallback: strip special characters and retry
+    let sanitized = sanitize_query(query);
+    if sanitized != query {
+        tracing::debug!(sanitized, "retrying with sanitized title");
+        if let Ok(results) = search_via_api(&client, &sanitized, year).await {
+            if !results.is_empty() {
+                tracing::info!(count = results.len(), "found via sanitized title");
+                return Ok(results);
+            }
+        }
+    }
+
+    tracing::warn!(query, "no results after all fallbacks");
+    Err(SearchError::NoResults(query.to_string()))
+}
+
+/// Fetch IMDB ID for a TMDB movie via the TMDB external_ids endpoint.
+async fn fetch_imdb_id(client: &reqwest::Client, tmdb_id: u64) -> Option<String> {
+    let api_key = load_config().tmdb.api_key;
+    if api_key.is_empty() {
+        return None;
+    }
+
+    #[derive(Deserialize)]
+    struct ExternalIds {
+        imdb_id: Option<String>,
+    }
+
+    let resp = client
+        .get(format!(
+            "https://api.themoviedb.org/3/movie/{tmdb_id}/external_ids"
+        ))
+        .query(&[("api_key", &api_key)])
+        .header("User-Agent", "blowup/0.1")
+        .send()
+        .await
+        .ok()?;
+
+    let ids: ExternalIds = resp.json().await.ok()?;
+    ids.imdb_id.filter(|s| !s.is_empty())
+}
+
+fn sanitize_query(query: &str) -> String {
+    let re = regex::Regex::new(r"[^\w\s]").unwrap();
+    let cleaned = re.replace_all(query, " ");
+    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 async fn search_via_api(
@@ -25,6 +99,7 @@ async fn search_via_api(
     query: &str,
     year: Option<u32>,
 ) -> Result<Vec<MovieResult>, SearchError> {
+    tracing::debug!(query, ?year, "YTS API request");
     let mut params = vec![
         ("query_term", query.to_string()),
         ("sort_by", "seeds".to_string()),
@@ -35,7 +110,7 @@ async fn search_via_api(
     }
 
     let resp = client
-        .get("https://yts.torrentbay.st/api/v2/list_movies.json")
+        .get("https://movies-api.accel.li/api/v2/list_movies.json")
         .query(&params)
         .header("User-Agent", "blowup/0.1")
         .send()
@@ -112,8 +187,14 @@ fn quality_rank(q: &str) -> u8 {
 
 // ── Tauri command ─────────────────────────────────────────────
 #[tauri::command]
-pub async fn search_yify_cmd(query: String, year: Option<u32>) -> Result<Vec<MovieResult>, String> {
-    search_yify(&query, year).await.map_err(|e| e.to_string())
+pub async fn search_yify_cmd(
+    query: String,
+    year: Option<u32>,
+    tmdb_id: Option<u64>,
+) -> Result<Vec<MovieResult>, String> {
+    search_yify(&query, year, tmdb_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

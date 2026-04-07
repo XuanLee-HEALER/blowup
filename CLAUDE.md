@@ -23,7 +23,7 @@ src-tauri/                    # Rust backend (Tauri v2)
 │   ├── common.rs             # exec_command, find_command_path
 │   └── commands/
 │       ├── config.rs         # get_config, set_config_key, set_music_playlist
-│       ├── search.rs         # YTS torrent search (yts.torrentbay.st)
+│       ├── search.rs         # YTS torrent search (movies-api.accel.li)
 │       ├── download.rs       # aria2c wrapper + background download management
 │       ├── tmdb.rs           # TMDB search/discover/credits
 │       ├── tracker.rs        # BitTorrent tracker list update (octocrab)
@@ -75,11 +75,13 @@ just dev          # Tauri dev server (frontend + backend hot reload)
 just check        # Run lint + typecheck + test
 just test         # Rust tests only
 just lint         # ESLint
-just typecheck    # npx tsc --noEmit
+just typecheck    # bunx tsc --noEmit
 just build        # Production build (Tauri installer)
 just clippy       # Rust clippy
 just fmt          # Rust format
 ```
+
+Frontend uses **bun** as package manager and script runner (`bun install`, `bun run`, `bunx`).
 
 ## Code Style & Conventions
 
@@ -112,7 +114,7 @@ just fmt          # Rust format
 
 ## External Service Quirks
 
-- **YIFY**: `yts.mx` blocks VLESS proxy exit IPs → use `yts.torrentbay.st`
+- **YIFY**: Official API migrated to `movies-api.accel.li/api/v2/` (old `yts.torrentbay.st` returns HTML instead of JSON)
 - **OpenSubtitles**: REST API requires paid key → use XML-RPC at `api.opensubtitles.org/xml-rpc` for anonymous access. Strip `/sid-TOKEN/` from download URLs
 - **TMDB**: free API key from themoviedb.org
 

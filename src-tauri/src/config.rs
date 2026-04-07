@@ -11,7 +11,7 @@ pub fn init_app_data_dir(dir: PathBuf) {
     APP_DATA_DIR.set(dir).ok();
 }
 
-fn app_data_dir() -> PathBuf {
+pub(crate) fn app_data_dir() -> PathBuf {
     APP_DATA_DIR.get().cloned().unwrap_or_else(|| {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -35,6 +35,8 @@ pub struct Config {
     pub library: LibraryConfig,
     #[serde(default)]
     pub music: MusicConfig,
+    #[serde(default)]
+    pub cache: CacheConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -93,6 +95,24 @@ pub struct MusicConfig {
 pub struct MusicTrack {
     pub src: String,
     pub name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CacheConfig {
+    #[serde(default = "default_cache_max_entries")]
+    pub max_entries: usize,
+}
+
+impl Default for CacheConfig {
+    fn default() -> Self {
+        Self {
+            max_entries: default_cache_max_entries(),
+        }
+    }
+}
+
+fn default_cache_max_entries() -> usize {
+    200
 }
 
 fn default_music_mode() -> String {

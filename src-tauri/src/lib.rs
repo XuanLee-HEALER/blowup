@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod commands;
 pub mod common;
 pub mod config;
@@ -7,8 +8,16 @@ pub mod ffmpeg;
 
 use tauri::Manager;
 
+fn init_tracing() {
+    use tracing_subscriber::{EnvFilter, fmt};
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("blowup_lib=debug"));
+    fmt().with_env_filter(filter).init();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_tracing();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -19,6 +28,7 @@ pub fn run() {
                 .app_data_dir()
                 .expect("could not resolve app data dir");
             config::init_app_data_dir(data_dir);
+            cache::init_cache();
             tauri::async_runtime::block_on(async move {
                 match db::init_db(&handle).await {
                     Ok(pool) => {
@@ -44,6 +54,7 @@ pub fn run() {
             commands::tmdb::discover_movies,
             commands::tmdb::list_genres,
             commands::tmdb::get_tmdb_movie_credits,
+            commands::tmdb::enrich_movie_credits,
             commands::download::download_target,
             commands::download::start_download,
             commands::download::list_downloads,
@@ -108,6 +119,11 @@ pub fn run() {
             // M3 library — films filter
             commands::library::films::list_films_filtered,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                cache::flush_cache();
+            }
+        });
 }

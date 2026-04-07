@@ -10,21 +10,21 @@ default:
 
 # Start Tauri dev server (frontend + backend hot reload)
 dev:
-    npm run tauri dev
+    bunx tauri dev
 
 # Start frontend only (Vite dev server)
 dev-web:
-    npm run dev
+    bun run dev
 
 # ── Build ─────────────────────────────────────────────────────────
 
 # Production build (Tauri installer)
 build:
-    npm run tauri build
+    bunx tauri build
 
 # Frontend build only (Vite)
 build-web:
-    npm run build
+    bun run build
 
 # ── Quality ───────────────────────────────────────────────────────
 
@@ -33,15 +33,15 @@ check: lint typecheck test
 
 # TypeScript type check
 typecheck:
-    npx tsc --noEmit
+    bunx tsc --noEmit
 
 # ESLint
 lint:
-    npx eslint src/
+    bunx eslint src/
 
 # ESLint with auto-fix
 lint-fix:
-    npx eslint src/ --fix
+    bunx eslint src/ --fix
 
 # Rust clippy
 clippy:

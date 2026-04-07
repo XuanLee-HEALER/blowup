@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 /// Lightweight result row shown in the search list.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct MovieListItem {
     pub id: u64,
     pub title: String,
@@ -13,6 +13,10 @@ pub struct MovieListItem {
     pub vote_average: f64,
     pub poster_path: Option<String>,
     pub genre_ids: Vec<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub director: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cast: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize, Serialize)]
@@ -199,6 +203,8 @@ fn to_list_item(item: ListItem) -> MovieListItem {
         vote_average: item.vote_average,
         poster_path: item.poster_path,
         genre_ids: item.genre_ids,
+        director: None,
+        cast: Vec::new(),
     }
 }
 
@@ -538,6 +544,83 @@ pub async fn get_tmdb_movie_credits(
         crew,
         cast,
     })
+}
+
+// ── Enrich credits (with cache) ─────────────────────────────
+
+#[derive(Debug, Serialize)]
+pub struct MovieCreditsEnriched {
+    pub id: u64,
+    pub director: Option<String>,
+    pub cast: Vec<String>,
+}
+
+/// Fetch credits for a batch of TMDB IDs, using cache where possible.
+async fn fetch_credits_for_id(
+    client: &reqwest::Client,
+    api_key: &str,
+    id: u64,
+) -> Option<MovieCreditsEnriched> {
+    // Check cache first
+    if let Some(entry) = crate::cache::credits_get(id) {
+        return Some(MovieCreditsEnriched {
+            id,
+            director: entry.director,
+            cast: entry.cast,
+        });
+    }
+
+    // Fetch from TMDB
+    tracing::debug!(tmdb_id = id, "fetching credits from TMDB API");
+    let url = format!("https://api.themoviedb.org/3/movie/{id}");
+    let resp = client
+        .get(&url)
+        .query(&[
+            ("api_key", api_key),
+            ("append_to_response", "credits"),
+            ("language", "en-US"),
+        ])
+        .header("User-Agent", "blowup/0.1")
+        .send()
+        .await
+        .ok()?;
+
+    let details: MovieDetailsResponse = resp.json().await.ok()?;
+
+    let director = details
+        .credits
+        .crew
+        .iter()
+        .find(|c| c.job == "Director")
+        .map(|c| c.name.clone());
+
+    let cast: Vec<String> = details
+        .credits
+        .cast
+        .iter()
+        .take(3)
+        .map(|c| c.name.clone())
+        .collect();
+
+    // Write to cache
+    crate::cache::credits_put(id, director.clone(), cast.clone());
+
+    Some(MovieCreditsEnriched { id, director, cast })
+}
+
+#[tauri::command]
+pub async fn enrich_movie_credits(
+    api_key: String,
+    ids: Vec<u64>,
+) -> Result<Vec<MovieCreditsEnriched>, String> {
+    let client = reqwest::Client::new();
+    let mut results = Vec::new();
+    for id in ids {
+        if let Some(enriched) = fetch_credits_for_id(&client, &api_key, id).await {
+            results.push(enriched);
+        }
+    }
+    Ok(results)
 }
 
 #[cfg(test)]
