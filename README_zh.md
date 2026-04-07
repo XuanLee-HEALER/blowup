@@ -2,7 +2,7 @@
 
 > [Click here for English version](./README.md)
 
-![Version](https://img.shields.io/badge/Version-2.0.0-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.0.1-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
 
 > **《放大》[米开朗基罗·安东尼奥尼，1966]**：一位时装摄影师在公园里跟拍两名恋人时，无意间将一桩谋杀摄入镜头。
 >
@@ -10,9 +10,11 @@
 
 ---
 
-**blowup** 是一个桌面应用，为中国影迷打造的观影工作流：TMDB 搜片、种子搜索与下载、字幕管理、个人影片知识库、媒体播放。
+**blowup** 是一个面向老电影爱好者的一站式桌面终端 — 集个人影片知识库与完整观影工作流（字幕管理、剪辑辅助）于一体。
 
-基于 **Tauri v2**（Rust 后端）和 **React 19**（TypeScript 前端）构建。
+通过 TMDB 搜索和发现影片，构建个人影人/影片/流派知识图谱，从 YTS 获取公共领域影片资源，管理字幕，探测和播放媒体 — 一站到位。
+
+基于 **Tauri v2**（Rust 后端）和 **React 19**（TypeScript 前端）构建，工具链全部开源。
 
 ### 功能页面
 
@@ -34,13 +36,13 @@
 # 前置要求：Node.js 20+、Rust 1.80+、Tauri v2 平台构建工具
 
 # 安装前端依赖
-npm install
+bun install
 
 # 开发模式
-npm run tauri dev
+bun run tauri dev
 
 # 生产构建
-npm run tauri build
+bun run tauri build
 ```
 
 ### 运行时依赖
@@ -66,6 +68,13 @@ npm run tauri build
 | `opensubtitles.api_key` | 字符串 | OpenSubtitles API Key（可选） |
 | `subtitle.default_lang` | 字符串 | 默认字幕语言（默认：zh） |
 | `library.root_dir` | 路径 | 下载/库目录（默认：~/Movies/blowup） |
+
+## 合规声明
+
+- **影片资源**来自 [YTS/YIFY](https://yts.mx)，其收录的是版权已过期、进入公共领域的老电影。
+- **所有集成工具** — aria2c、ffmpeg、alass、mpv — 均为开源项目，遵循各自的开源协议。
+- **blowup 不存储、托管或分发**任何受版权保护的内容，它是一个帮助用户组织和观看合法获取影片的客户端工具。
+- 用户应遵守所在地区的法律法规。
 
 ## 许可协议
 
