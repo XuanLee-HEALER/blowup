@@ -1,3 +1,4 @@
+use super::s3;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
@@ -94,75 +95,71 @@ pub struct ReviewRow {
     pub rating: Option<f64>,
 }
 
-// ── Export command ────────────────────────────────────────────────
+// ── Shared serialization ─────────────────────────────────────────
 
-#[tauri::command]
-pub async fn export_knowledge_base(
-    path: String,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<(), String> {
+async fn serialize_knowledge_base(pool: &SqlitePool) -> Result<String, String> {
     let people = sqlx::query_as::<_, PersonRow>(
         "SELECT id, tmdb_id, name, born_date, biography, nationality, primary_role FROM people",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     let genres = sqlx::query_as::<_, GenreRow>(
         "SELECT id, name, description, parent_id, period FROM genres",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     let films = sqlx::query_as::<_, FilmRow>(
         "SELECT id, tmdb_id, title, original_title, year, overview, tmdb_rating, poster_cache_path FROM films",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     let person_films =
         sqlx::query_as::<_, PersonFilmRow>("SELECT person_id, film_id, role FROM person_films")
-            .fetch_all(pool.inner())
+            .fetch_all(pool)
             .await
             .map_err(|e| e.to_string())?;
 
     let film_genres =
         sqlx::query_as::<_, FilmGenreRow>("SELECT film_id, genre_id FROM film_genres")
-            .fetch_all(pool.inner())
+            .fetch_all(pool)
             .await
             .map_err(|e| e.to_string())?;
 
     let person_genres =
         sqlx::query_as::<_, PersonGenreRow>("SELECT person_id, genre_id FROM person_genres")
-            .fetch_all(pool.inner())
+            .fetch_all(pool)
             .await
             .map_err(|e| e.to_string())?;
 
     let person_relations = sqlx::query_as::<_, PersonRelationRow>(
         "SELECT from_id, to_id, relation_type FROM person_relations",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     let wiki_entries = sqlx::query_as::<_, WikiEntryRow>(
         "SELECT id, entity_type, entity_id, content FROM wiki_entries",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     let reviews = sqlx::query_as::<_, ReviewRow>(
         "SELECT id, film_id, is_personal, author, content, rating FROM reviews",
     )
-    .fetch_all(pool.inner())
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
     let export = KnowledgeBaseExport {
-        version: "2.0.0".to_string(),
+        version: "2.0.1".to_string(),
         exported_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         people,
         genres,
@@ -175,9 +172,18 @@ pub async fn export_knowledge_base(
         reviews,
     };
 
-    let json = serde_json::to_string_pretty(&export).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    serde_json::to_string_pretty(&export).map_err(|e| e.to_string())
+}
 
+// ── Export command ────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn export_knowledge_base(
+    path: String,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
+    let json = serialize_knowledge_base(pool.inner()).await?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -386,4 +392,170 @@ pub fn import_config(path: String) -> Result<(), String> {
     }
     std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ── S3 cloud commands ───────────────────────────────────────────
+
+const S3_KEY_KB: &str = "knowledge-base.json";
+const S3_KEY_CONFIG: &str = "config.toml";
+
+fn load_sync_config() -> Result<crate::config::SyncConfig, String> {
+    let cfg = crate::config::load_config();
+    Ok(cfg.sync)
+}
+
+#[tauri::command]
+pub async fn export_knowledge_base_s3(
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
+    let sync_cfg = load_sync_config()?;
+    let json = serialize_knowledge_base(pool.inner()).await?;
+    s3::s3_put(&sync_cfg, S3_KEY_KB, json.as_bytes()).await
+}
+
+#[tauri::command]
+pub async fn import_knowledge_base_s3(
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<String, String> {
+    let sync_cfg = load_sync_config()?;
+    let bytes = s3::s3_get(&sync_cfg, S3_KEY_KB).await?;
+    let json = String::from_utf8(bytes).map_err(|e| format!("数据编码错误: {}", e))?;
+
+    let data: KnowledgeBaseExport =
+        serde_json::from_str(&json).map_err(|e| format!("JSON 解析失败: {}", e))?;
+
+    let mut imported = ImportStats::default();
+
+    for p in &data.people {
+        let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM people WHERE id = ?")
+            .bind(p.id)
+            .fetch_one(pool.inner())
+            .await
+            .unwrap_or(0);
+        if exists > 0 {
+            continue;
+        }
+        sqlx::query(
+            "INSERT INTO people (id, tmdb_id, name, born_date, biography, nationality, primary_role) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(p.id).bind(p.tmdb_id).bind(&p.name).bind(&p.born_date)
+        .bind(&p.biography).bind(&p.nationality).bind(&p.primary_role)
+        .execute(pool.inner()).await.map_err(|e| e.to_string())?;
+        imported.people += 1;
+    }
+
+    for g in &data.genres {
+        let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM genres WHERE id = ?")
+            .bind(g.id).fetch_one(pool.inner()).await.unwrap_or(0);
+        if exists > 0 { continue; }
+        sqlx::query("INSERT INTO genres (id, name, description, parent_id, period) VALUES (?, ?, ?, ?, ?)")
+            .bind(g.id).bind(&g.name).bind(&g.description).bind(g.parent_id).bind(&g.period)
+            .execute(pool.inner()).await.map_err(|e| e.to_string())?;
+        imported.genres += 1;
+    }
+
+    for f in &data.films {
+        let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM films WHERE id = ?")
+            .bind(f.id).fetch_one(pool.inner()).await.unwrap_or(0);
+        if exists > 0 { continue; }
+        sqlx::query(
+            "INSERT INTO films (id, tmdb_id, title, original_title, year, overview, tmdb_rating, poster_cache_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(f.id).bind(f.tmdb_id).bind(&f.title).bind(&f.original_title)
+        .bind(f.year).bind(&f.overview).bind(f.tmdb_rating).bind(&f.poster_cache_path)
+        .execute(pool.inner()).await.map_err(|e| e.to_string())?;
+        imported.films += 1;
+    }
+
+    for pf in &data.person_films {
+        sqlx::query("INSERT OR IGNORE INTO person_films (person_id, film_id, role) VALUES (?, ?, ?)")
+            .bind(pf.person_id).bind(pf.film_id).bind(&pf.role)
+            .execute(pool.inner()).await.ok();
+    }
+    for fg in &data.film_genres {
+        sqlx::query("INSERT OR IGNORE INTO film_genres (film_id, genre_id) VALUES (?, ?)")
+            .bind(fg.film_id).bind(fg.genre_id).execute(pool.inner()).await.ok();
+    }
+    for pg in &data.person_genres {
+        sqlx::query("INSERT OR IGNORE INTO person_genres (person_id, genre_id) VALUES (?, ?)")
+            .bind(pg.person_id).bind(pg.genre_id).execute(pool.inner()).await.ok();
+    }
+    for pr in &data.person_relations {
+        sqlx::query("INSERT OR IGNORE INTO person_relations (from_id, to_id, relation_type) VALUES (?, ?, ?)")
+            .bind(pr.from_id).bind(pr.to_id).bind(&pr.relation_type)
+            .execute(pool.inner()).await.ok();
+    }
+
+    for w in &data.wiki_entries {
+        sqlx::query(
+            "INSERT INTO wiki_entries (entity_type, entity_id, content, updated_at)
+             VALUES (?, ?, ?, datetime('now'))
+             ON CONFLICT(entity_type, entity_id)
+             DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+        )
+        .bind(&w.entity_type).bind(w.entity_id).bind(&w.content)
+        .execute(pool.inner()).await.ok();
+        imported.wiki += 1;
+    }
+
+    for r in &data.reviews {
+        let exists = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM reviews WHERE id = ?")
+            .bind(r.id).fetch_one(pool.inner()).await.unwrap_or(0);
+        if exists > 0 { continue; }
+        sqlx::query(
+            "INSERT INTO reviews (id, film_id, is_personal, author, content, rating) VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(r.id).bind(r.film_id).bind(r.is_personal).bind(&r.author)
+        .bind(&r.content).bind(r.rating)
+        .execute(pool.inner()).await.ok();
+        imported.reviews += 1;
+    }
+
+    Ok(format!(
+        "云端导入完成: {} 影人, {} 流派, {} 影片, {} 条 Wiki, {} 条评论",
+        imported.people, imported.genres, imported.films, imported.wiki, imported.reviews
+    ))
+}
+
+#[tauri::command]
+pub async fn export_config_s3() -> Result<(), String> {
+    let sync_cfg = load_sync_config()?;
+    let config_path = crate::config::config_path();
+    if !config_path.exists() {
+        let cfg = crate::config::Config::default();
+        crate::config::save_config(&cfg)?;
+    }
+    let content = std::fs::read(&config_path).map_err(|e| e.to_string())?;
+    s3::s3_put(&sync_cfg, S3_KEY_CONFIG, &content).await
+}
+
+#[tauri::command]
+pub async fn import_config_s3() -> Result<(), String> {
+    let sync_cfg = load_sync_config()?;
+    let bytes = s3::s3_get(&sync_cfg, S3_KEY_CONFIG).await?;
+    let content = String::from_utf8(bytes).map_err(|e| format!("数据编码错误: {}", e))?;
+    let _: crate::config::Config =
+        toml::from_str(&content).map_err(|e| format!("配置文件格式错误: {}", e))?;
+    let config_path = crate::config::config_path();
+    if let Some(parent) = config_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn test_s3_connection() -> Result<String, String> {
+    let sync_cfg = load_sync_config()?;
+    // Try HEAD on a known key; both true (exists) and false (not found) mean connection works
+    match s3::s3_head(&sync_cfg, S3_KEY_KB).await {
+        Ok(exists) => {
+            if exists {
+                Ok("连接成功，云端已有知识库数据".to_string())
+            } else {
+                Ok("连接成功，云端暂无数据".to_string())
+            }
+        }
+        Err(e) => Err(e),
+    }
 }

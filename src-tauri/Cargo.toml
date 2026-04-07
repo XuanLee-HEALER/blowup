@@ -41,6 +41,9 @@ url            = "2"
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "migrate", "derive"] }
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+hmac               = "0.12"
+sha2               = "0.10"
+hex                = "0.4"
 
 [dev-dependencies]
 tempfile = "3"

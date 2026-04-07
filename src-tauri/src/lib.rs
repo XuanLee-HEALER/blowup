@@ -116,6 +116,11 @@ pub fn run() {
             commands::export::import_knowledge_base,
             commands::export::export_config,
             commands::export::import_config,
+            commands::export::export_knowledge_base_s3,
+            commands::export::import_knowledge_base_s3,
+            commands::export::export_config_s3,
+            commands::export::import_config_s3,
+            commands::export::test_s3_connection,
             // Knowledge base — people
             commands::library::people::list_people,
             commands::library::people::get_person,

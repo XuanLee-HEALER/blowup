@@ -53,6 +53,7 @@ export interface AppConfig {
   library: { root_dir: string };
   music: { enabled: boolean; mode: "sequential" | "random"; playlist: MusicTrack[] };
   cache: { max_entries: number };
+  sync: { endpoint: string; bucket: string; access_key: string; secret_key: string };
 }
 
 // ── Library types ─────────────────────────────────────────────────
@@ -283,6 +284,11 @@ export const config = {
 export const dataIO = {
   exportKnowledgeBase: (path: string) => invoke<void>("export_knowledge_base", { path }),
   importKnowledgeBase: (path: string) => invoke<string>("import_knowledge_base", { path }),
+  exportKnowledgeBaseS3: () => invoke<void>("export_knowledge_base_s3"),
+  importKnowledgeBaseS3: () => invoke<string>("import_knowledge_base_s3"),
+  exportConfigS3: () => invoke<void>("export_config_s3"),
+  importConfigS3: () => invoke<void>("import_config_s3"),
+  testS3Connection: () => invoke<string>("test_s3_connection"),
 };
 
 export const library = {

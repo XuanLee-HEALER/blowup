@@ -285,41 +285,157 @@ export default function Settings() {
         </Field>
       </Section>
 
+      <Section title="云同步">
+        <Field label="Endpoint">
+          <TextInput
+            defaultValue={cfg.sync?.endpoint ?? ""}
+            placeholder="http://192.168.1.x:3900"
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.sync.endpoint = v; }); }}
+          />
+        </Field>
+        <Field label="Bucket">
+          <TextInput
+            defaultValue={cfg.sync?.bucket ?? ""}
+            placeholder="blowup"
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.sync.bucket = v; }); }}
+          />
+        </Field>
+        <Field label="Access Key">
+          <TextInput
+            type="password"
+            defaultValue={cfg.sync?.access_key ?? ""}
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.sync.access_key = v; }); }}
+          />
+        </Field>
+        <Field label="Secret Key">
+          <TextInput
+            type="password"
+            defaultValue={cfg.sync?.secret_key ?? ""}
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.sync.secret_key = v; }); }}
+          />
+        </Field>
+        <Field label="连接测试">
+          <Button onClick={async () => {
+            try {
+              const msg = await dataIO.testS3Connection();
+              alert(msg);
+            } catch (e) { alert("连接失败: " + e); }
+          }}>测试连接</Button>
+        </Field>
+      </Section>
+
       <Section title="数据管理">
-        <Field label="知识库">
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <Button onClick={async () => {
+        <DataIORow
+          label="知识库"
+          onLocal={async (dir) => {
+            if (dir === "export") {
               const path = await save({ defaultPath: "blowup-knowledge-base.json", filters: [{ name: "JSON", extensions: ["json"] }] });
               if (path) { await dataIO.exportKnowledgeBase(path); alert("知识库导出成功"); }
-            }}>导出</Button>
-            <Button onClick={async () => {
+            } else {
               const path = await open({ filters: [{ name: "JSON", extensions: ["json"] }] });
               if (path) {
                 const msg = await dataIO.importKnowledgeBase(path as string);
                 alert(msg);
                 config.get().then(setCfg);
               }
-            }}>导入</Button>
-          </div>
-        </Field>
-        <Field label="配置文件">
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <Button onClick={async () => {
+            }
+          }}
+          onCloud={async (dir) => {
+            if (dir === "export") {
+              await dataIO.exportKnowledgeBaseS3();
+              alert("知识库已导出到云端");
+            } else {
+              const msg = await dataIO.importKnowledgeBaseS3();
+              alert(msg);
+              config.get().then(setCfg);
+            }
+          }}
+        />
+        <DataIORow
+          label="配置文件"
+          onLocal={async (dir) => {
+            if (dir === "export") {
               const path = await save({ defaultPath: "blowup-config.toml", filters: [{ name: "TOML", extensions: ["toml"] }] });
               if (path) { await config.exportConfig(path); alert("配置导出成功"); }
-            }}>导出</Button>
-            <Button onClick={async () => {
+            } else {
               const path = await open({ filters: [{ name: "TOML", extensions: ["toml"] }] });
               if (path) {
                 await config.importConfig(path as string);
                 config.get().then(setCfg);
                 alert("配置导入成功，部分设置需重启生效");
               }
-            }}>导入</Button>
-          </div>
-        </Field>
+            }
+          }}
+          onCloud={async (dir) => {
+            if (dir === "export") {
+              await dataIO.exportConfigS3();
+              alert("配置已导出到云端");
+            } else {
+              await dataIO.importConfigS3();
+              config.get().then(setCfg);
+              alert("云端配置导入成功，部分设置需重启生效");
+            }
+          }}
+        />
       </Section>
 
+    </div>
+  );
+}
+
+function DataIORow({ label, onLocal, onCloud }: {
+  label: string;
+  onLocal: (dir: "export" | "import") => Promise<void>;
+  onCloud: (dir: "export" | "import") => Promise<void>;
+}) {
+  const [pending, setPending] = useState<"export" | "import" | null>(null);
+
+  const execute = async (target: "local" | "cloud") => {
+    const dir = pending!;
+    setPending(null);
+    try {
+      if (target === "local") await onLocal(dir);
+      else await onCloud(dir);
+    } catch (e) {
+      alert(`${target === "cloud" ? "云端" : ""}${dir === "export" ? "导出" : "导入"}失败: ${e}`);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "1rem",
+        padding: "0.65rem 0",
+        borderBottom: "1px solid var(--color-separator)",
+      }}
+    >
+      <span style={{ width: 120, flexShrink: 0, fontSize: "0.82rem", color: "var(--color-label-secondary)" }}>
+        {label}
+      </span>
+      <div style={{ flex: 1 }}>
+        {pending === null ? (
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <Button onClick={() => setPending("export")}>导出</Button>
+            <Button onClick={() => setPending("import")}>导入</Button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <span style={{ fontSize: "0.78rem", color: "var(--color-label-tertiary)" }}>
+              {pending === "export" ? "导出到" : "导入自"}:
+            </span>
+            <Button onClick={() => execute("local")}>本地文件</Button>
+            <Button onClick={() => execute("cloud")}>云端</Button>
+            <button
+              onClick={() => setPending(null)}
+              style={{ background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.8rem" }}
+            >
+              取消
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

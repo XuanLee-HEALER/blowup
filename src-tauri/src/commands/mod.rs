@@ -7,4 +7,5 @@ pub mod media;
 pub mod search;
 pub mod subtitle;
 pub mod tmdb;
+pub mod s3;
 pub mod tracker;

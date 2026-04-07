@@ -39,6 +39,8 @@ pub struct Config {
     pub cache: CacheConfig,
     #[serde(default)]
     pub download: DownloadConfig,
+    #[serde(default)]
+    pub sync: SyncConfig,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -141,6 +143,18 @@ fn default_max_concurrent() -> usize {
 
 fn default_enable_dht() -> bool {
     true
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct SyncConfig {
+    #[serde(default)]
+    pub endpoint: String,
+    #[serde(default)]
+    pub bucket: String,
+    #[serde(default)]
+    pub access_key: String,
+    #[serde(default)]
+    pub secret_key: String,
 }
 
 fn default_music_mode() -> String {
