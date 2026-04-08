@@ -181,13 +181,10 @@ fn default_lang() -> String {
     "zh".to_string()
 }
 fn default_root_dir() -> String {
-    dirs::home_dir()
-        .map(|h| {
-            h.join("Movies")
-                .join("blowup")
-                .to_string_lossy()
-                .into_owned()
-        })
+    dirs::video_dir()
+        .map(|v| v.join("blowup"))
+        .or_else(|| dirs::home_dir().map(|h| h.join("Movies").join("blowup")))
+        .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|| "~/Movies/blowup".to_string())
 }
 

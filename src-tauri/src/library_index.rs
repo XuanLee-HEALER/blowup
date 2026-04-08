@@ -57,6 +57,10 @@ pub struct LibraryIndex {
 }
 
 impl LibraryIndex {
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// Load index from disk, or create empty if missing/corrupted.
     pub fn load(root: &Path) -> Self {
         let index_path = root.join(".index.json");

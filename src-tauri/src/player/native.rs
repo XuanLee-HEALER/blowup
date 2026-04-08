@@ -86,7 +86,7 @@ pub fn create_and_attach_gl_view(window: &tauri::WebviewWindow) -> Result<*mut c
             return Err("failed to create GL view".into());
         }
 
-        let ret = blowup_attach_to_window(hwnd.0 as *mut c_void, view);
+        let ret = blowup_attach_to_window(hwnd.0, view);
         if ret != 0 {
             blowup_remove_view(view);
             return Err("failed to attach GL view".into());

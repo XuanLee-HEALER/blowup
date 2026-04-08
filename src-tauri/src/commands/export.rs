@@ -39,26 +39,22 @@ pub struct RelationRow {
 // ── Shared serialization ─────────────────────────────────────────
 
 async fn serialize_knowledge_base(pool: &SqlitePool) -> Result<String, String> {
-    let entries = sqlx::query_as::<_, EntryRow>(
-        "SELECT id, name, wiki, created_at, updated_at FROM entries",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let entries =
+        sqlx::query_as::<_, EntryRow>("SELECT id, name, wiki, created_at, updated_at FROM entries")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
-    let entry_tags = sqlx::query_as::<_, EntryTagRow>(
-        "SELECT entry_id, tag FROM entry_tags",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let entry_tags = sqlx::query_as::<_, EntryTagRow>("SELECT entry_id, tag FROM entry_tags")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let relations = sqlx::query_as::<_, RelationRow>(
-        "SELECT id, from_id, to_id, relation_type FROM relations",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let relations =
+        sqlx::query_as::<_, RelationRow>("SELECT id, from_id, to_id, relation_type FROM relations")
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let export = KnowledgeBaseExport {
         version: "3.0.0".to_string(),
@@ -71,10 +67,7 @@ async fn serialize_knowledge_base(pool: &SqlitePool) -> Result<String, String> {
     serde_json::to_string_pretty(&export).map_err(|e| e.to_string())
 }
 
-async fn import_knowledge_base_data(
-    pool: &SqlitePool,
-    json: &str,
-) -> Result<String, String> {
+async fn import_knowledge_base_data(pool: &SqlitePool, json: &str) -> Result<String, String> {
     let data: KnowledgeBaseExport =
         serde_json::from_str(json).map_err(|e| format!("JSON 解析失败: {}", e))?;
 
@@ -176,14 +169,16 @@ pub async fn import_knowledge_base(
 
 // ── Config export/import ─────────────────────────────────────────
 
+fn strip_library_root_dir(config: &mut crate::config::Config) {
+    config.library.root_dir = String::new();
+}
+
 #[tauri::command]
 pub fn export_config(path: String) -> Result<(), String> {
-    let config_path = crate::config::config_path();
-    if !config_path.exists() {
-        let cfg = crate::config::Config::default();
-        crate::config::save_config(&cfg)?;
-    }
-    std::fs::copy(&config_path, &path).map_err(|e| e.to_string())?;
+    let mut cfg = crate::config::load_config();
+    strip_library_root_dir(&mut cfg);
+    let content = toml::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
+    std::fs::write(&path, content).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -230,13 +225,10 @@ pub async fn import_knowledge_base_s3(
 #[tauri::command]
 pub async fn export_config_s3() -> Result<(), String> {
     let sync_cfg = load_sync_config()?;
-    let config_path = crate::config::config_path();
-    if !config_path.exists() {
-        let cfg = crate::config::Config::default();
-        crate::config::save_config(&cfg)?;
-    }
-    let content = std::fs::read(&config_path).map_err(|e| e.to_string())?;
-    s3::s3_put(&sync_cfg, S3_KEY_CONFIG, &content).await
+    let mut cfg = crate::config::load_config();
+    strip_library_root_dir(&mut cfg);
+    let content = toml::to_string_pretty(&cfg).map_err(|e| e.to_string())?;
+    s3::s3_put(&sync_cfg, S3_KEY_CONFIG, content.as_bytes()).await
 }
 
 #[tauri::command]

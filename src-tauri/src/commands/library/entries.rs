@@ -89,10 +89,7 @@ pub async fn list_entries(
 }
 
 #[tauri::command]
-pub async fn get_entry(
-    id: i64,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<EntryDetail, String> {
+pub async fn get_entry(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<EntryDetail, String> {
     let row = sqlx::query_as::<_, EntryRow>(
         "SELECT e.id, e.name, e.wiki,
                 COALESCE(GROUP_CONCAT(et.tag), '') AS tags_csv,
@@ -137,10 +134,7 @@ pub async fn get_entry(
 }
 
 #[tauri::command]
-pub async fn create_entry(
-    name: String,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<i64, String> {
+pub async fn create_entry(name: String, pool: tauri::State<'_, SqlitePool>) -> Result<i64, String> {
     sqlx::query("INSERT INTO entries (name) VALUES (?)")
         .bind(&name)
         .execute(pool.inner())
@@ -234,12 +228,10 @@ pub async fn remove_entry_tag(
 
 #[tauri::command]
 pub async fn list_all_tags(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<String>, String> {
-    sqlx::query_scalar::<_, String>(
-        "SELECT DISTINCT tag FROM entry_tags ORDER BY tag",
-    )
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())
+    sqlx::query_scalar::<_, String>("SELECT DISTINCT tag FROM entry_tags ORDER BY tag")
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── Relations ───────────────────────────────────────────────────
@@ -251,23 +243,18 @@ pub async fn add_relation(
     relation_type: String,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<i64, String> {
-    sqlx::query(
-        "INSERT INTO relations (from_id, to_id, relation_type) VALUES (?, ?, ?)",
-    )
-    .bind(from_id)
-    .bind(to_id)
-    .bind(&relation_type)
-    .execute(pool.inner())
-    .await
-    .map(|r| r.last_insert_rowid())
-    .map_err(|e| e.to_string())
+    sqlx::query("INSERT INTO relations (from_id, to_id, relation_type) VALUES (?, ?, ?)")
+        .bind(from_id)
+        .bind(to_id)
+        .bind(&relation_type)
+        .execute(pool.inner())
+        .await
+        .map(|r| r.last_insert_rowid())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn remove_relation(
-    id: i64,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<(), String> {
+pub async fn remove_relation(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<(), String> {
     sqlx::query("DELETE FROM relations WHERE id = ?")
         .bind(id)
         .execute(pool.inner())

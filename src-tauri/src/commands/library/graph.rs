@@ -23,12 +23,11 @@ pub async fn get_graph_data(
     center_id: Option<i64>,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<GraphData, String> {
-    let all_rels = sqlx::query_as::<_, RelRow>(
-        "SELECT from_id, to_id, relation_type FROM relations",
-    )
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+    let all_rels =
+        sqlx::query_as::<_, RelRow>("SELECT from_id, to_id, relation_type FROM relations")
+            .fetch_all(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
 
     // Build adjacency for BFS
     let mut adj: HashMap<i64, Vec<(i64, &RelRow)>> = HashMap::new();

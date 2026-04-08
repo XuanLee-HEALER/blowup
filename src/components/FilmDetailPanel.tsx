@@ -1,7 +1,8 @@
 // src/components/FilmDetailPanel.tsx
 import { useState, useEffect } from "react";
 import { yts, download } from "../lib/tauri";
-import type { MovieListItem, MovieResult } from "../lib/tauri";
+import { formatSize } from "../lib/format";
+import type { MovieListItem, MovieResult, TorrentFileInfo } from "../lib/tauri";
 
 const pulseStyle = document.createElement("style");
 pulseStyle.textContent = `@keyframes pulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`;
@@ -20,8 +21,13 @@ function TorrentSearchModal({
   const [results, setResults] = useState<MovieResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [starting, setStarting] = useState<Set<string>>(new Set());
+  const [fetching, setFetching] = useState<Set<string>>(new Set());
   const [started, setStarted] = useState<Set<string>>(new Set());
+  // File selection modal state
+  const [filePickResult, setFilePickResult] = useState<MovieResult | null>(null);
+  const [fileList, setFileList] = useState<TorrentFileInfo[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
 
   const year = film.year ? parseInt(film.year) : undefined;
 
@@ -33,10 +39,29 @@ function TorrentSearchModal({
       .finally(() => setLoading(false));
   }, [film.title, year, film.id]);
 
-  const handleDownload = async (r: MovieResult) => {
+  // Step 1: fetch torrent file list
+  const handleFetchFiles = async (r: MovieResult) => {
     const target = r.magnet ?? r.torrent_url;
     if (!target) return;
-    setStarting((prev) => new Set(prev).add(target));
+    setFetching((prev) => new Set(prev).add(target));
+    try {
+      const files = await download.getTorrentFiles(target);
+      setFileList(files);
+      setSelectedFiles(new Set(files.map((f) => f.index)));
+      setFilePickResult(r);
+    } catch (e) {
+      console.error("fetch torrent files failed:", e);
+    } finally {
+      setFetching((prev) => { const next = new Set(prev); next.delete(target); return next; });
+    }
+  };
+
+  // Step 2: confirm and start download
+  const handleConfirmDownload = async () => {
+    if (!filePickResult) return;
+    const target = filePickResult.magnet ?? filePickResult.torrent_url;
+    if (!target) return;
+    setSubmitting(true);
     try {
       await download.startDownload({
         title: film.title,
@@ -45,13 +70,15 @@ function TorrentSearchModal({
         tmdbId: film.id,
         year: year,
         genres: [],
-        quality: r.quality,
+        quality: filePickResult.quality,
+        onlyFiles: [...selectedFiles],
       });
       setStarted((prev) => new Set(prev).add(target));
+      setFilePickResult(null);
     } catch (e) {
       console.error("download failed:", e);
     } finally {
-      setStarting((prev) => { const next = new Set(prev); next.delete(target); return next; });
+      setSubmitting(false);
     }
   };
 
@@ -122,21 +149,21 @@ function TorrentSearchModal({
               </div>
               {isStarted ? (
                 <span style={{ color: "var(--color-accent)", fontSize: 12 }}>
-                  下载中
+                  已添加
                 </span>
-              ) : starting.has(target) ? (
+              ) : fetching.has(target) ? (
                 <span style={{ fontSize: 12, display: "inline-flex", gap: 3 }}>
-                  {[0, 1, 2].map((i) => (
-                    <span key={i} style={{
+                  {[0, 1, 2].map((j) => (
+                    <span key={j} style={{
                       width: 4, height: 4, borderRadius: "50%", background: "var(--color-accent)",
                       animation: "pulse 1.2s ease-in-out infinite",
-                      animationDelay: `${i * 0.2}s`,
+                      animationDelay: `${j * 0.2}s`,
                     }} />
                   ))}
                 </span>
               ) : (
                 <button
-                  onClick={() => handleDownload(r)}
+                  onClick={() => handleFetchFiles(r)}
                   disabled={!target}
                   style={{
                     background: "var(--color-accent)",
@@ -172,6 +199,127 @@ function TorrentSearchModal({
           关闭
         </button>
       </div>
+
+      {/* File selection modal */}
+      {filePickResult && (
+        <div
+          onClick={() => !submitting && setFilePickResult(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1100,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--color-bg-primary)",
+              borderRadius: 12,
+              padding: 24,
+              width: 520,
+              maxHeight: "70vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <h3 style={{ margin: "0 0 4px" }}>选择下载文件</h3>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--color-label-secondary)" }}>
+              {filePickResult.quality} · 共 {fileList.length} 个文件
+            </p>
+
+            <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
+              {fileList.map((f) => (
+                <label
+                  key={f.index}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 0",
+                    borderBottom: "1px solid var(--color-separator)",
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedFiles.has(f.index)}
+                    onChange={() => {
+                      setSelectedFiles((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(f.index)) next.delete(f.index);
+                        else next.add(f.index);
+                        return next;
+                      });
+                    }}
+                  />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {f.name}
+                  </span>
+                  <span style={{ color: "var(--color-label-tertiary)", flexShrink: 0 }}>
+                    {formatSize(f.size)}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => {
+                  if (selectedFiles.size === fileList.length) setSelectedFiles(new Set());
+                  else setSelectedFiles(new Set(fileList.map((f) => f.index)));
+                }}
+                style={{
+                  background: "var(--color-bg-control)",
+                  border: "1px solid var(--color-separator)",
+                  borderRadius: 6,
+                  padding: "6px 16px",
+                  color: "var(--color-label-primary)",
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                {selectedFiles.size === fileList.length ? "取消全选" : "全选"}
+              </button>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={() => setFilePickResult(null)}
+                disabled={submitting}
+                style={{
+                  background: "var(--color-bg-control)",
+                  border: "1px solid var(--color-separator)",
+                  borderRadius: 6,
+                  padding: "6px 16px",
+                  color: "var(--color-label-primary)",
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmDownload}
+                disabled={selectedFiles.size === 0 || submitting}
+                style={{
+                  background: selectedFiles.size === 0 ? "var(--color-bg-control)" : "var(--color-accent)",
+                  color: selectedFiles.size === 0 ? "var(--color-label-tertiary)" : "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "6px 16px",
+                  cursor: selectedFiles.size === 0 ? "not-allowed" : "pointer",
+                  fontSize: 13,
+                }}
+              >
+                {submitting ? "提交中..." : `下载 (${selectedFiles.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

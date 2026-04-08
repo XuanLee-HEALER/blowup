@@ -1,6 +1,8 @@
 use sqlx::SqlitePool;
 
-use super::{LibraryAssetEntry, LibraryItemDetail, LibraryItemSummary, LibraryStats, ScanResult, StatEntry};
+use super::{
+    LibraryAssetEntry, LibraryItemDetail, LibraryItemSummary, LibraryStats, ScanResult, StatEntry,
+};
 use crate::ffmpeg::FfmpegTool;
 
 // ── Video probe helper ──────────────────────────────────────────
@@ -303,11 +305,10 @@ pub async fn remove_library_asset(
 
 #[tauri::command]
 pub async fn get_library_stats(pool: tauri::State<'_, SqlitePool>) -> Result<LibraryStats, String> {
-    let total_items: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM library_items")
-            .fetch_one(pool.inner())
-            .await
-            .map_err(|e| e.to_string())?;
+    let total_items: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM library_items")
+        .fetch_one(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
     let total_file_size: i64 =
         sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM library_items")
@@ -560,20 +561,24 @@ mod tests {
     #[tokio::test]
     async fn test_library_stats() {
         let pool = setup_pool().await;
-        sqlx::query("INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)")
-            .bind("/movies/film1.mkv")
-            .bind(5000000_i64)
-            .bind("1920x1080")
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)")
-            .bind("/movies/unknown.mp4")
-            .bind(3000000_i64)
-            .bind("1280x720")
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)",
+        )
+        .bind("/movies/film1.mkv")
+        .bind(5000000_i64)
+        .bind("1920x1080")
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)",
+        )
+        .bind("/movies/unknown.mp4")
+        .bind(3000000_i64)
+        .bind("1280x720")
+        .execute(&pool)
+        .await
+        .unwrap();
 
         let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM library_items")
             .fetch_one(&pool)

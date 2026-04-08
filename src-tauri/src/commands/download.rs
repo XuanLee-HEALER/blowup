@@ -3,6 +3,45 @@ use crate::torrent::{TorrentFileInfo, TorrentManager};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
+fn validate_library_root(index: &LibraryIndex) -> Result<(), String> {
+    let root = index.root();
+    if root.as_os_str().is_empty() {
+        return Err("库目录未设置，请在设置中配置库目录路径".to_string());
+    }
+    // If the directory exists, check it is actually a directory and writable
+    if root.exists() {
+        if !root.is_dir() {
+            return Err(format!(
+                "库目录路径「{}」不是一个目录，请在设置中修改",
+                root.display()
+            ));
+        }
+        // Try creating a temp file to verify write permission
+        let probe = root.join(".blowup_write_test");
+        match std::fs::write(&probe, b"") {
+            Ok(_) => {
+                std::fs::remove_file(&probe).ok();
+            }
+            Err(_) => {
+                return Err(format!(
+                    "库目录「{}」没有写入权限，请在设置中修改或调整目录权限",
+                    root.display()
+                ));
+            }
+        }
+        return Ok(());
+    }
+    // Directory doesn't exist — try to create it
+    if let Err(e) = std::fs::create_dir_all(root) {
+        return Err(format!(
+            "无法创建库目录「{}」: {}，请在设置中修改路径",
+            root.display(),
+            e
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct DownloadRecord {
     pub id: i64,
@@ -48,6 +87,7 @@ pub async fn start_download(
     index: tauri::State<'_, LibraryIndex>,
     req: StartDownloadRequest,
 ) -> Result<i64, String> {
+    validate_library_root(&index)?;
     let output_folder = index.compute_download_path(&req.director, req.tmdb_id);
 
     // Insert DB record
@@ -336,6 +376,7 @@ pub async fn redownload(
         return Err(format!("「{}」已存在于电影库中", entry.title));
     }
 
+    validate_library_root(&index)?;
     let director = record.director.unwrap_or_else(|| "Unknown".to_string());
     let output_folder = index.compute_download_path(&director, tmdb_id);
 
