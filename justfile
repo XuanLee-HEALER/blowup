@@ -8,8 +8,19 @@ default:
 
 # ── Development ───────────────────────────────────────────────────
 
+# Ensure runtime DLLs are in target/debug for dev mode
+[windows]
+_ensure-dev-dlls:
+    if (-not (Test-Path "target\debug\libmpv-2.dll")) { Copy-Item "src-tauri\lib\libmpv-2.dll" "target\debug\libmpv-2.dll" }
+
+[macos]
+_ensure-dev-dlls:
+
+[linux]
+_ensure-dev-dlls:
+
 # Start Tauri dev server (frontend + backend hot reload)
-dev:
+dev: _ensure-dev-dlls
     bunx tauri dev
 
 # Start frontend only (Vite dev server)
