@@ -95,12 +95,16 @@ impl LibraryIndex {
     }
 
     fn save(&self) {
-        let data = self.data.read().unwrap();
-        if let Some(parent) = self.index_path().parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-        match serde_json::to_string_pretty(&*data) {
+        // Serialize under read lock, then drop lock before disk I/O
+        let content = {
+            let data = self.data.read().unwrap();
+            serde_json::to_string_pretty(&*data)
+        };
+        match content {
             Ok(content) => {
+                if let Some(parent) = self.index_path().parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
                 if let Err(e) = std::fs::write(self.index_path(), content) {
                     tracing::error!(error = %e, "failed to write index");
                 }
@@ -277,29 +281,22 @@ impl LibraryIndex {
         self.root.join(&dir_name).join(tmdb_id.to_string())
     }
 
-    /// Re-scan disk for an entry's files and update the index.
-    pub fn refresh_entry_files(&self, tmdb_id: u64) {
+    /// Update TMDB metadata for an entry and persist. Returns the updated entry.
+    pub fn update_entry_metadata(&self, tmdb_id: u64, meta: EntryMetadata) -> Option<IndexEntry> {
         let mut data = self.data.write().unwrap();
-        if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
-            let dir = self.root.join(&entry.path);
-            entry.files = scan_dir_files(&dir);
-        }
-        drop(data);
-        self.save();
-    }
-
-    /// Update TMDB metadata for an entry and persist.
-    pub fn update_entry_metadata(&self, tmdb_id: u64, meta: EntryMetadata) {
-        let mut data = self.data.write().unwrap();
-        if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
+        let result = if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
             entry.poster_url = meta.poster_url;
             entry.overview = meta.overview;
             entry.rating = meta.rating;
             entry.credits = meta.credits;
             entry.original_title = meta.original_title;
-        }
+            Some(entry.clone())
+        } else {
+            None
+        };
         drop(data);
         self.save();
+        result
     }
 }
 

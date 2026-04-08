@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { library, media, config, player } from "../lib/tauri";
 import type { IndexEntry } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 
 const VIDEO_EXTS = ["mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v"];
 const SUB_EXTS = ["srt", "ass", "sub", "idx"];
+const CREDIT_ORDER = ["导演", "主演", "编剧", "摄影", "配乐", "剪辑", "制片"];
 const getExt = (f: string) => f.split(".").pop()?.toLowerCase() ?? "";
 
 export default function Library() {
@@ -16,15 +17,18 @@ export default function Library() {
   const [enriching, setEnriching] = useState(false);
   const [checkedSubs, setCheckedSubs] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry: IndexEntry } | null>(null);
+  const rootDir = useRef("");
 
   const refresh = useCallback(async () => {
     const map = await library.listIndexByDirector();
     setDirectorMap(map);
   }, []);
 
-  useEffect(() => { library.listIndexByDirector().then(setDirectorMap); }, []);
+  useEffect(() => {
+    library.listIndexByDirector().then(setDirectorMap);
+    config.get().then((c) => { rootDir.current = c.library.root_dir; });
+  }, []);
 
-  // Select entry and trigger TMDB enrichment if needed
   const selectEntry = useCallback((entry: IndexEntry) => {
     setSelectedEntry(entry);
     setCheckedSubs(new Set());
@@ -44,16 +48,13 @@ export default function Library() {
   };
 
   const handlePlay = async (entry: IndexEntry, file: string) => {
-    const cfg = await config.get();
-    const root = cfg.library.root_dir;
+    const root = rootDir.current;
     const fullPath = `${root}/${entry.path}/${file}`;
     await media.openInPlayer(fullPath);
-    // Auto-load checked subtitles after player initializes
     if (checkedSubs.size > 0) {
       setTimeout(async () => {
         for (const sub of checkedSubs) {
-          const subPath = `${root}/${entry.path}/${sub}`;
-          try { await player.subAdd(subPath); } catch { /* ignore */ }
+          try { await player.subAdd(`${root}/${entry.path}/${sub}`); } catch { /* ignore */ }
         }
       }, 500);
     }
@@ -62,13 +63,11 @@ export default function Library() {
   const handleDeleteResource = async (entry: IndexEntry, file: string) => {
     if (!confirm(`确定要删除文件 "${file}" 吗？此操作不可撤销。`)) return;
     try {
-      const cfg = await config.get();
-      const fullPath = `${cfg.library.root_dir}/${entry.path}/${file}`;
+      const fullPath = `${rootDir.current}/${entry.path}/${file}`;
       await library.deleteLibraryResource(fullPath);
       await library.refreshIndexEntry(entry.tmdb_id);
       const map = await library.listIndexByDirector();
       setDirectorMap(map);
-      // Update selected entry
       for (const entries of Object.values(map)) {
         const updated = entries.find((e) => e.tmdb_id === entry.tmdb_id);
         if (updated) { setSelectedEntry(updated); return; }
@@ -115,8 +114,6 @@ export default function Library() {
   const videoFiles = selectedEntry?.files.filter((f) => VIDEO_EXTS.includes(getExt(f))) ?? [];
   const subtitleFiles = selectedEntry?.files.filter((f) => SUB_EXTS.includes(getExt(f))) ?? [];
 
-  // Credits display order
-  const CREDIT_ORDER = ["导演", "主演", "编剧", "摄影", "配乐", "剪辑", "制片"];
   const credits = selectedEntry?.credits ?? {};
 
   const onEntryContextMenu = (e: React.MouseEvent, entry: IndexEntry) => {
@@ -225,7 +222,7 @@ export default function Library() {
                   opacity: enriching ? 0.5 : 1,
                 }}
               >
-                {enriching ? "加载中…" : "↻ 刷新信息"}
+                ↻
               </button>
             </div>
             {/* ── Section 1: Film info (poster left, credits right) ── */}

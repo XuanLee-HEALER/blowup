@@ -213,22 +213,27 @@ pub async fn unlink_item_from_film(
     Ok(())
 }
 
+/// Delete library_assets + library_items for a given item ID.
+async fn delete_item_cascade(pool: &SqlitePool, id: i64) -> Result<(), String> {
+    sqlx::query("DELETE FROM library_assets WHERE item_id = ?")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM library_items WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn remove_library_item(
     id: i64,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<(), String> {
-    sqlx::query("DELETE FROM library_assets WHERE item_id = ?")
-        .bind(id)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM library_items WHERE id = ?")
-        .bind(id)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    delete_item_cascade(pool.inner(), id).await
 }
 
 // ── Directory scan ──────────────────────────────────────────────
@@ -438,9 +443,8 @@ pub async fn delete_library_resource(
     file_path: String,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<(), String> {
-    let path = std::path::Path::new(&file_path);
-    if path.exists() {
-        std::fs::remove_file(path).map_err(|e| format!("删除文件失败: {e}"))?;
+    match std::fs::remove_file(&file_path) {
+        Ok(()) | Err(_) => {} // NotFound is fine — file may already be gone
     }
 
     let item_id: Option<i64> =
@@ -451,16 +455,7 @@ pub async fn delete_library_resource(
             .map_err(|e| e.to_string())?;
 
     if let Some(id) = item_id {
-        sqlx::query("DELETE FROM library_assets WHERE item_id = ?")
-            .bind(id)
-            .execute(pool.inner())
-            .await
-            .map_err(|e| e.to_string())?;
-        sqlx::query("DELETE FROM library_items WHERE id = ?")
-            .bind(id)
-            .execute(pool.inner())
-            .await
-            .map_err(|e| e.to_string())?;
+        delete_item_cascade(pool.inner(), id).await?;
     }
 
     Ok(())
@@ -472,7 +467,7 @@ pub fn refresh_index_entry(
     tmdb_id: u64,
     index: tauri::State<'_, crate::library_index::LibraryIndex>,
 ) -> Result<(), String> {
-    index.refresh_entry_files(tmdb_id);
+    index.update_files(tmdb_id);
     Ok(())
 }
 
@@ -499,7 +494,7 @@ pub async fn delete_film_directory(
         return Err("播放器正在播放该电影的文件，请先关闭播放器".to_string());
     }
 
-    // DB cascade cleanup
+    // DB cascade cleanup in a transaction
     let film_id: Option<i64> = sqlx::query_scalar("SELECT id FROM films WHERE tmdb_id = ?")
         .bind(tmdb_id as i64)
         .fetch_optional(pool.inner())
@@ -507,6 +502,7 @@ pub async fn delete_film_directory(
         .map_err(|e| e.to_string())?;
 
     if let Some(fid) = film_id {
+        let mut tx = pool.inner().begin().await.map_err(|e| e.to_string())?;
         for sql in [
             "DELETE FROM film_genres WHERE film_id = ?",
             "DELETE FROM person_films WHERE film_id = ?",
@@ -514,43 +510,36 @@ pub async fn delete_film_directory(
         ] {
             sqlx::query(sql)
                 .bind(fid)
-                .execute(pool.inner())
+                .execute(&mut *tx)
                 .await
                 .map_err(|e| e.to_string())?;
         }
         sqlx::query("DELETE FROM wiki_entries WHERE entity_type = 'film' AND entity_id = ?")
             .bind(fid)
-            .execute(pool.inner())
+            .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
-        sqlx::query(
-            "DELETE FROM library_assets WHERE item_id IN (SELECT id FROM library_items WHERE film_id = ?)",
-        )
-        .bind(fid)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM library_assets WHERE item_id IN (SELECT id FROM library_items WHERE film_id = ?)")
+            .bind(fid).execute(&mut *tx).await.map_err(|e| e.to_string())?;
         sqlx::query("DELETE FROM library_items WHERE film_id = ?")
             .bind(fid)
-            .execute(pool.inner())
+            .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
         sqlx::query("DELETE FROM films WHERE id = ?")
             .bind(fid)
-            .execute(pool.inner())
+            .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+        tx.commit().await.map_err(|e| e.to_string())?;
     }
 
-    // Delete entire directory from disk
-    let dir_path = std::path::Path::new(&film_dir);
-    if dir_path.exists() && dir_path.is_dir() {
-        std::fs::remove_dir_all(dir_path).map_err(|e| format!("删除目录失败: {e}"))?;
+    // Delete directory (NotFound is fine — may already be gone)
+    match std::fs::remove_dir_all(&film_dir) {
+        Ok(()) | Err(_) => {}
     }
 
-    // Remove from in-memory index
     index.remove_entry(tmdb_id);
-
     Ok(())
 }
 

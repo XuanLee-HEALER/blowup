@@ -737,10 +737,8 @@ pub async fn enrich_index_entry(
         original_title: details.original_title,
     };
 
-    index.update_entry_metadata(tmdb_id, meta);
-
     index
-        .get_entry(tmdb_id)
+        .update_entry_metadata(tmdb_id, meta)
         .ok_or_else(|| "更新后未找到索引条目".to_string())
 }
 
