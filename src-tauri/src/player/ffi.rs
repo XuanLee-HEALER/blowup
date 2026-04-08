@@ -107,6 +107,7 @@ unsafe extern "C" {
         format: c_int,
     ) -> c_int;
     fn mpv_wait_event(ctx: *mut MpvHandle, timeout: f64) -> *mut MpvEvent;
+    fn mpv_wakeup(ctx: *mut MpvHandle);
 
     // Render API
     fn mpv_render_context_create(
@@ -359,6 +360,27 @@ impl Mpv {
             Ok(render_ctx)
         }
     }
+}
+
+/// Thread-safe wait_event using a raw handle pointer.
+///
+/// # Safety
+/// The handle must be a valid mpv_handle that has not been destroyed.
+pub unsafe fn wait_event_raw(handle: *mut MpvHandle, timeout: f64) -> (c_int, *mut MpvEvent) {
+    let event = unsafe { mpv_wait_event(handle, timeout) };
+    if event.is_null() {
+        (MPV_EVENT_NONE, ptr::null_mut())
+    } else {
+        (unsafe { (*event).event_id }, event)
+    }
+}
+
+/// Interrupt a blocking `mpv_wait_event` call from another thread.
+///
+/// # Safety
+/// The handle must be a valid mpv_handle that has not been destroyed.
+pub unsafe fn wakeup_raw(handle: *mut MpvHandle) {
+    unsafe { mpv_wakeup(handle) };
 }
 
 /// Safe wrapper for the render context.

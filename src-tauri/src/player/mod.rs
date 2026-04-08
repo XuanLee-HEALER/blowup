@@ -8,6 +8,7 @@ use ffi::{
 };
 use serde::Serialize;
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -16,13 +17,28 @@ static PLAYER: Mutex<Option<MpvPlayer>> = Mutex::new(None);
 // Stored globally so mpv's update callback can trigger re-render
 static RENDER_CTX: Mutex<Option<RenderCtxPtr>> = Mutex::new(None);
 
+// Raw mpv handle for event loop (mpv is thread-safe, no mutex needed for wait_event)
+static MPV_HANDLE: Mutex<Option<MpvHandlePtr>> = Mutex::new(None);
+
+// Signal for the event loop to exit cleanly
+static EVENT_LOOP_SHUTDOWN: AtomicBool = AtomicBool::new(false);
+// Indicates event loop thread has exited
+static EVENT_LOOP_RUNNING: AtomicBool = AtomicBool::new(false);
+
 struct RenderCtxPtr(*mut ffi::MpvRenderContext);
 unsafe impl Send for RenderCtxPtr {}
 unsafe impl Sync for RenderCtxPtr {}
 
+struct MpvHandlePtr(*mut ffi::MpvHandle);
+unsafe impl Send for MpvHandlePtr {}
+unsafe impl Sync for MpvHandlePtr {}
+
 pub struct MpvPlayer {
-    mpv: Mpv,
+    // IMPORTANT: _render_ctx MUST be declared before mpv.
+    // Rust drops fields in declaration order, and mpv requires
+    // mpv_render_context_free() before mpv_terminate_destroy().
     _render_ctx: MpvRenderCtx,
+    mpv: Mpv,
 }
 
 unsafe impl Send for MpvPlayer {}
@@ -48,7 +64,6 @@ pub struct PlayerState {
 
 impl MpvPlayer {
     fn get_tracks(&self) -> Vec<TrackInfo> {
-        // mpv's track-list is a structured property; read count then each track
         let count = self.mpv.get_property_i64("track-list/count").unwrap_or(0);
         let mut tracks = Vec::new();
         for i in 0..count {
@@ -79,7 +94,6 @@ impl MpvPlayer {
     }
 
     fn get_state(&self) -> PlayerState {
-        // pause is FLAG type — read as string ("yes"/"no") for reliability
         let pause_str = self.mpv.get_property_string("pause");
         let paused = pause_str.as_deref() == Some("yes");
         PlayerState {
@@ -100,7 +114,7 @@ impl MpvPlayer {
 static UPDATE_CB_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 unsafe extern "C" fn on_mpv_render_update(_ctx: *mut c_void) {
-    let count = UPDATE_CB_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let count = UPDATE_CB_COUNT.fetch_add(1, Ordering::Relaxed);
     if count < 5 || count.is_multiple_of(100) {
         tracing::debug!(count, "on_mpv_render_update callback");
     }
@@ -115,6 +129,8 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
         old_window.close().ok();
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
+
+    EVENT_LOOP_SHUTDOWN.store(false, Ordering::SeqCst);
 
     // 1. Create Tauri transparent webview window (controls overlay)
     let window = WebviewWindowBuilder::new(app, "player", WebviewUrl::App("player.html".into()))
@@ -151,6 +167,9 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
     // Store render context globally for the ObjC draw callback
     *RENDER_CTX.lock().unwrap() = Some(RenderCtxPtr(render_ctx_raw));
 
+    // Store raw mpv handle for event loop (thread-safe, no mutex needed for wait_event)
+    *MPV_HANDLE.lock().unwrap() = Some(MpvHandlePtr(mpv.raw_handle()));
+
     // 5. Set update callback — mpv notifies us when a new frame is ready
     // Safety: null context, callback is a static function
     unsafe { render_ctx.set_update_callback(Some(on_mpv_render_update), std::ptr::null_mut()) };
@@ -166,8 +185,8 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
     tracing::info!(file_path, "player opened with render API");
 
     let player = MpvPlayer {
-        mpv,
         _render_ctx: render_ctx,
+        mpv,
     };
 
     {
@@ -185,7 +204,10 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
 
     let app_handle = app.clone();
     std::thread::spawn(move || {
+        EVENT_LOOP_RUNNING.store(true, Ordering::SeqCst);
         event_loop(&app_handle);
+        EVENT_LOOP_RUNNING.store(false, Ordering::SeqCst);
+        tracing::info!("event loop thread exited");
     });
 
     Ok(())
@@ -197,7 +219,7 @@ static RENDER_FRAME_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::Ato
 
 #[unsafe(no_mangle)]
 pub extern "C" fn blowup_render_mpv_frame(fbo: i32, width: i32, height: i32) {
-    let count = RENDER_FRAME_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let count = RENDER_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
     if count < 5 || count.is_multiple_of(100) {
         tracing::debug!(fbo, width, height, count, "blowup_render_mpv_frame called");
     }
@@ -213,32 +235,81 @@ pub extern "C" fn blowup_render_mpv_frame(fbo: i32, width: i32, height: i32) {
     }
 }
 
+/// Push-model event loop: mpv pushes property changes, we emit to frontend.
+///
+/// Uses raw mpv handle for wait_event (mpv is thread-safe) so we don't
+/// hold the PLAYER mutex during the blocking wait. Commands can execute
+/// concurrently without being blocked by the event loop.
 fn event_loop(app: &AppHandle) {
+    // Grab raw handle once — valid until cleanup destroys mpv,
+    // but cleanup waits for us to exit first.
+    let mpv_raw = {
+        let guard = MPV_HANDLE.lock().unwrap();
+        match guard.as_ref() {
+            Some(MpvHandlePtr(h)) => *h,
+            None => return,
+        }
+    };
+
+    static EMIT_COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
     loop {
-        let should_break;
-        let state = {
-            let guard = PLAYER.lock().unwrap();
-            let Some(player) = guard.as_ref() else {
-                break;
-            };
-            let (event_id, _) = player.mpv.wait_event(0.05);
+        if EVENT_LOOP_SHUTDOWN.load(Ordering::SeqCst) {
+            tracing::info!("event loop received shutdown signal");
+            break;
+        }
 
-            should_break = event_id == MPV_EVENT_SHUTDOWN || event_id == MPV_EVENT_END_FILE;
+        // Block until mpv pushes an event (or timeout after 1s).
+        // No mutex held here — commands can run concurrently.
+        let (event_id, _event_ptr) = unsafe { ffi::wait_event_raw(mpv_raw, 1.0) };
 
-            if event_id == MPV_EVENT_PROPERTY_CHANGE || event_id == MPV_EVENT_NONE || should_break {
-                // read state
+        // Re-check after waking (cleanup may have called mpv_wakeup)
+        if EVENT_LOOP_SHUTDOWN.load(Ordering::SeqCst) {
+            tracing::info!("event loop woke up to shutdown");
+            break;
+        }
+
+        match event_id {
+            MPV_EVENT_NONE => continue,
+
+            MPV_EVENT_PROPERTY_CHANGE => {
+                // mpv pushed a property change — read full state under brief lock
+                let state = {
+                    let guard = PLAYER.lock().unwrap();
+                    let Some(player) = guard.as_ref() else {
+                        break;
+                    };
+                    player.get_state()
+                };
+
+                let count = EMIT_COUNT.fetch_add(1, Ordering::Relaxed);
+                if let Err(e) = app.emit("player-state", &state) {
+                    tracing::error!(error = %e, "failed to emit player-state");
+                } else if count < 5 || count.is_multiple_of(200) {
+                    tracing::debug!(
+                        count,
+                        playing = state.playing,
+                        paused = state.paused,
+                        pos = state.position,
+                        dur = state.duration,
+                        "emitted player-state"
+                    );
+                }
             }
 
-            player.get_state()
-        };
+            MPV_EVENT_END_FILE => {
+                tracing::info!("mpv end-file event");
+                break;
+            }
 
-        // Emit to the player window specifically
-        app.emit_to("player", "player-state", &state).ok();
+            MPV_EVENT_SHUTDOWN => {
+                tracing::info!("mpv shutdown event");
+                break;
+            }
 
-        if should_break {
-            tracing::info!("mpv event loop ending");
-            close_player_inner(app);
-            break;
+            other => {
+                tracing::debug!(event_id = other, "mpv event (unhandled)");
+            }
         }
     }
 }
@@ -251,16 +322,35 @@ pub fn close_player(app: &AppHandle) -> Result<(), String> {
 /// Clean up mpv + GL resources without touching the Tauri window.
 /// Called from window Destroyed event.
 fn cleanup_player_resources() {
-    // 1. Stop render callbacks
+    // 1. Signal event loop to stop
+    EVENT_LOOP_SHUTDOWN.store(true, Ordering::SeqCst);
+
+    // 2. Interrupt wait_event so event loop exits immediately
+    {
+        let guard = MPV_HANDLE.lock().unwrap();
+        if let Some(MpvHandlePtr(h)) = guard.as_ref() {
+            unsafe { ffi::wakeup_raw(*h) };
+        }
+    }
+
+    // 3. Wait for event loop thread to exit (it will see the shutdown flag)
+    for _ in 0..50 {
+        if !EVENT_LOOP_RUNNING.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+
+    // 4. Stop render callbacks (ObjC draw will see None and skip)
     *RENDER_CTX.lock().unwrap() = None;
 
-    // 2. Brief wait for in-flight render
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    // 3. Remove GL view
+    // 5. Remove GL view — no more CAOpenGLLayer draw callbacks
     native::remove_gl_view();
 
-    // 4. Destroy mpv
+    // 6. Clear raw handle (mpv is about to be destroyed)
+    *MPV_HANDLE.lock().unwrap() = None;
+
+    // 7. Destroy mpv (_render_ctx drops first due to field order)
     let mut guard = PLAYER.lock().unwrap();
     if let Some(player) = guard.take() {
         drop(player);
