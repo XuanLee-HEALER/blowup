@@ -4,8 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>blowup</title>
+    <style>
+      body { margin: 0; background: #0B1628; }
+      #splash {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        background: #0B1628; transition: opacity 0.3s;
+      }
+      #splash.fade { opacity: 0; pointer-events: none; }
+      #splash span {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+        font-size: 13px; color: rgba(255,255,255,0.25); letter-spacing: 0.1em;
+      }
+    </style>
   </head>
   <body>
+    <div id="splash"><span>blowup</span></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

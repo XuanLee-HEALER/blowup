@@ -36,16 +36,23 @@ pub fn run() {
             let cfg = config::load_config();
 
             // Initialize library index
+            let t0 = std::time::Instant::now();
             let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
             let library_root = std::path::PathBuf::from(&root_dir);
             std::fs::create_dir_all(&library_root).ok();
             let library_index = library_index::LibraryIndex::load(&library_root);
             handle.manage(library_index);
+            tracing::info!(elapsed_ms = t0.elapsed().as_millis(), "library index loaded");
 
-            // Initialize torrent manager + DB
+            // Allow asset protocol to serve files from the library directory
+            if let Err(e) = app.asset_protocol_scope().allow_directory(&library_root, true) {
+                tracing::warn!(error = %e, "failed to register library root in asset scope");
+            }
+
+            // Init DB (must complete before window opens — commands depend on pool)
             let trackers = commands::tracker::load_trackers();
-            tauri::async_runtime::block_on(async move {
-                // Init DB
+            let t1 = std::time::Instant::now();
+            tauri::async_runtime::block_on(async {
                 match db::init_db(&handle).await {
                     Ok(pool) => {
                         handle.manage(pool);
@@ -60,8 +67,13 @@ pub fn run() {
                         std::process::exit(1);
                     }
                 }
+            });
+            tracing::info!(elapsed_ms = t1.elapsed().as_millis(), "database initialized");
 
-                // Init torrent manager
+            // Init torrent manager in background — don't block window creation
+            let tm_handle = handle.clone();
+            let t2 = std::time::Instant::now();
+            tauri::async_runtime::spawn(async move {
                 match torrent::TorrentManager::new(
                     library_root,
                     cfg.download.max_concurrent,
@@ -72,14 +84,22 @@ pub fn run() {
                 .await
                 {
                     Ok(tm) => {
-                        handle.manage(tm);
+                        tracing::info!(elapsed_ms = t2.elapsed().as_millis(), "torrent manager ready");
+                        tm_handle.manage(tm);
                     }
                     Err(e) => {
-                        tracing::error!(error = %e, "failed to init torrent manager");
-                        // Non-fatal: download won't work but app still starts
+                        tracing::error!(error = %e, elapsed_ms = t2.elapsed().as_millis(), "failed to init torrent manager");
                     }
                 }
             });
+
+            // Open devtools in debug builds
+            #[cfg(debug_assertions)]
+            {
+                let window = app.get_webview_window("main").expect("main window");
+                window.open_devtools();
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

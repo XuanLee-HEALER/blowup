@@ -12,7 +12,7 @@
     "security": {
       "assetProtocol": {
         "enable": true,
-        "scope": ["$HOME/Movies/blowup/**", "$APPDATA/**"]
+        "scope": ["$APPDATA/**"]
       }
     },
     "macOSPrivateApi": true,

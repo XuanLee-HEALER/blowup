@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { library, media, config, player } from "../lib/tauri";
 import type { IndexEntry } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 const VIDEO_EXTS = ["mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v"];
 const SUB_EXTS = ["srt", "ass", "sub", "idx"];
@@ -32,10 +33,17 @@ export default function Library() {
   const selectEntry = useCallback((entry: IndexEntry) => {
     setSelectedEntry(entry);
     setCheckedSubs(new Set());
+    if (entry.poster_url) {
+      const resolved = entry.poster_url.startsWith("http") ? entry.poster_url : convertFileSrc(entry.poster_url);
+      console.log("[blowup] poster_url:", entry.poster_url, "→ resolved:", resolved);
+    }
     if (!entry.poster_url) {
       setEnriching(true);
       library.enrichIndexEntry(entry.tmdb_id)
-        .then((enriched) => setSelectedEntry(enriched))
+        .then((enriched) => {
+          console.log("[blowup] enriched poster_url:", enriched.poster_url);
+          setSelectedEntry(enriched);
+        })
         .catch(() => { /* TMDB unavailable, show basic info */ })
         .finally(() => setEnriching(false));
     }
@@ -127,7 +135,7 @@ export default function Library() {
       <div style={{ width: 240, flexShrink: 0, borderRight: "1px solid var(--color-separator)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ padding: "1.4rem 1rem 0" }}>
           <h1 style={{ fontSize: "1.3rem", fontWeight: 700, letterSpacing: "-0.035em", marginBottom: "0.8rem" }}>
-            电影库
+            影片
           </h1>
           <TextInput
             leadingIcon="⌕"
@@ -202,7 +210,7 @@ export default function Library() {
           )}
           {!searchResults && directors.length === 0 && (
             <p style={{ padding: "1rem", color: "var(--color-label-tertiary)", fontSize: "0.82rem" }}>
-              电影库为空。通过搜索页下载电影后会自动添加到此处。
+              暂无影片。通过搜索页下载电影后会自动添加到此处。
             </p>
           )}
         </div>
@@ -230,7 +238,7 @@ export default function Library() {
               {/* Poster */}
               {selectedEntry.poster_url ? (
                 <img
-                  src={selectedEntry.poster_url.startsWith("http") ? selectedEntry.poster_url : `asset://localhost/${selectedEntry.poster_url}`}
+                  src={selectedEntry.poster_url.startsWith("http") ? selectedEntry.poster_url : convertFileSrc(selectedEntry.poster_url)}
                   alt=""
                   style={{ width: 140, borderRadius: 8, objectFit: "cover", flexShrink: 0, background: "var(--color-bg-secondary)" }}
                 />

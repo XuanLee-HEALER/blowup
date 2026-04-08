@@ -8,8 +8,7 @@ import Wiki from "./pages/Wiki";
 import Graph from "./pages/Graph";
 import Library from "./pages/Library";
 import Download from "./pages/Download";
-import Subtitle from "./pages/Subtitle";
-import Media from "./pages/Media";
+import Darkroom from "./pages/Darkroom";
 import { MusicPlayer } from "./components/MusicPlayer";
 import { config, type MusicTrack } from "./lib/tauri";
 
@@ -26,17 +25,11 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: "资源",
+    label: "电影库",
     items: [
-      { icon: "⊞", label: "电影库", path: "/library" },
+      { icon: "⊞", label: "影片", path: "/library" },
       { icon: "↓", label: "下载", path: "/download" },
-    ],
-  },
-  {
-    label: "工具",
-    items: [
-      { icon: "◷", label: "字幕", path: "/subtitle" },
-      { icon: "▶", label: "媒体", path: "/media" },
+      { icon: "◑", label: "暗房", path: "/darkroom" },
     ],
   },
 ];
@@ -56,13 +49,15 @@ export default function App() {
   const [musicPlaylist, setMusicPlaylist] = useState<MusicTrack[]>([]);
 
   useEffect(() => {
+    console.log("[blowup] App mounted", performance.now().toFixed(0) + "ms");
     config.get().then((cfg) => {
+      console.log("[blowup] config loaded", performance.now().toFixed(0) + "ms");
       if (cfg.music) {
         setMusicEnabled(!!cfg.music.enabled);
         setMusicMode(cfg.music.mode === "random" ? "random" : "sequential");
         setMusicPlaylist(cfg.music.playlist ?? []);
       }
-    }).catch(() => {});
+    }).catch((e) => console.error("[blowup] config.get failed:", e));
   }, []);
 
   return (
@@ -136,8 +131,7 @@ export default function App() {
             <Route path="/graph"    element={<Graph />} />
             <Route path="/library"  element={<Library />} />
             <Route path="/download" element={<Download />} />
-            <Route path="/subtitle" element={<Subtitle />} />
-            <Route path="/media"    element={<Media />} />
+            <Route path="/darkroom" element={<Darkroom />} />
           </Routes>
         </main>
       </div>

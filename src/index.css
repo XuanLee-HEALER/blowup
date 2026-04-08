@@ -1,6 +1,4 @@
-@import "tailwindcss";
-
-@theme {
+:root {
   /* Backgrounds */
   --color-bg-primary:    #0B1628;
   --color-bg-secondary:  #122040;
