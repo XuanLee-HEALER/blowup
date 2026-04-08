@@ -4,8 +4,7 @@ import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { NavItem } from "./components/ui/NavItem";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
-import People from "./pages/People";
-import Genres from "./pages/Genres";
+import Wiki from "./pages/Wiki";
 import Graph from "./pages/Graph";
 import Library from "./pages/Library";
 import Download from "./pages/Download";
@@ -22,9 +21,8 @@ const NAV_SECTIONS = [
   {
     label: "知识库",
     items: [
-      { icon: "◎", label: "影人", path: "/people" },
-      { icon: "◈", label: "流派", path: "/genres" },
-      { icon: "⋯", label: "关系图", path: "/graph" },
+      { icon: "◎", label: "Wiki", path: "/wiki" },
+      { icon: "⋯", label: "知识图谱", path: "/graph" },
     ],
   },
   {
@@ -43,7 +41,7 @@ const NAV_SECTIONS = [
   },
 ];
 
-const KB_PATHS = ["/", "/people", "/genres", "/graph", "/library"];
+const KB_PATHS = ["/", "/wiki", "/graph", "/library"];
 
 export default function App() {
   const navigate = useNavigate();
@@ -134,8 +132,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Search />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/people"   element={<People />} />
-            <Route path="/genres"   element={<Genres />} />
+            <Route path="/wiki"     element={<Wiki />} />
             <Route path="/graph"    element={<Graph />} />
             <Route path="/library"  element={<Library />} />
             <Route path="/download" element={<Download />} />

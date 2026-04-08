@@ -56,49 +56,39 @@ export interface AppConfig {
   sync: { endpoint: string; bucket: string; access_key: string; secret_key: string };
 }
 
-// ── Library types ─────────────────────────────────────────────────
-export interface PersonSummary { id: number; name: string; primary_role: string; nationality: string | null; film_count: number; }
-export interface PersonFilmEntry { film_id: number; title: string; year: number | null; role: string; poster_cache_path: string | null; }
-export interface PersonRelation { target_id: number; target_name: string; direction: string; relation_type: string; }
-export interface PersonDetail {
-  id: number; tmdb_id: number | null; name: string; primary_role: string;
-  born_date: string | null; nationality: string | null; biography: string | null;
-  wiki_content: string; films: PersonFilmEntry[]; relations: PersonRelation[];
+// ── Knowledge Base types ─────────────────────────────────────────
+export interface EntrySummary {
+  id: number;
+  name: string;
+  tags: string[];
+  updated_at: string;
 }
 
-export interface FilmSummary { id: number; title: string; year: number | null; tmdb_rating: number | null; poster_cache_path: string | null; }
-export interface FilmPersonEntry { person_id: number; name: string; role: string; }
-export interface ReviewEntry { id: number; is_personal: boolean; author: string | null; content: string; rating: number | null; created_at: string; }
-export interface GenreSummary { id: number; name: string; film_count: number; child_count: number; }
-export interface FilmDetail {
-  id: number; tmdb_id: number | null; title: string; original_title: string | null;
-  year: number | null; overview: string | null; tmdb_rating: number | null;
-  poster_cache_path: string | null; wiki_content: string;
-  people: FilmPersonEntry[]; genres: GenreSummary[]; reviews: ReviewEntry[];
+export interface EntryDetail {
+  id: number;
+  name: string;
+  wiki: string;
+  tags: string[];
+  relations: RelationEntry[];
+  created_at: string;
+  updated_at: string;
 }
 
-export interface GenreDetail {
-  id: number; name: string; description: string | null; parent_id: number | null;
-  period: string | null; wiki_content: string;
-  children: GenreSummary[]; people: PersonSummary[]; films: FilmSummary[];
+export interface RelationEntry {
+  id: number;
+  target_id: number;
+  target_name: string;
+  direction: string;
+  relation_type: string;
 }
 
-export interface GenreTreeNode { id: number; name: string; period: string | null; film_count: number; children: GenreTreeNode[]; }
-
-export interface TmdbPersonInput { tmdb_id: number | null; name: string; role: string; primary_role: string; }
-export interface TmdbMovieInput {
-  tmdb_id: number; title: string; original_title: string | null;
-  year: number | null; overview: string | null; tmdb_rating: number | null;
-  people: TmdbPersonInput[];
-}
-
-export interface GraphNode { id: string; label: string; node_type: string; role: string | null; weight: number; }
-export interface GraphLink { source: string; target: string; role: string; }
+export interface GraphNode { id: string; label: string; weight: number; }
+export interface GraphLink { source: string; target: string; relation_type: string; }
 export interface GraphData { nodes: GraphNode[]; links: GraphLink[]; }
 
+// ── Library Items ───────────────────────────────────────────────
 export interface LibraryItemSummary {
   id: number;
-  film_id: number | null;
   file_path: string;
   file_size: number | null;
   duration_secs: number | null;
@@ -106,8 +96,6 @@ export interface LibraryItemSummary {
   audio_codec: string | null;
   resolution: string | null;
   added_at: string;
-  film_title: string | null;
-  film_year: number | null;
 }
 
 export interface LibraryItemDetail extends LibraryItemSummary {
@@ -123,12 +111,8 @@ export interface LibraryAssetEntry {
 }
 
 export interface LibraryStats {
-  total_films: number;
-  films_with_files: number;
+  total_items: number;
   total_file_size: number;
-  unlinked_files: number;
-  by_decade: StatEntry[];
-  by_genre: StatEntry[];
   by_resolution: StatEntry[];
 }
 
@@ -141,36 +125,6 @@ export interface ScanResult {
   added: number;
   skipped: number;
   errors: string[];
-}
-
-export interface FilmListEntry {
-  id: number;
-  title: string;
-  original_title: string | null;
-  year: number | null;
-  tmdb_rating: number | null;
-  poster_cache_path: string | null;
-  has_file: number;
-}
-
-export interface FilmFilterResult {
-  films: FilmListEntry[];
-  total: number;
-  page: number;
-  page_size: number;
-}
-
-export interface FilmFilterParams {
-  query?: string;
-  genreId?: number;
-  yearFrom?: number;
-  yearTo?: number;
-  minRating?: number;
-  hasFile?: boolean;
-  sortBy?: string;
-  sortDesc?: boolean;
-  page?: number;
-  pageSize?: number;
 }
 
 // ── Download ─────────────────────────────────────────────────────
@@ -297,54 +251,45 @@ export const dataIO = {
   testS3Connection: () => invoke<string>("test_s3_connection"),
 };
 
+// ── Knowledge Base ──────────────────────────────────────────────
+export const kb = {
+  listEntries: (query?: string, tag?: string) =>
+    invoke<EntrySummary[]>("list_entries", { query, tag }),
+  getEntry: (id: number) =>
+    invoke<EntryDetail>("get_entry", { id }),
+  createEntry: (name: string) =>
+    invoke<number>("create_entry", { name }),
+  updateEntryName: (id: number, name: string) =>
+    invoke<void>("update_entry_name", { id, name }),
+  updateEntryWiki: (id: number, wiki: string) =>
+    invoke<void>("update_entry_wiki", { id, wiki }),
+  deleteEntry: (id: number) =>
+    invoke<void>("delete_entry", { id }),
+  addTag: (entryId: number, tag: string) =>
+    invoke<void>("add_entry_tag", { entryId, tag }),
+  removeTag: (entryId: number, tag: string) =>
+    invoke<void>("remove_entry_tag", { entryId, tag }),
+  listAllTags: () =>
+    invoke<string[]>("list_all_tags"),
+  addRelation: (fromId: number, toId: number, relationType: string) =>
+    invoke<number>("add_relation", { fromId, toId, relationType }),
+  removeRelation: (id: number) =>
+    invoke<void>("remove_relation", { id }),
+  listRelationTypes: () =>
+    invoke<string[]>("list_relation_types"),
+  getGraphData: (centerId?: number) =>
+    invoke<GraphData>("get_graph_data", { centerId }),
+};
+
+// ── Library (film library — file index system) ──────────────────
 export const library = {
-  listPeople: () => invoke<PersonSummary[]>("list_people"),
-  getPerson: (id: number) => invoke<PersonDetail>("get_person", { id }),
-  createPerson: (name: string, primaryRole: string, tmdbId?: number, bornDate?: string, nationality?: string) =>
-    invoke<number>("create_person", { name, primaryRole, tmdbId, bornDate, nationality }),
-  updatePersonWiki: (id: number, content: string) => invoke<void>("update_person_wiki", { id, content }),
-  deletePerson: (id: number) => invoke<void>("delete_person", { id }),
-  addPersonRelation: (fromId: number, toId: number, relationType: string) =>
-    invoke<void>("add_person_relation", { fromId, toId, relationType }),
-  removePersonRelation: (fromId: number, toId: number, relationType: string) =>
-    invoke<void>("remove_person_relation", { fromId, toId, relationType }),
-
-  listFilms: () => invoke<FilmSummary[]>("list_films"),
-  getFilm: (id: number) => invoke<FilmDetail>("get_film", { id }),
-  addFilmFromTmdb: (tmdbMovie: TmdbMovieInput) => invoke<number>("add_film_from_tmdb", { tmdbMovie }),
-  updateFilmWiki: (id: number, content: string) => invoke<void>("update_film_wiki", { id, content }),
-  deleteFilm: (id: number) => invoke<void>("delete_film", { id }),
-
-  listGenresTree: () => invoke<GenreTreeNode[]>("list_genres_tree"),
-  getGenre: (id: number) => invoke<GenreDetail>("get_genre", { id }),
-  createGenre: (name: string, parentId?: number, description?: string, period?: string) =>
-    invoke<number>("create_genre", { name, parentId, description, period }),
-  updateGenreWiki: (id: number, content: string) => invoke<void>("update_genre_wiki", { id, content }),
-  deleteGenre: (id: number) => invoke<void>("delete_genre", { id }),
-  linkFilmGenre: (filmId: number, genreId: number) => invoke<void>("link_film_genre", { filmId, genreId }),
-  unlinkFilmGenre: (filmId: number, genreId: number) => invoke<void>("unlink_film_genre", { filmId, genreId }),
-  linkPersonGenre: (personId: number, genreId: number) => invoke<void>("link_person_genre", { personId, genreId }),
-  unlinkPersonGenre: (personId: number, genreId: number) => invoke<void>("unlink_person_genre", { personId, genreId }),
-
-  addReview: (filmId: number, isPersonal: boolean, author: string | null, content: string, rating: number | null) =>
-    invoke<number>("add_review", { filmId, isPersonal, author, content, rating }),
-  updateReview: (id: number, content: string, rating: number | null) =>
-    invoke<void>("update_review", { id, content, rating }),
-  deleteReview: (id: number) => invoke<void>("delete_review", { id }),
-
-  getGraphData: () => invoke<GraphData>("get_graph_data"),
-
-  // Library items
+  // Library items (DB-backed)
   listLibraryItems: () =>
     invoke<LibraryItemSummary[]>("list_library_items"),
   getLibraryItem: (id: number) =>
     invoke<LibraryItemDetail>("get_library_item", { id }),
-  addLibraryItem: (filePath: string, filmId?: number) =>
-    invoke<number>("add_library_item", { filePath, filmId }),
-  linkItemToFilm: (itemId: number, filmId: number) =>
-    invoke<void>("link_item_to_film", { itemId, filmId }),
-  unlinkItemFromFilm: (itemId: number) =>
-    invoke<void>("unlink_item_from_film", { itemId }),
+  addLibraryItem: (filePath: string) =>
+    invoke<number>("add_library_item", { filePath }),
   removeLibraryItem: (id: number) =>
     invoke<void>("remove_library_item", { id }),
   scanLibraryDirectory: (dirPath: string) =>
@@ -355,10 +300,8 @@ export const library = {
     invoke<void>("remove_library_asset", { id }),
   getLibraryStats: () =>
     invoke<LibraryStats>("get_library_stats"),
-  listFilmsFiltered: (params: FilmFilterParams) =>
-    invoke<FilmFilterResult>("list_films_filtered", params as Record<string, unknown>),
 
-  // Library index
+  // Library index (file-based)
   listIndexEntries: () =>
     invoke<IndexEntry[]>("list_index_entries"),
   listIndexByDirector: () =>

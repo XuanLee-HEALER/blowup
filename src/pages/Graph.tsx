@@ -1,7 +1,7 @@
 // src/pages/Graph.tsx
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as d3 from "d3";
-import { library } from "../lib/tauri";
+import { kb } from "../lib/tauri";
 import type { GraphData, GraphNode } from "../lib/tauri";
 
 interface SimNode extends GraphNode {
@@ -9,30 +9,22 @@ interface SimNode extends GraphNode {
   fx?: number | null; fy?: number | null;
 }
 
-interface SimLink { source: SimNode; target: SimNode; role: string; }
+interface SimLink { source: SimNode; target: SimNode; relation_type: string; }
 
-const nodeRadius = (n: SimNode) =>
-  n.node_type === "film" ? 18 : n.role === "director" ? 8 + n.weight * 6 : 6 + n.weight * 4;
-
-const nodeFill = (n: SimNode) =>
-  n.node_type === "film" ? "#122040" : n.role === "director" ? "#C5A050" : "rgba(255,255,255,0.25)";
-
-const nodeStroke = (n: SimNode) => n.node_type === "film" ? "#C5A050" : "transparent";
+const nodeRadius = (n: SimNode) => 6 + n.weight * 5;
+const nodeFill = () => "#C5A050";
+const nodeStroke = () => "rgba(197,160,80,0.3)";
 
 export default function Graph() {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [data, setData] = useState<GraphData | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<SimNode | null>(null);
-  const [orbitPaused, setOrbitPaused] = useState(false);
-  const orbitPausedRef = useRef(false);
-  const timerRef = useRef<d3.Timer | null>(null);
 
-  useEffect(() => { library.getGraphData().then(setData).catch(console.error); }, []);
+  useEffect(() => { kb.getGraphData().then(setData).catch(console.error); }, []);
 
   const buildGraph = useCallback(() => {
     if (!data || !svgRef.current) return;
-    let unmounted = false;
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
     const width = svgRef.current.clientWidth;
@@ -48,7 +40,7 @@ export default function Graph() {
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
     const links: SimLink[] = data.links
-      .map((l) => ({ source: nodeById.get(l.source)!, target: nodeById.get(l.target)!, role: l.role }))
+      .map((l) => ({ source: nodeById.get(l.source)!, target: nodeById.get(l.target)!, relation_type: l.relation_type }))
       .filter((l) => l.source && l.target);
 
     const simulation = d3.forceSimulation<SimNode>(nodes)
@@ -58,13 +50,23 @@ export default function Graph() {
       .force("collide", d3.forceCollide<SimNode>().radius((d) => nodeRadius(d) + 8))
       .alphaDecay(0.02);
 
+    // Links
     const link = g.append("g").selectAll("line").data(links).join("line")
       .attr("stroke", "rgba(255,255,255,0.12)").attr("stroke-width", 1);
 
+    // Link labels (relation type)
+    const linkLabel = g.append("g").selectAll("text").data(links).join("text")
+      .text((d) => d.relation_type)
+      .attr("font-size", 8)
+      .attr("fill", "rgba(255,255,255,0.3)")
+      .attr("text-anchor", "middle")
+      .style("pointer-events", "none").style("user-select", "none");
+
+    // Nodes
     const node = g.append("g").selectAll<SVGCircleElement, SimNode>("circle")
       .data(nodes).join("circle")
       .attr("r", nodeRadius).attr("fill", nodeFill)
-      .attr("stroke", nodeStroke).attr("stroke-width", (d) => d.node_type === "film" ? 1.5 : 0)
+      .attr("stroke", nodeStroke).attr("stroke-width", 1.5)
       .style("cursor", "pointer")
       .call(
         d3.drag<SVGCircleElement, SimNode>()
@@ -76,9 +78,10 @@ export default function Graph() {
       .on("mouseleave", () => setHoveredId(null))
       .on("click", (_, d) => setSelectedNode((prev) => prev?.id === d.id ? null : d));
 
+    // Node labels
     const label = g.append("g").selectAll("text").data(nodes).join("text")
       .text((d) => d.label)
-      .attr("font-size", (d) => d.node_type === "film" ? 11 : 9)
+      .attr("font-size", 10)
       .attr("fill", "rgba(255,255,255,0.7)").attr("text-anchor", "middle")
       .attr("dy", (d) => nodeRadius(d) + 13)
       .style("pointer-events", "none").style("user-select", "none");
@@ -86,46 +89,14 @@ export default function Graph() {
     simulation.on("tick", () => {
       link.attr("x1", (d) => d.source.x ?? 0).attr("y1", (d) => d.source.y ?? 0)
           .attr("x2", (d) => d.target.x ?? 0).attr("y2", (d) => d.target.y ?? 0);
+      linkLabel
+        .attr("x", (d) => ((d.source.x ?? 0) + (d.target.x ?? 0)) / 2)
+        .attr("y", (d) => ((d.source.y ?? 0) + (d.target.y ?? 0)) / 2 - 4);
       node.attr("cx", (d) => d.x ?? 0).attr("cy", (d) => d.y ?? 0);
       label.attr("x", (d) => d.x ?? 0).attr("y", (d) => d.y ?? 0);
     });
 
-    // Build film→person adjacency for orbital rotation
-    const personOf = new Map<string, string[]>();
-    links.forEach((l) => {
-      if (l.target.node_type === "film") {
-        const list = personOf.get(l.target.id) ?? [];
-        list.push(l.source.id);
-        personOf.set(l.target.id, list);
-      }
-    });
-
-    const angles = new Map<string, number>();
-    nodes.forEach((n) => angles.set(n.id, Math.random() * Math.PI * 2));
-
-    simulation.on("end", () => {
-      if (unmounted) return;
-      if (timerRef.current) timerRef.current.stop();
-      timerRef.current = d3.timer(() => {
-        if (orbitPausedRef.current) return;
-        nodes.filter((n) => n.node_type === "film").forEach((film) => {
-          (personOf.get(film.id) ?? []).forEach((pid) => {
-            const person = nodeById.get(pid);
-            if (!person || (person.fx !== null && person.fx !== undefined)) return;
-            const angle = (angles.get(pid) ?? 0) + 0.002;
-            angles.set(pid, angle);
-            const dx = (person.x ?? 0) - (film.x ?? 0);
-            const dy = (person.y ?? 0) - (film.y ?? 0);
-            const r = Math.sqrt(dx * dx + dy * dy);
-            person.vx = (person.vx ?? 0) - Math.sin(angle) * r * 0.002;
-            person.vy = (person.vy ?? 0) + Math.cos(angle) * r * 0.002;
-          });
-        });
-        simulation.alphaTarget(0.01).restart();
-      });
-    });
-
-    return () => { unmounted = true; simulation.stop(); timerRef.current?.stop(); };
+    return () => { simulation.stop(); };
   }, [data]);
 
   useEffect(() => { const cleanup = buildGraph(); return cleanup; }, [buildGraph]);
@@ -146,13 +117,11 @@ export default function Graph() {
     svg.selectAll<SVGLineElement, SimLink>("line").attr("opacity", (d) =>
       connected.has((d.source as SimNode).id) && connected.has((d.target as SimNode).id) ? 0.8 : 0.05
     );
-    svg.selectAll<SVGTextElement, SimNode>("text").attr("opacity", (d) => connected.has(d.id) ? 1 : 0.1);
+    svg.selectAll<SVGTextElement, SimNode>("text").attr("opacity", (d) => {
+      if ("id" in d) return connected.has(d.id) ? 1 : 0.1;
+      return 0.1;
+    });
   }, [hoveredId, data]);
-
-  const toggleOrbit = () => {
-    orbitPausedRef.current = !orbitPausedRef.current;
-    setOrbitPaused(orbitPausedRef.current);
-  };
 
   const toolbarBtnStyle: React.CSSProperties = {
     background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)",
@@ -169,7 +138,7 @@ export default function Graph() {
         </div>
       ) : data.nodes.length === 0 ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>
-          知识库为空。先在「影人」或「搜索」中添加内容。
+          知识库为空。先在 Wiki 中添加条目和关系。
         </div>
       ) : (
         <svg ref={svgRef} width="100%" height="100%" />
@@ -182,9 +151,6 @@ export default function Graph() {
           d3.select(svgRef.current).transition().duration(500)
             .call((d3.zoom() as d3.ZoomBehavior<SVGSVGElement, unknown>).transform, d3.zoomIdentity);
         }} style={toolbarBtnStyle}>重置视角</button>
-        <button onClick={toggleOrbit} style={toolbarBtnStyle}>
-          {orbitPaused ? "▶ 继续旋转" : "⏸ 暂停旋转"}
-        </button>
       </div>
 
       {/* Selected node mini card */}
@@ -192,14 +158,9 @@ export default function Graph() {
         <div style={{ position: "absolute", bottom: "1.5rem", right: "1rem", background: "var(--color-bg-secondary)", border: "1px solid var(--color-separator)", borderRadius: 8, padding: "0.85rem 1rem", width: 200, zIndex: 10 }}>
           <button onClick={() => setSelectedNode(null)} style={{ position: "absolute", top: "0.4rem", right: "0.5rem", background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.8rem" }}>✕</button>
           <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: 600 }}>{selectedNode.label}</p>
-          <p style={{ margin: "0.2rem 0 0", fontSize: "0.7rem", color: "var(--color-label-tertiary)" }}>
-            {selectedNode.node_type === "film" ? "电影" : selectedNode.role ?? "影人"}
+          <p style={{ margin: "0.15rem 0 0", fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>
+            关系数 {selectedNode.weight.toFixed(1)}
           </p>
-          {selectedNode.node_type !== "film" && (
-            <p style={{ margin: "0.15rem 0 0", fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>
-              影响力 {selectedNode.weight.toFixed(2)}
-            </p>
-          )}
         </div>
       )}
     </div>

@@ -1,8 +1,6 @@
 use sqlx::SqlitePool;
 
-use super::{
-    LibraryAssetEntry, LibraryItemDetail, LibraryItemSummary, LibraryStats, ScanResult, StatEntry,
-};
+use super::{LibraryAssetEntry, LibraryItemDetail, LibraryItemSummary, LibraryStats, ScanResult, StatEntry};
 use crate::ffmpeg::FfmpegTool;
 
 // ── Video probe helper ──────────────────────────────────────────
@@ -96,7 +94,6 @@ fn is_video_file(path: &std::path::Path) -> bool {
 #[tauri::command]
 pub async fn add_library_item(
     file_path: String,
-    film_id: Option<i64>,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<i64, String> {
     let probe = probe_video_file(&file_path).await.unwrap_or(VideoProbe {
@@ -108,10 +105,9 @@ pub async fn add_library_item(
     });
 
     let result = sqlx::query(
-        "INSERT INTO library_items (film_id, file_path, file_size, duration_secs, video_codec, audio_codec, resolution)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO library_items (file_path, file_size, duration_secs, video_codec, audio_codec, resolution)
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
-    .bind(film_id)
     .bind(&file_path)
     .bind(probe.file_size)
     .bind(probe.duration_secs)
@@ -130,12 +126,10 @@ pub async fn list_library_items(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<Vec<LibraryItemSummary>, String> {
     sqlx::query_as::<_, LibraryItemSummary>(
-        "SELECT li.id, li.film_id, li.file_path, li.file_size, li.duration_secs,
-                li.video_codec, li.audio_codec, li.resolution, li.added_at,
-                f.title AS film_title, f.year AS film_year
-         FROM library_items li
-         LEFT JOIN films f ON li.film_id = f.id
-         ORDER BY li.added_at DESC",
+        "SELECT id, file_path, file_size, duration_secs,
+                video_codec, audio_codec, resolution, added_at
+         FROM library_items
+         ORDER BY added_at DESC",
     )
     .fetch_all(pool.inner())
     .await
@@ -148,12 +142,9 @@ pub async fn get_library_item(
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<LibraryItemDetail, String> {
     let row = sqlx::query_as::<_, LibraryItemSummary>(
-        "SELECT li.id, li.film_id, li.file_path, li.file_size, li.duration_secs,
-                li.video_codec, li.audio_codec, li.resolution, li.added_at,
-                f.title AS film_title, f.year AS film_year
-         FROM library_items li
-         LEFT JOIN films f ON li.film_id = f.id
-         WHERE li.id = ?",
+        "SELECT id, file_path, file_size, duration_secs,
+                video_codec, audio_codec, resolution, added_at
+         FROM library_items WHERE id = ?",
     )
     .bind(id)
     .fetch_one(pool.inner())
@@ -171,7 +162,6 @@ pub async fn get_library_item(
 
     Ok(LibraryItemDetail {
         id: row.id,
-        film_id: row.film_id,
         file_path: row.file_path,
         file_size: row.file_size,
         duration_secs: row.duration_secs,
@@ -179,38 +169,8 @@ pub async fn get_library_item(
         audio_codec: row.audio_codec,
         resolution: row.resolution,
         added_at: row.added_at,
-        film_title: row.film_title,
-        film_year: row.film_year,
         assets,
     })
-}
-
-#[tauri::command]
-pub async fn link_item_to_film(
-    item_id: i64,
-    film_id: i64,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<(), String> {
-    sqlx::query("UPDATE library_items SET film_id = ? WHERE id = ?")
-        .bind(film_id)
-        .bind(item_id)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn unlink_item_from_film(
-    item_id: i64,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<(), String> {
-    sqlx::query("UPDATE library_items SET film_id = NULL WHERE id = ?")
-        .bind(item_id)
-        .execute(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 /// Delete library_assets + library_items for a given item ID.
@@ -343,42 +303,17 @@ pub async fn remove_library_asset(
 
 #[tauri::command]
 pub async fn get_library_stats(pool: tauri::State<'_, SqlitePool>) -> Result<LibraryStats, String> {
-    #[derive(sqlx::FromRow)]
-    struct StatsRow {
-        total_films: i64,
-        films_with_files: i64,
-        total_file_size: i64,
-        unlinked_files: i64,
-    }
+    let total_items: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM library_items")
+            .fetch_one(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
 
-    let row = sqlx::query_as::<_, StatsRow>(
-        "SELECT
-            (SELECT COUNT(*) FROM films) AS total_films,
-            (SELECT COUNT(DISTINCT film_id) FROM library_items WHERE film_id IS NOT NULL) AS films_with_files,
-            (SELECT COALESCE(SUM(file_size), 0) FROM library_items) AS total_file_size,
-            (SELECT COUNT(*) FROM library_items WHERE film_id IS NULL) AS unlinked_files"
-    )
-    .fetch_one(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let by_decade = sqlx::query_as::<_, StatEntry>(
-        "SELECT (year / 10 * 10) || 's' AS label, COUNT(*) AS count
-         FROM films WHERE year IS NOT NULL
-         GROUP BY year / 10 ORDER BY label",
-    )
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let by_genre = sqlx::query_as::<_, StatEntry>(
-        "SELECT g.name AS label, COUNT(*) AS count
-         FROM film_genres fg JOIN genres g ON fg.genre_id = g.id
-         GROUP BY g.id ORDER BY count DESC LIMIT 10",
-    )
-    .fetch_all(pool.inner())
-    .await
-    .map_err(|e| e.to_string())?;
+    let total_file_size: i64 =
+        sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM library_items")
+            .fetch_one(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
 
     let by_resolution = sqlx::query_as::<_, StatEntry>(
         "SELECT COALESCE(resolution, '未知') AS label, COUNT(*) AS count
@@ -389,12 +324,8 @@ pub async fn get_library_stats(pool: tauri::State<'_, SqlitePool>) -> Result<Lib
     .map_err(|e| e.to_string())?;
 
     Ok(LibraryStats {
-        total_films: row.total_films,
-        films_with_files: row.films_with_files,
-        total_file_size: row.total_file_size,
-        unlinked_files: row.unlinked_files,
-        by_decade,
-        by_genre,
+        total_items,
+        total_file_size,
         by_resolution,
     })
 }
@@ -437,7 +368,6 @@ pub fn rebuild_index(
 // ── Resource & Film directory deletion ─────────────────────────
 
 /// Delete a single media resource: removes disk file + DB records.
-/// The film entry is preserved even if it has no remaining resources.
 #[tauri::command]
 pub async fn delete_library_resource(
     file_path: String,
@@ -471,13 +401,11 @@ pub fn refresh_index_entry(
     Ok(())
 }
 
-/// Delete a film and its entire directory from disk + DB.
-/// Blocks if the player is currently playing a file from this directory.
+/// Delete a film's entire directory from disk + index.
 #[tauri::command]
 pub async fn delete_film_directory(
     tmdb_id: u64,
     index: tauri::State<'_, crate::library_index::LibraryIndex>,
-    pool: tauri::State<'_, SqlitePool>,
 ) -> Result<(), String> {
     let entry = index
         .get_entry(tmdb_id)
@@ -492,46 +420,6 @@ pub async fn delete_film_directory(
         && current_file.starts_with(&film_dir)
     {
         return Err("播放器正在播放该电影的文件，请先关闭播放器".to_string());
-    }
-
-    // DB cascade cleanup in a transaction
-    let film_id: Option<i64> = sqlx::query_scalar("SELECT id FROM films WHERE tmdb_id = ?")
-        .bind(tmdb_id as i64)
-        .fetch_optional(pool.inner())
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if let Some(fid) = film_id {
-        let mut tx = pool.inner().begin().await.map_err(|e| e.to_string())?;
-        for sql in [
-            "DELETE FROM film_genres WHERE film_id = ?",
-            "DELETE FROM person_films WHERE film_id = ?",
-            "DELETE FROM reviews WHERE film_id = ?",
-        ] {
-            sqlx::query(sql)
-                .bind(fid)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| e.to_string())?;
-        }
-        sqlx::query("DELETE FROM wiki_entries WHERE entity_type = 'film' AND entity_id = ?")
-            .bind(fid)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        sqlx::query("DELETE FROM library_assets WHERE item_id IN (SELECT id FROM library_items WHERE film_id = ?)")
-            .bind(fid).execute(&mut *tx).await.map_err(|e| e.to_string())?;
-        sqlx::query("DELETE FROM library_items WHERE film_id = ?")
-            .bind(fid)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        sqlx::query("DELETE FROM films WHERE id = ?")
-            .bind(fid)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        tx.commit().await.map_err(|e| e.to_string())?;
     }
 
     // Delete directory (NotFound is fine — may already be gone)
@@ -573,11 +461,9 @@ mod tests {
         .unwrap();
 
         let items: Vec<super::LibraryItemSummary> = sqlx::query_as(
-            "SELECT li.id, li.film_id, li.file_path, li.file_size, li.duration_secs,
-                    li.video_codec, li.audio_codec, li.resolution, li.added_at,
-                    f.title AS film_title, f.year AS film_year
-             FROM library_items li LEFT JOIN films f ON li.film_id = f.id
-             ORDER BY li.added_at DESC",
+            "SELECT id, file_path, file_size, duration_secs,
+                    video_codec, audio_codec, resolution, added_at
+             FROM library_items ORDER BY added_at DESC",
         )
         .fetch_all(&pool)
         .await
@@ -586,45 +472,6 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].file_path, "/movies/test.mp4");
         assert_eq!(items[0].file_size, Some(1073741824));
-        assert_eq!(items[0].film_id, None);
-    }
-
-    #[tokio::test]
-    async fn test_link_and_unlink_item() {
-        let pool = setup_pool().await;
-        sqlx::query("INSERT INTO films (title, year) VALUES (?, ?)")
-            .bind("Test Film")
-            .bind(2024_i64)
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("INSERT INTO library_items (file_path) VALUES (?)")
-            .bind("/movies/test.mp4")
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        sqlx::query("UPDATE library_items SET film_id = 1 WHERE id = 1")
-            .execute(&pool)
-            .await
-            .unwrap();
-        let film_id: Option<i64> =
-            sqlx::query_scalar("SELECT film_id FROM library_items WHERE id = 1")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(film_id, Some(1));
-
-        sqlx::query("UPDATE library_items SET film_id = NULL WHERE id = 1")
-            .execute(&pool)
-            .await
-            .unwrap();
-        let film_id: Option<i64> =
-            sqlx::query_scalar("SELECT film_id FROM library_items WHERE id = 1")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(film_id, None);
     }
 
     #[tokio::test]
@@ -688,11 +535,9 @@ mod tests {
         .unwrap();
 
         let row: super::LibraryItemSummary = sqlx::query_as(
-            "SELECT li.id, li.film_id, li.file_path, li.file_size, li.duration_secs,
-                    li.video_codec, li.audio_codec, li.resolution, li.added_at,
-                    f.title AS film_title, f.year AS film_year
-             FROM library_items li LEFT JOIN films f ON li.film_id = f.id
-             WHERE li.id = ?",
+            "SELECT id, file_path, file_size, duration_secs,
+                    video_codec, audio_codec, resolution, added_at
+             FROM library_items WHERE id = ?",
         )
         .bind(1_i64)
         .fetch_one(&pool)
@@ -715,54 +560,32 @@ mod tests {
     #[tokio::test]
     async fn test_library_stats() {
         let pool = setup_pool().await;
-        sqlx::query("INSERT INTO films (title, year) VALUES (?, ?)")
-            .bind("Film 1")
-            .bind(2024_i64)
+        sqlx::query("INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)")
+            .bind("/movies/film1.mkv")
+            .bind(5000000_i64)
+            .bind("1920x1080")
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO films (title, year) VALUES (?, ?)")
-            .bind("Film 2")
-            .bind(1995_i64)
+        sqlx::query("INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)")
+            .bind("/movies/unknown.mp4")
+            .bind(3000000_i64)
+            .bind("1280x720")
             .execute(&pool)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO library_items (film_id, file_path, file_size, resolution) VALUES (?, ?, ?, ?)")
-            .bind(1_i64).bind("/movies/film1.mkv").bind(5000000_i64).bind("1920x1080")
-            .execute(&pool).await.unwrap();
-        sqlx::query(
-            "INSERT INTO library_items (file_path, file_size, resolution) VALUES (?, ?, ?)",
-        )
-        .bind("/movies/unknown.mp4")
-        .bind(3000000_i64)
-        .bind("1280x720")
-        .execute(&pool)
-        .await
-        .unwrap();
 
-        let total_films: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM films")
+        let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM library_items")
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(total_films, 2);
-        let films_with_files: i64 = sqlx::query_scalar(
-            "SELECT COUNT(DISTINCT film_id) FROM library_items WHERE film_id IS NOT NULL",
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-        assert_eq!(films_with_files, 1);
+        assert_eq!(total, 2);
+
         let total_size: i64 =
             sqlx::query_scalar("SELECT COALESCE(SUM(file_size), 0) FROM library_items")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
         assert_eq!(total_size, 8000000);
-        let unlinked: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM library_items WHERE film_id IS NULL")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
-        assert_eq!(unlinked, 1);
     }
 }

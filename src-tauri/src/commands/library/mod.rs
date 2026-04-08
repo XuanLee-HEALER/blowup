@@ -1,154 +1,42 @@
 // src-tauri/src/commands/library/mod.rs
 
-pub mod films;
-pub mod genres;
+pub mod entries;
 pub mod graph;
 pub mod items;
-pub mod people;
-pub mod reviews;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-// ── Person ────────────────────────────────────────────────────────
+// ── Knowledge Base: Entries ──────────────────────────────────────
 
-#[derive(Serialize, sqlx::FromRow)]
-pub struct PersonSummary {
+#[derive(Serialize)]
+pub struct EntrySummary {
     pub id: i64,
     pub name: String,
-    pub primary_role: String,
-    pub nationality: Option<String>,
-    pub film_count: i64,
+    pub tags: Vec<String>,
+    pub updated_at: String,
 }
 
 #[derive(Serialize)]
-pub struct PersonDetail {
+pub struct EntryDetail {
     pub id: i64,
-    pub tmdb_id: Option<i64>,
     pub name: String,
-    pub primary_role: String,
-    pub born_date: Option<String>,
-    pub nationality: Option<String>,
-    pub biography: Option<String>,
-    pub wiki_content: String,
-    pub films: Vec<PersonFilmEntry>,
-    pub relations: Vec<PersonRelation>,
+    pub wiki: String,
+    pub tags: Vec<String>,
+    pub relations: Vec<RelationEntry>,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Serialize, sqlx::FromRow)]
-pub struct PersonFilmEntry {
-    pub film_id: i64,
-    pub title: String,
-    pub year: Option<i64>,
-    pub role: String,
-    pub poster_cache_path: Option<String>,
-}
-
-#[derive(Serialize, sqlx::FromRow)]
-pub struct PersonRelation {
+pub struct RelationEntry {
+    pub id: i64,
     pub target_id: i64,
     pub target_name: String,
     pub direction: String,
     pub relation_type: String,
 }
 
-// ── Film ─────────────────────────────────────────────────────────
-
-#[derive(Serialize, sqlx::FromRow)]
-pub struct FilmSummary {
-    pub id: i64,
-    pub title: String,
-    pub year: Option<i64>,
-    pub tmdb_rating: Option<f64>,
-    pub poster_cache_path: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct FilmDetail {
-    pub id: i64,
-    pub tmdb_id: Option<i64>,
-    pub title: String,
-    pub original_title: Option<String>,
-    pub year: Option<i64>,
-    pub overview: Option<String>,
-    pub tmdb_rating: Option<f64>,
-    pub poster_cache_path: Option<String>,
-    pub wiki_content: String,
-    pub people: Vec<FilmPersonEntry>,
-    pub genres: Vec<GenreSummary>,
-    pub reviews: Vec<ReviewEntry>,
-}
-
-#[derive(Serialize, sqlx::FromRow)]
-pub struct FilmPersonEntry {
-    pub person_id: i64,
-    pub name: String,
-    pub role: String,
-}
-
-#[derive(Serialize, sqlx::FromRow)]
-pub struct ReviewEntry {
-    pub id: i64,
-    pub is_personal: bool,
-    pub author: Option<String>,
-    pub content: String,
-    pub rating: Option<f64>,
-    pub created_at: String,
-}
-
-// ── Genre ────────────────────────────────────────────────────────
-
-#[derive(Serialize, sqlx::FromRow)]
-pub struct GenreSummary {
-    pub id: i64,
-    pub name: String,
-    pub film_count: i64,
-    pub child_count: i64,
-}
-
-#[derive(Serialize)]
-pub struct GenreDetail {
-    pub id: i64,
-    pub name: String,
-    pub description: Option<String>,
-    pub parent_id: Option<i64>,
-    pub period: Option<String>,
-    pub wiki_content: String,
-    pub children: Vec<GenreSummary>,
-    pub people: Vec<PersonSummary>,
-    pub films: Vec<FilmSummary>,
-}
-
-#[derive(Serialize)]
-pub struct GenreTreeNode {
-    pub id: i64,
-    pub name: String,
-    pub period: Option<String>,
-    pub film_count: i64,
-    pub children: Vec<GenreTreeNode>,
-}
-
-// ── TMDB input ───────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-pub struct TmdbMovieInput {
-    pub tmdb_id: i64,
-    pub title: String,
-    pub original_title: Option<String>,
-    pub year: Option<i64>,
-    pub overview: Option<String>,
-    pub tmdb_rating: Option<f64>,
-    pub people: Vec<TmdbPersonInput>,
-}
-
-#[derive(Deserialize)]
-pub struct TmdbPersonInput {
-    pub tmdb_id: Option<i64>,
-    pub name: String,
-    pub role: String,
-    pub primary_role: String,
-}
-
-// ── Graph ────────────────────────────────────────────────────────
+// ── Knowledge Base: Graph ───────────────────────────────────────
 
 #[derive(Serialize)]
 pub struct GraphData {
@@ -160,8 +48,6 @@ pub struct GraphData {
 pub struct GraphNode {
     pub id: String,
     pub label: String,
-    pub node_type: String,
-    pub role: Option<String>,
     pub weight: f64,
 }
 
@@ -169,15 +55,14 @@ pub struct GraphNode {
 pub struct GraphLink {
     pub source: String,
     pub target: String,
-    pub role: String,
+    pub relation_type: String,
 }
 
-// ── Library Items ────────────────────────────────────────────────
+// ── Library Items ───────────────────────────────────────────────
 
 #[derive(Serialize, sqlx::FromRow)]
 pub struct LibraryItemSummary {
     pub id: i64,
-    pub film_id: Option<i64>,
     pub file_path: String,
     pub file_size: Option<i64>,
     pub duration_secs: Option<i64>,
@@ -185,14 +70,11 @@ pub struct LibraryItemSummary {
     pub audio_codec: Option<String>,
     pub resolution: Option<String>,
     pub added_at: String,
-    pub film_title: Option<String>,
-    pub film_year: Option<i64>,
 }
 
 #[derive(Serialize)]
 pub struct LibraryItemDetail {
     pub id: i64,
-    pub film_id: Option<i64>,
     pub file_path: String,
     pub file_size: Option<i64>,
     pub duration_secs: Option<i64>,
@@ -200,8 +82,6 @@ pub struct LibraryItemDetail {
     pub audio_codec: Option<String>,
     pub resolution: Option<String>,
     pub added_at: String,
-    pub film_title: Option<String>,
-    pub film_year: Option<i64>,
     pub assets: Vec<LibraryAssetEntry>,
 }
 
@@ -216,12 +96,8 @@ pub struct LibraryAssetEntry {
 
 #[derive(Serialize)]
 pub struct LibraryStats {
-    pub total_films: i64,
-    pub films_with_files: i64,
+    pub total_items: i64,
     pub total_file_size: i64,
-    pub unlinked_files: i64,
-    pub by_decade: Vec<StatEntry>,
-    pub by_genre: Vec<StatEntry>,
     pub by_resolution: Vec<StatEntry>,
 }
 
@@ -238,60 +114,24 @@ pub struct ScanResult {
     pub errors: Vec<String>,
 }
 
-// ── Wiki helpers ────────────────────────────────────────────────
+// ── Internal helper for entry tag aggregation ───────────────────
 
-pub(crate) async fn get_wiki_content(
-    pool: &sqlx::SqlitePool,
-    entity_type: &str,
-    entity_id: i64,
-) -> Result<String, String> {
-    sqlx::query_scalar::<_, String>(
-        "SELECT content FROM wiki_entries WHERE entity_type = ? AND entity_id = ?",
-    )
-    .bind(entity_type)
-    .bind(entity_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())
-    .map(|opt| opt.unwrap_or_default())
-}
-
-pub(crate) async fn upsert_wiki(
-    pool: &sqlx::SqlitePool,
-    entity_type: &str,
-    entity_id: i64,
-    content: &str,
-) -> Result<(), String> {
-    sqlx::query(
-        "INSERT INTO wiki_entries (entity_type, entity_id, content, updated_at)
-         VALUES (?, ?, ?, datetime('now'))
-         ON CONFLICT(entity_type, entity_id)
-         DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
-    )
-    .bind(entity_type)
-    .bind(entity_id)
-    .bind(content)
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[derive(Serialize, sqlx::FromRow)]
-pub struct FilmListEntry {
+#[derive(sqlx::FromRow)]
+pub(crate) struct EntryRow {
     pub id: i64,
-    pub title: String,
-    pub original_title: Option<String>,
-    pub year: Option<i64>,
-    pub tmdb_rating: Option<f64>,
-    pub poster_cache_path: Option<String>,
-    pub has_file: i64,
+    pub name: String,
+    pub wiki: String,
+    pub tags_csv: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
-#[derive(Serialize)]
-pub struct FilmFilterResult {
-    pub films: Vec<FilmListEntry>,
-    pub total: i64,
-    pub page: i64,
-    pub page_size: i64,
+impl EntryRow {
+    pub fn tags(&self) -> Vec<String> {
+        if self.tags_csv.is_empty() {
+            Vec::new()
+        } else {
+            self.tags_csv.split(',').map(|s| s.to_string()).collect()
+        }
+    }
 }
