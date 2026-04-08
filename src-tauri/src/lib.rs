@@ -90,6 +90,7 @@ pub fn run() {
             commands::tmdb::list_genres,
             commands::tmdb::get_tmdb_movie_credits,
             commands::tmdb::enrich_movie_credits,
+            commands::tmdb::enrich_index_entry,
             // Download
             commands::download::get_torrent_files,
             commands::download::start_download,
@@ -168,6 +169,9 @@ pub fn run() {
             commands::library::items::list_index_by_director,
             commands::library::items::search_index,
             commands::library::items::rebuild_index,
+            commands::library::items::delete_library_resource,
+            commands::library::items::refresh_index_entry,
+            commands::library::items::delete_film_directory,
             // Player
             player::commands::cmd_open_player,
             player::commands::cmd_close_player,
@@ -180,6 +184,8 @@ pub fn run() {
             player::commands::cmd_player_set_audio_track,
             player::commands::cmd_player_get_tracks,
             player::commands::cmd_player_toggle_fullscreen,
+            player::commands::cmd_player_get_current_file,
+            player::commands::cmd_player_sub_add,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

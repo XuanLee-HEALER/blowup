@@ -68,9 +68,11 @@ struct OsDownloadResponse {
 fn os_client(api_key: &str) -> Result<reqwest::Client, SubError> {
     use reqwest::header::{HeaderMap, HeaderValue};
     let mut headers = HeaderMap::new();
-    headers.insert("Api-Key", HeaderValue::from_str(api_key).map_err(|e| {
-        SubError::InvalidSrt(format!("invalid API key header: {e}"))
-    })?);
+    headers.insert(
+        "Api-Key",
+        HeaderValue::from_str(api_key)
+            .map_err(|e| SubError::InvalidSrt(format!("invalid API key header: {e}")))?,
+    );
     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
     headers.insert("Accept", HeaderValue::from_static("application/json"));
     reqwest::Client::builder()
@@ -160,11 +162,7 @@ async fn os_download(
 }
 
 /// Fetch and save a subtitle file from OpenSubtitles.
-pub async fn fetch_subtitle(
-    video: &Path,
-    lang: &str,
-    cfg: &Config,
-) -> Result<(), SubError> {
+pub async fn fetch_subtitle(video: &Path, lang: &str, cfg: &Config) -> Result<(), SubError> {
     let api_key = &cfg.opensubtitles.api_key;
     if api_key.is_empty() {
         return Err(SubError::InvalidSrt(

@@ -8,8 +8,8 @@ use ffi::{
 };
 use serde::Serialize;
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 static PLAYER: Mutex<Option<MpvPlayer>> = Mutex::new(None);
@@ -19,6 +19,9 @@ static RENDER_CTX: Mutex<Option<RenderCtxPtr>> = Mutex::new(None);
 
 // Raw mpv handle for event loop (mpv is thread-safe, no mutex needed for wait_event)
 static MPV_HANDLE: Mutex<Option<MpvHandlePtr>> = Mutex::new(None);
+
+// Current file path being played (for playback state checks)
+static CURRENT_FILE_PATH: Mutex<Option<String>> = Mutex::new(None);
 
 // Signal for the event loop to exit cleanly
 static EVENT_LOOP_SHUTDOWN: AtomicBool = AtomicBool::new(false);
@@ -131,6 +134,7 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
     }
 
     EVENT_LOOP_SHUTDOWN.store(false, Ordering::SeqCst);
+    *CURRENT_FILE_PATH.lock().unwrap() = Some(file_path.to_string());
 
     // 1. Create Tauri transparent webview window (controls overlay)
     let window = WebviewWindowBuilder::new(app, "player", WebviewUrl::App("player.html".into()))
@@ -350,12 +354,19 @@ fn cleanup_player_resources() {
     // 6. Clear raw handle (mpv is about to be destroyed)
     *MPV_HANDLE.lock().unwrap() = None;
 
-    // 7. Destroy mpv (_render_ctx drops first due to field order)
+    // 7. Clear current file path
+    *CURRENT_FILE_PATH.lock().unwrap() = None;
+
+    // 8. Destroy mpv (_render_ctx drops first due to field order)
     let mut guard = PLAYER.lock().unwrap();
     if let Some(player) = guard.take() {
         drop(player);
         tracing::info!("player resources cleaned up");
     }
+}
+
+pub fn get_current_file_path() -> Option<String> {
+    CURRENT_FILE_PATH.lock().unwrap().clone()
 }
 
 fn close_player_inner(app: &AppHandle) {

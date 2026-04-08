@@ -1,4 +1,6 @@
-use super::{PlayerState, TrackInfo, close_player, open_player, with_player};
+use super::{
+    PlayerState, TrackInfo, close_player, get_current_file_path, open_player, with_player,
+};
 use tauri::Manager;
 
 #[tauri::command]
@@ -52,7 +54,14 @@ pub fn cmd_player_set_volume(volume: f64) -> Result<(), String> {
 pub fn cmd_player_get_state() -> Result<PlayerState, String> {
     let result = with_player(|p| Ok(p.get_state()));
     if let Ok(ref s) = result {
-        tracing::debug!(playing = s.playing, paused = s.paused, pos = s.position, dur = s.duration, vol = s.volume, "cmd_player_get_state");
+        tracing::debug!(
+            playing = s.playing,
+            paused = s.paused,
+            pos = s.position,
+            dur = s.duration,
+            vol = s.volume,
+            "cmd_player_get_state"
+        );
     }
     result
 }
@@ -85,4 +94,15 @@ pub fn cmd_player_toggle_fullscreen(app: tauri::AppHandle) -> Result<(), String>
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub fn cmd_player_get_current_file() -> Result<Option<String>, String> {
+    Ok(get_current_file_path())
+}
+
+#[tauri::command]
+pub fn cmd_player_sub_add(path: String) -> Result<(), String> {
+    tracing::info!(path, "cmd_player_sub_add");
+    with_player(|p| p.mpv.command(&["sub-add", &path]))
 }

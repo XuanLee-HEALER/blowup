@@ -48,7 +48,7 @@ export interface AppConfig {
   download: { max_concurrent: number; enable_dht: boolean; persist_session: boolean };
   search: { rate_limit_secs: number };
   subtitle: { default_lang: string };
-  opensubtitles: { api_key: string };
+  opensubtitles: { api_key: string; username: string; password: string };
   tmdb: { api_key: string };
   library: { root_dir: string };
   music: { enabled: boolean; mode: "sequential" | "random"; playlist: MusicTrack[] };
@@ -218,6 +218,12 @@ export interface IndexEntry {
   path: string;
   files: string[];
   added_at: string;
+  // TMDB enriched data (lazy-loaded, cached in index)
+  poster_url?: string | null;
+  overview?: string | null;
+  rating?: number | null;
+  credits?: Record<string, string[]>;
+  original_title?: string | null;
 }
 
 export interface MovieResult {
@@ -361,6 +367,14 @@ export const library = {
     invoke<IndexEntry[]>("search_index", { query, yearFrom, yearTo, genre }),
   rebuildIndex: () =>
     invoke<void>("rebuild_index"),
+  deleteLibraryResource: (filePath: string) =>
+    invoke<void>("delete_library_resource", { filePath }),
+  refreshIndexEntry: (tmdbId: number) =>
+    invoke<void>("refresh_index_entry", { tmdbId }),
+  deleteFilmDirectory: (tmdbId: number) =>
+    invoke<void>("delete_film_directory", { tmdbId }),
+  enrichIndexEntry: (tmdbId: number, force?: boolean) =>
+    invoke<IndexEntry>("enrich_index_entry", { tmdbId, force }),
 };
 
 export const download = {
@@ -408,4 +422,11 @@ export const media = {
     invoke<MediaInfo>("probe_media_detail", { filePath }),
   openInPlayer: (filePath: string) =>
     invoke<void>("cmd_open_player", { filePath }),
+};
+
+export const player = {
+  getCurrentFile: () =>
+    invoke<string | null>("cmd_player_get_current_file"),
+  subAdd: (path: string) =>
+    invoke<void>("cmd_player_sub_add", { path }),
 };

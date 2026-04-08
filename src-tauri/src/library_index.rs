@@ -1,6 +1,7 @@
 use crate::common::normalize_director_name;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
@@ -8,7 +9,7 @@ const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v",
 ];
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IndexEntry {
     pub tmdb_id: u64,
     pub title: String,
@@ -19,6 +20,27 @@ pub struct IndexEntry {
     pub path: String,
     pub files: Vec<String>,
     pub added_at: String,
+    // TMDB enriched data (lazy-loaded on first view, cached in index JSON)
+    #[serde(default)]
+    pub poster_url: Option<String>,
+    #[serde(default)]
+    pub overview: Option<String>,
+    #[serde(default)]
+    pub rating: Option<f64>,
+    /// Credits grouped by role: {"导演": ["name"], "主演": ["a","b"], "编剧": ["c"], ...}
+    #[serde(default)]
+    pub credits: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub original_title: Option<String>,
+}
+
+/// Patch for updating TMDB metadata on an IndexEntry.
+pub struct EntryMetadata {
+    pub poster_url: Option<String>,
+    pub overview: Option<String>,
+    pub rating: Option<f64>,
+    pub credits: HashMap<String, Vec<String>>,
+    pub original_title: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -236,6 +258,7 @@ impl LibraryIndex {
                     path: rel_path,
                     files,
                     added_at: chrono::Utc::now().to_rfc3339(),
+                    ..Default::default()
                 });
             }
         }
@@ -252,6 +275,31 @@ impl LibraryIndex {
     pub fn compute_download_path(&self, director_raw: &str, tmdb_id: u64) -> PathBuf {
         let dir_name = normalize_director_name(director_raw);
         self.root.join(&dir_name).join(tmdb_id.to_string())
+    }
+
+    /// Re-scan disk for an entry's files and update the index.
+    pub fn refresh_entry_files(&self, tmdb_id: u64) {
+        let mut data = self.data.write().unwrap();
+        if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
+            let dir = self.root.join(&entry.path);
+            entry.files = scan_dir_files(&dir);
+        }
+        drop(data);
+        self.save();
+    }
+
+    /// Update TMDB metadata for an entry and persist.
+    pub fn update_entry_metadata(&self, tmdb_id: u64, meta: EntryMetadata) {
+        let mut data = self.data.write().unwrap();
+        if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
+            entry.poster_url = meta.poster_url;
+            entry.overview = meta.overview;
+            entry.rating = meta.rating;
+            entry.credits = meta.credits;
+            entry.original_title = meta.original_title;
+        }
+        drop(data);
+        self.save();
     }
 }
 
@@ -301,6 +349,7 @@ mod tests {
             path: format!("{}/{}", normalize_director_name(director), tmdb_id),
             files: Vec::new(),
             added_at: "2026-01-01T00:00:00Z".to_string(),
+            ..Default::default()
         }
     }
 

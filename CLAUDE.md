@@ -102,6 +102,28 @@ Frontend uses **bun** as package manager and script runner (`bun install`, `bun 
 - Shared formatters in `src/lib/format.ts`
 - Wiki HTML sanitized with DOMPurify
 
+## Data Architecture: Knowledge Base vs Film Library
+
+These are **two independent systems**. Never conflate them.
+
+### Knowledge Base (知识库) — SQLite
+- Centered on **film genres** and **filmmakers (people)**, not individual films
+- Tables: `people`, `genres`, `person_films`, `film_genres`, `reviews`, `wiki_entries`
+- The `films` table exists to link people/genres together, NOT as the primary film data store
+- Wiki content is for people and genres, not for individual films
+- Pages: People.tsx, Genres.tsx, Graph.tsx
+
+### Film Library (电影库) — File System
+- Storage: `{library.root_dir}/{director}/{tmdb_id}/` directories on disk
+- Index: `library_index.json` — in-memory `IndexEntry` array, persisted to JSON
+- Each `IndexEntry` contains: `tmdb_id`, `title`, `director`, `year`, `genres`, `path`, `files[]`, and **enriched TMDB data** (poster, overview, cast) cached in the index
+- Enriched data is **lazy-loaded**: if fields are empty on first view, fetch from TMDB API and cache in the index
+- Pages: Library.tsx (director tree + detail panel)
+- **Film detail page data comes from the file index, NOT from SQLite**
+
+### The only connection
+If a film mentioned in the knowledge base (e.g. in a person's filmography) also exists in the film library, a hyperlink can navigate to the corresponding Library detail page. That's it.
+
 ## Key Patterns
 
 | Pattern | Location | Note |
@@ -115,7 +137,7 @@ Frontend uses **bun** as package manager and script runner (`bun install`, `bun 
 ## External Service Quirks
 
 - **YIFY**: Official API migrated to `movies-api.accel.li/api/v2/` (old `yts.torrentbay.st` returns HTML instead of JSON)
-- **OpenSubtitles**: REST API requires paid key → use XML-RPC at `api.opensubtitles.org/xml-rpc` for anonymous access. Strip `/sid-TOKEN/` from download URLs
+- **OpenSubtitles**: REST API at `api.opensubtitles.com/api/v1`. Requires Api-Key header. Search is free; download needs JWT login (optional, 5/day without auth). Old XML-RPC (`api.opensubtitles.org`) is deprecated.
 - **TMDB**: free API key from themoviedb.org
 
 ## Runtime Dependencies

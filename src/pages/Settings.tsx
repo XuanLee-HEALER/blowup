@@ -85,8 +85,23 @@ export default function Settings() {
           <TextInput
             type="password"
             defaultValue={cfg.opensubtitles.api_key}
-            placeholder="可选"
+            placeholder="必填"
             onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.opensubtitles.api_key = v; }); }}
+          />
+        </Field>
+        <Field label="用户名">
+          <TextInput
+            defaultValue={cfg.opensubtitles.username}
+            placeholder="可选，填写后下载配额更高"
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.opensubtitles.username = v; }); }}
+          />
+        </Field>
+        <Field label="密码">
+          <TextInput
+            type="password"
+            defaultValue={cfg.opensubtitles.password}
+            placeholder="可选"
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.opensubtitles.password = v; }); }}
           />
         </Field>
       </Section>

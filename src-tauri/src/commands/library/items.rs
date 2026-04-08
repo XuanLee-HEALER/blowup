@@ -429,6 +429,131 @@ pub fn rebuild_index(
     Ok(())
 }
 
+// ── Resource & Film directory deletion ─────────────────────────
+
+/// Delete a single media resource: removes disk file + DB records.
+/// The film entry is preserved even if it has no remaining resources.
+#[tauri::command]
+pub async fn delete_library_resource(
+    file_path: String,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
+    let path = std::path::Path::new(&file_path);
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| format!("删除文件失败: {e}"))?;
+    }
+
+    let item_id: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM library_items WHERE file_path = ?")
+            .bind(&file_path)
+            .fetch_optional(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
+
+    if let Some(id) = item_id {
+        sqlx::query("DELETE FROM library_assets WHERE item_id = ?")
+            .bind(id)
+            .execute(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM library_items WHERE id = ?")
+            .bind(id)
+            .execute(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+/// Refresh an index entry's file list by re-scanning its directory.
+#[tauri::command]
+pub fn refresh_index_entry(
+    tmdb_id: u64,
+    index: tauri::State<'_, crate::library_index::LibraryIndex>,
+) -> Result<(), String> {
+    index.refresh_entry_files(tmdb_id);
+    Ok(())
+}
+
+/// Delete a film and its entire directory from disk + DB.
+/// Blocks if the player is currently playing a file from this directory.
+#[tauri::command]
+pub async fn delete_film_directory(
+    tmdb_id: u64,
+    index: tauri::State<'_, crate::library_index::LibraryIndex>,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
+    let entry = index
+        .get_entry(tmdb_id)
+        .ok_or_else(|| "索引中未找到该电影".to_string())?;
+
+    let cfg = crate::config::load_config();
+    let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
+    let film_dir = format!("{}/{}", root_dir, entry.path);
+
+    // Check if player is currently playing a file from this directory
+    if let Some(current_file) = crate::player::get_current_file_path()
+        && current_file.starts_with(&film_dir)
+    {
+        return Err("播放器正在播放该电影的文件，请先关闭播放器".to_string());
+    }
+
+    // DB cascade cleanup
+    let film_id: Option<i64> = sqlx::query_scalar("SELECT id FROM films WHERE tmdb_id = ?")
+        .bind(tmdb_id as i64)
+        .fetch_optional(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(fid) = film_id {
+        for sql in [
+            "DELETE FROM film_genres WHERE film_id = ?",
+            "DELETE FROM person_films WHERE film_id = ?",
+            "DELETE FROM reviews WHERE film_id = ?",
+        ] {
+            sqlx::query(sql)
+                .bind(fid)
+                .execute(pool.inner())
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+        sqlx::query("DELETE FROM wiki_entries WHERE entity_type = 'film' AND entity_id = ?")
+            .bind(fid)
+            .execute(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query(
+            "DELETE FROM library_assets WHERE item_id IN (SELECT id FROM library_items WHERE film_id = ?)",
+        )
+        .bind(fid)
+        .execute(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM library_items WHERE film_id = ?")
+            .bind(fid)
+            .execute(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM films WHERE id = ?")
+            .bind(fid)
+            .execute(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    // Delete entire directory from disk
+    let dir_path = std::path::Path::new(&film_dir);
+    if dir_path.exists() && dir_path.is_dir() {
+        std::fs::remove_dir_all(dir_path).map_err(|e| format!("删除目录失败: {e}"))?;
+    }
+
+    // Remove from in-memory index
+    index.remove_entry(tmdb_id);
+
+    Ok(())
+}
+
 // ── Tests ───────────────────────────────────────────────────────
 
 #[cfg(test)]

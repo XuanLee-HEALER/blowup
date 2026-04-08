@@ -9,6 +9,12 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**/*"]
+      }
+    },
     "macOSPrivateApi": true,
     "withGlobalTauri": false,
     "windows": [

@@ -141,6 +141,7 @@ pub async fn start_download(
                     path: format!("{}/{}", director_normalized, tmdb_id),
                     files,
                     added_at: chrono::Utc::now().to_rfc3339(),
+                    ..Default::default()
                 };
                 if let Some(root) = output_path.parent().and_then(|p| p.parent()) {
                     append_to_index_file(&root.join(".index.json"), entry);
@@ -403,6 +404,7 @@ pub async fn redownload(
                     path: format!("{}/{}", director_normalized, tmdb_id),
                     files,
                     added_at: chrono::Utc::now().to_rfc3339(),
+                    ..Default::default()
                 };
                 if let Some(root) = output_folder.parent().and_then(|p| p.parent()) {
                     append_to_index_file(&root.join(".index.json"), entry);
