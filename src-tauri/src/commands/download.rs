@@ -130,79 +130,97 @@ pub async fn start_download(
         .ok();
 
     // Spawn background monitor
-    let pool_clone = pool.inner().clone();
-    let output_path = output_folder;
-    let director_display = req.director.clone();
-    let director_normalized = crate::common::normalize_director_name(&req.director);
-    let title = req.title;
-    let tmdb_id = req.tmdb_id;
-    let year = req.year;
-    let genres = req.genres.unwrap_or_default();
+    spawn_download_monitor(MonitorParams {
+        pool: pool.inner().clone(),
+        handle,
+        download_id,
+        output_folder,
+        director: req.director,
+        title: req.title,
+        tmdb_id: req.tmdb_id,
+        year: req.year,
+        genres: req.genres.unwrap_or_default(),
+    });
+
+    Ok(download_id)
+}
+
+struct MonitorParams {
+    pool: SqlitePool,
+    handle: crate::torrent::TorrentHandle,
+    download_id: i64,
+    output_folder: std::path::PathBuf,
+    director: String,
+    title: String,
+    tmdb_id: u64,
+    year: Option<u32>,
+    genres: Vec<String>,
+}
+
+fn spawn_download_monitor(p: MonitorParams) {
+    let director_normalized = crate::common::normalize_director_name(&p.director);
+    let director_display = p.director;
 
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            let stats = handle.stats();
+            let stats = p.handle.stats();
 
-            // Update progress
             sqlx::query(
                 "UPDATE downloads SET progress_bytes=?, total_bytes=? \
                  WHERE id=? AND status='downloading'",
             )
             .bind(stats.progress_bytes as i64)
             .bind(stats.total_bytes as i64)
-            .bind(download_id)
-            .execute(&pool_clone)
+            .bind(p.download_id)
+            .execute(&p.pool)
             .await
             .ok();
 
             if stats.finished {
-                tracing::info!(download_id, "download completed");
+                tracing::info!(p.download_id, "download completed");
                 sqlx::query(
                     "UPDATE downloads SET status='completed', progress_bytes=?, total_bytes=?, \
                      completed_at=datetime('now') WHERE id=?",
                 )
                 .bind(stats.total_bytes as i64)
                 .bind(stats.total_bytes as i64)
-                .bind(download_id)
-                .execute(&pool_clone)
+                .bind(p.download_id)
+                .execute(&p.pool)
                 .await
                 .ok();
 
-                // Write to library index
-                let files = crate::library_index::scan_dir_files(&output_path);
+                let files = crate::library_index::scan_dir_files(&p.output_folder);
                 let entry = IndexEntry {
-                    tmdb_id,
-                    title,
+                    tmdb_id: p.tmdb_id,
+                    title: p.title,
                     director: director_normalized.clone(),
                     director_display,
-                    year,
-                    genres,
-                    path: format!("{}/{}", director_normalized, tmdb_id),
+                    year: p.year,
+                    genres: p.genres,
+                    path: format!("{}/{}", director_normalized, p.tmdb_id),
                     files,
                     added_at: chrono::Utc::now().to_rfc3339(),
                     ..Default::default()
                 };
-                if let Some(root) = output_path.parent().and_then(|p| p.parent()) {
+                if let Some(root) = p.output_folder.parent().and_then(|pp| pp.parent()) {
                     append_to_index_file(&root.join(".index.json"), entry);
                 }
                 break;
             }
 
             if let Some(err) = &stats.error {
-                tracing::error!(download_id, error = %err, "download failed");
+                tracing::error!(p.download_id, error = %err, "download failed");
                 sqlx::query("UPDATE downloads SET status='failed', error_message=? WHERE id=?")
                     .bind(err)
-                    .bind(download_id)
-                    .execute(&pool_clone)
+                    .bind(p.download_id)
+                    .execute(&p.pool)
                     .await
                     .ok();
                 break;
             }
         }
     });
-
-    Ok(download_id)
 }
 
 /// Append an entry to the index file on disk (used from background tasks
@@ -399,71 +417,16 @@ pub async fn redownload(
     .await
     .map_err(|e| e.to_string())?;
 
-    // Spawn background monitor
-    let pool_clone = pool.inner().clone();
-    let director_normalized = crate::common::normalize_director_name(&director);
-    let director_display = director;
-    let title = record.title;
-
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            let stats = handle.stats();
-
-            sqlx::query(
-                "UPDATE downloads SET progress_bytes=?, total_bytes=? \
-                 WHERE id=? AND status='downloading'",
-            )
-            .bind(stats.progress_bytes as i64)
-            .bind(stats.total_bytes as i64)
-            .bind(new_id)
-            .execute(&pool_clone)
-            .await
-            .ok();
-
-            if stats.finished {
-                tracing::info!(new_id, "redownload completed");
-                sqlx::query(
-                    "UPDATE downloads SET status='completed', progress_bytes=?, total_bytes=?, \
-                     completed_at=datetime('now') WHERE id=?",
-                )
-                .bind(stats.total_bytes as i64)
-                .bind(stats.total_bytes as i64)
-                .bind(new_id)
-                .execute(&pool_clone)
-                .await
-                .ok();
-
-                let files = crate::library_index::scan_dir_files(&output_folder);
-                let entry = IndexEntry {
-                    tmdb_id,
-                    title,
-                    director: director_normalized.clone(),
-                    director_display,
-                    year: None,
-                    genres: Vec::new(),
-                    path: format!("{}/{}", director_normalized, tmdb_id),
-                    files,
-                    added_at: chrono::Utc::now().to_rfc3339(),
-                    ..Default::default()
-                };
-                if let Some(root) = output_folder.parent().and_then(|p| p.parent()) {
-                    append_to_index_file(&root.join(".index.json"), entry);
-                }
-                break;
-            }
-
-            if let Some(err) = &stats.error {
-                tracing::error!(new_id, error = %err, "redownload failed");
-                sqlx::query("UPDATE downloads SET status='failed', error_message=? WHERE id=?")
-                    .bind(err)
-                    .bind(new_id)
-                    .execute(&pool_clone)
-                    .await
-                    .ok();
-                break;
-            }
-        }
+    spawn_download_monitor(MonitorParams {
+        pool: pool.inner().clone(),
+        handle,
+        download_id: new_id,
+        output_folder,
+        director,
+        title: record.title,
+        tmdb_id,
+        year: None,
+        genres: Vec::new(),
     });
 
     Ok(new_id)

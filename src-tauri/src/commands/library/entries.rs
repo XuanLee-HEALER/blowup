@@ -1,5 +1,5 @@
 use super::{EntryDetail, EntryRow, EntrySummary, RelationEntry};
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, SqlitePool};
 
 // ── Entry CRUD ──────────────────────────────────────────────────
 
@@ -9,70 +9,35 @@ pub async fn list_entries(
     tag: Option<String>,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<Vec<EntrySummary>, String> {
-    let rows = if let Some(t) = &tag {
-        if let Some(q) = &query {
-            let pattern = format!("%{}%", q);
-            sqlx::query_as::<_, EntryRow>(
-                "SELECT e.id, e.name, e.wiki,
-                        COALESCE(GROUP_CONCAT(et.tag), '') AS tags_csv,
-                        e.created_at, e.updated_at
-                 FROM entries e
-                 LEFT JOIN entry_tags et ON et.entry_id = e.id
-                 WHERE e.id IN (SELECT entry_id FROM entry_tags WHERE tag = ?)
-                   AND (e.name LIKE ? OR e.wiki LIKE ?)
-                 GROUP BY e.id
-                 ORDER BY e.updated_at DESC",
-            )
-            .bind(t)
-            .bind(&pattern)
-            .bind(&pattern)
-            .fetch_all(pool.inner())
-            .await
-        } else {
-            sqlx::query_as::<_, EntryRow>(
-                "SELECT e.id, e.name, e.wiki,
-                        COALESCE(GROUP_CONCAT(et.tag), '') AS tags_csv,
-                        e.created_at, e.updated_at
-                 FROM entries e
-                 LEFT JOIN entry_tags et ON et.entry_id = e.id
-                 WHERE e.id IN (SELECT entry_id FROM entry_tags WHERE tag = ?)
-                 GROUP BY e.id
-                 ORDER BY e.updated_at DESC",
-            )
-            .bind(t)
-            .fetch_all(pool.inner())
-            .await
-        }
-    } else if let Some(q) = &query {
-        let pattern = format!("%{}%", q);
-        sqlx::query_as::<_, EntryRow>(
-            "SELECT e.id, e.name, e.wiki,
-                    COALESCE(GROUP_CONCAT(et.tag), '') AS tags_csv,
-                    e.created_at, e.updated_at
-             FROM entries e
-             LEFT JOIN entry_tags et ON et.entry_id = e.id
-             WHERE e.name LIKE ? OR e.wiki LIKE ?
-             GROUP BY e.id
-             ORDER BY e.updated_at DESC",
-        )
-        .bind(&pattern)
-        .bind(&pattern)
-        .fetch_all(pool.inner())
-        .await
-    } else {
-        sqlx::query_as::<_, EntryRow>(
-            "SELECT e.id, e.name, e.wiki,
-                    COALESCE(GROUP_CONCAT(et.tag), '') AS tags_csv,
-                    e.created_at, e.updated_at
-             FROM entries e
-             LEFT JOIN entry_tags et ON et.entry_id = e.id
-             GROUP BY e.id
-             ORDER BY e.updated_at DESC",
-        )
-        .fetch_all(pool.inner())
-        .await
+    let mut qb = QueryBuilder::<sqlx::Sqlite>::new(
+        "SELECT e.id, e.name, e.wiki, \
+         COALESCE(GROUP_CONCAT(et.tag), '') AS tags_csv, \
+         e.created_at, e.updated_at \
+         FROM entries e \
+         LEFT JOIN entry_tags et ON et.entry_id = e.id \
+         WHERE 1=1",
+    );
+
+    if let Some(t) = &tag {
+        qb.push(" AND e.id IN (SELECT entry_id FROM entry_tags WHERE tag = ");
+        qb.push_bind(t.clone());
+        qb.push(")");
     }
-    .map_err(|e| e.to_string())?;
+    if let Some(q) = &query {
+        let pattern = format!("%{q}%");
+        qb.push(" AND (e.name LIKE ");
+        qb.push_bind(pattern.clone());
+        qb.push(" OR e.wiki LIKE ");
+        qb.push_bind(pattern);
+        qb.push(")");
+    }
+    qb.push(" GROUP BY e.id ORDER BY e.updated_at DESC");
+
+    let rows: Vec<EntryRow> = qb
+        .build_query_as()
+        .fetch_all(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(rows
         .into_iter()

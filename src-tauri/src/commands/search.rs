@@ -1,6 +1,8 @@
 use crate::config::load_config;
 use crate::error::SearchError;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MovieResult {
@@ -88,9 +90,11 @@ async fn fetch_imdb_id(client: &reqwest::Client, tmdb_id: u64) -> Option<String>
     ids.imdb_id.filter(|s| !s.is_empty())
 }
 
+static SANITIZE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[^\w\s]").expect("valid sanitize regex"));
+
 fn sanitize_query(query: &str) -> String {
-    let re = regex::Regex::new(r"[^\w\s]").unwrap();
-    let cleaned = re.replace_all(query, " ");
+    let cleaned = SANITIZE_RE.replace_all(query, " ");
     cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 

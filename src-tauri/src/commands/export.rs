@@ -68,13 +68,20 @@ async fn serialize_knowledge_base(pool: &SqlitePool) -> Result<String, String> {
 }
 
 async fn import_knowledge_base_data(pool: &SqlitePool, json: &str) -> Result<String, String> {
-    let data: KnowledgeBaseExport =
-        serde_json::from_str(json).map_err(|e| format!("JSON 解析失败: {}", e))?;
-
-    // Reject old format
-    if data.version.starts_with("2.") || data.version.starts_with("1.") {
+    // Check version before full parse — old formats have different fields
+    #[derive(Deserialize)]
+    struct VersionProbe {
+        #[serde(default)]
+        version: String,
+    }
+    if let Ok(probe) = serde_json::from_str::<VersionProbe>(json)
+        && (probe.version.starts_with("2.") || probe.version.starts_with("1."))
+    {
         return Err("导入失败: 该文件为旧版知识库格式 (v2.x)，不兼容当前版本".to_string());
     }
+
+    let data: KnowledgeBaseExport =
+        serde_json::from_str(json).map_err(|e| format!("JSON 解析失败: {}", e))?;
 
     let mut imported_entries: i64 = 0;
     let mut imported_tags: i64 = 0;
@@ -106,12 +113,16 @@ async fn import_knowledge_base_data(pool: &SqlitePool, json: &str) -> Result<Str
 
     // Import tags
     for t in &data.entry_tags {
-        sqlx::query("INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES (?, ?)")
-            .bind(t.entry_id)
-            .bind(&t.tag)
-            .execute(pool)
-            .await
-            .ok();
+        if let Err(e) =
+            sqlx::query("INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES (?, ?)")
+                .bind(t.entry_id)
+                .bind(&t.tag)
+                .execute(pool)
+                .await
+        {
+            tracing::warn!(entry_id = t.entry_id, tag = %t.tag, error = %e, "failed to import tag");
+            continue;
+        }
         imported_tags += 1;
     }
 
@@ -125,7 +136,7 @@ async fn import_knowledge_base_data(pool: &SqlitePool, json: &str) -> Result<Str
         if exists > 0 {
             continue;
         }
-        sqlx::query(
+        if let Err(e) = sqlx::query(
             "INSERT INTO relations (id, from_id, to_id, relation_type) VALUES (?, ?, ?, ?)",
         )
         .bind(r.id)
@@ -134,7 +145,10 @@ async fn import_knowledge_base_data(pool: &SqlitePool, json: &str) -> Result<Str
         .bind(&r.relation_type)
         .execute(pool)
         .await
-        .ok();
+        {
+            tracing::warn!(relation_id = r.id, error = %e, "failed to import relation");
+            continue;
+        }
         imported_relations += 1;
     }
 
@@ -258,5 +272,126 @@ pub async fn test_s3_connection() -> Result<String, String> {
             }
         }
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn setup() -> SqlitePool {
+        let pool = SqlitePool::connect(":memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn export_empty_db() {
+        let pool = setup().await;
+        let json = serialize_knowledge_base(&pool).await.unwrap();
+        let data: KnowledgeBaseExport = serde_json::from_str(&json).unwrap();
+        assert_eq!(data.version, "3.0.0");
+        assert!(data.entries.is_empty());
+        assert!(data.entry_tags.is_empty());
+        assert!(data.relations.is_empty());
+    }
+
+    #[tokio::test]
+    async fn export_roundtrip() {
+        let pool = setup().await;
+
+        // Seed data
+        sqlx::query("INSERT INTO entries (id, name, wiki) VALUES (1, 'Antonioni', '# Bio')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entries (id, name) VALUES (2, 'Blow-Up')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (1, '导演')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO relations (id, from_id, to_id, relation_type) VALUES (1, 1, 2, '执导')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Export
+        let json = serialize_knowledge_base(&pool).await.unwrap();
+
+        // Import into fresh DB
+        let pool2 = setup().await;
+        let result = import_knowledge_base_data(&pool2, &json).await.unwrap();
+        assert!(result.contains("2 条目"));
+        assert!(result.contains("1 标签"));
+        assert!(result.contains("1 关系"));
+
+        // Verify data
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM entries")
+            .fetch_one(&pool2)
+            .await
+            .unwrap();
+        assert_eq!(count, 2);
+
+        let tag_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM entry_tags")
+            .fetch_one(&pool2)
+            .await
+            .unwrap();
+        assert_eq!(tag_count, 1);
+
+        let rel_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM relations")
+            .fetch_one(&pool2)
+            .await
+            .unwrap();
+        assert_eq!(rel_count, 1);
+    }
+
+    #[tokio::test]
+    async fn import_skips_duplicates() {
+        let pool = setup().await;
+        sqlx::query("INSERT INTO entries (id, name) VALUES (1, 'Existing')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let json = r#"{
+            "version": "3.0.0",
+            "exported_at": "2026-01-01",
+            "entries": [{"id": 1, "name": "Override", "wiki": "", "created_at": "2026-01-01", "updated_at": "2026-01-01"}],
+            "entry_tags": [],
+            "relations": []
+        }"#;
+
+        let result = import_knowledge_base_data(&pool, json).await.unwrap();
+        assert!(result.contains("0 条目")); // skipped
+
+        let name: String = sqlx::query_scalar("SELECT name FROM entries WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(name, "Existing"); // not overwritten
+    }
+
+    #[tokio::test]
+    async fn import_rejects_old_format() {
+        let pool = setup().await;
+        let json =
+            r#"{"version": "2.0.1", "exported_at": "", "people": [], "genres": [], "films": []}"#;
+
+        let result = import_knowledge_base_data(&pool, json).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("旧版"));
+    }
+
+    #[tokio::test]
+    async fn import_rejects_invalid_json() {
+        let pool = setup().await;
+        let result = import_knowledge_base_data(&pool, "not json").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("JSON"));
     }
 }

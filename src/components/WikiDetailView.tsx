@@ -101,8 +101,8 @@ function WikiPreview({ content }: { content: string }) {
 // ── WikiDetailView (shared layout) ──────────────────────────────
 
 export interface WikiDetailViewProps {
-  /** Centered title */
-  title: string;
+  /** Centered title (string or ReactNode for editable titles) */
+  title: ReactNode;
   /** Subtitle below title (e.g. period, role) */
   subtitle?: string;
   /** Short description below subtitle */

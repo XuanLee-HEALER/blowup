@@ -4,11 +4,13 @@ import { yts, download } from "../lib/tauri";
 import { formatSize } from "../lib/format";
 import type { MovieListItem, MovieResult, TorrentFileInfo } from "../lib/tauri";
 
-const pulseStyle = document.createElement("style");
-pulseStyle.textContent = `@keyframes pulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`;
-if (!document.head.querySelector("[data-blowup-pulse]")) {
-  pulseStyle.setAttribute("data-blowup-pulse", "");
-  document.head.appendChild(pulseStyle);
+function ensurePulseAnimation() {
+  if (!document.head.querySelector("[data-blowup-pulse]")) {
+    const style = document.createElement("style");
+    style.textContent = `@keyframes pulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`;
+    style.setAttribute("data-blowup-pulse", "");
+    document.head.appendChild(style);
+  }
 }
 
 function TorrentSearchModal({
@@ -30,6 +32,8 @@ function TorrentSearchModal({
   const [submitting, setSubmitting] = useState(false);
 
   const year = film.year ? parseInt(film.year) : undefined;
+
+  useEffect(() => { ensurePulseAnimation(); }, []);
 
   useEffect(() => {
     yts
@@ -149,7 +153,7 @@ function TorrentSearchModal({
               </div>
               {isStarted ? (
                 <span style={{ color: "var(--color-accent)", fontSize: 12 }}>
-                  已添加
+                  下载中
                 </span>
               ) : fetching.has(target) ? (
                 <span style={{ fontSize: 12, display: "inline-flex", gap: 3 }}>
@@ -314,7 +318,7 @@ function TorrentSearchModal({
                   fontSize: 13,
                 }}
               >
-                {submitting ? "提交中..." : `下载 (${selectedFiles.size})`}
+                {submitting ? "开始中..." : `确认下载 (${selectedFiles.size})`}
               </button>
             </div>
           </div>

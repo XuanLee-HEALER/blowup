@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 use which::which;
 
@@ -201,7 +201,7 @@ pub async fn fetch_subtitle(video: &Path, lang: &str, cfg: &Config) -> Result<()
     let token = if !username.is_empty() && !password.is_empty() {
         // Check cache first
         let cached = {
-            let guard = TOKEN_CACHE.lock().unwrap();
+            let guard = TOKEN_CACHE.lock().expect("TOKEN_CACHE mutex poisoned");
             guard
                 .as_ref()
                 .filter(|(_, created)| created.elapsed().as_secs() < TOKEN_TTL_SECS)
@@ -214,7 +214,8 @@ pub async fn fetch_subtitle(video: &Path, lang: &str, cfg: &Config) -> Result<()
             match os_login(&client, username, password).await {
                 Ok(t) => {
                     tracing::info!("OpenSubtitles: logged in as {username}");
-                    *TOKEN_CACHE.lock().unwrap() = Some((t.clone(), Instant::now()));
+                    *TOKEN_CACHE.lock().expect("TOKEN_CACHE mutex poisoned") =
+                        Some((t.clone(), Instant::now()));
                     Some(t)
                 }
                 Err(e) => {
@@ -322,9 +323,13 @@ pub fn shift_srt(srt_path: &Path, offset_ms: i64) -> Result<(), SubError> {
     Ok(())
 }
 
+static SRT_TIMESTAMP_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})")
+        .expect("valid SRT timestamp regex")
+});
+
 fn apply_offset(content: &str, offset_ms: i64) -> Result<String, SubError> {
-    let re = Regex::new(r"(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})")
-        .expect("valid regex");
+    let re = &*SRT_TIMESTAMP_RE;
 
     let result = re.replace_all(content, |caps: &regex::Captures| {
         let start = parse_ts(caps, 1) + offset_ms;

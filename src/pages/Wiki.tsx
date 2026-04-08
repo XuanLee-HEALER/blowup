@@ -3,6 +3,7 @@ import { kb } from "../lib/tauri";
 import type { EntrySummary, EntryDetail, RelationEntry } from "../lib/tauri";
 import { WikiDetailView } from "../components/WikiDetailView";
 import { Chip } from "../components/ui/Chip";
+import { MODAL_OVERLAY, MODAL_CARD, INPUT, BTN_SECONDARY, BTN_ACCENT, LABEL, SECTION_HEADER } from "../lib/styles";
 
 // ── Add Entry Modal ─────────────────────────────────────────────
 
@@ -16,9 +17,8 @@ function AddEntryModal({ onClose, onCreated }: { onClose: () => void; onCreated:
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
-      onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--color-bg-primary)", borderRadius: 10, padding: "1.5rem", width: 360, border: "1px solid var(--color-separator)" }}>
+    <div style={MODAL_OVERLAY} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...MODAL_CARD, width: 360 }}>
         <h3 style={{ margin: "0 0 1rem", fontSize: "0.9rem" }}>新建条目</h3>
         <input
           autoFocus
@@ -26,11 +26,11 @@ function AddEntryModal({ onClose, onCreated }: { onClose: () => void; onCreated:
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
           placeholder="条目名称"
-          style={{ width: "100%", padding: "0.5rem", background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)", borderRadius: 6, color: "var(--color-label-primary)", fontSize: "0.82rem", fontFamily: "inherit", boxSizing: "border-box" }}
+          style={INPUT}
         />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1rem" }}>
-          <button onClick={onClose} style={{ background: "none", border: "1px solid var(--color-separator)", borderRadius: 6, padding: "0.35rem 0.75rem", color: "var(--color-label-secondary)", cursor: "pointer", fontSize: "0.78rem", fontFamily: "inherit" }}>取消</button>
-          <button onClick={handleCreate} style={{ background: "var(--color-accent)", border: "none", borderRadius: 6, padding: "0.35rem 0.75rem", color: "#000", cursor: "pointer", fontSize: "0.78rem", fontFamily: "inherit", fontWeight: 600 }}>创建</button>
+          <button onClick={onClose} style={BTN_SECONDARY}>取消</button>
+          <button onClick={handleCreate} style={BTN_ACCENT}>创建</button>
         </div>
       </div>
     </div>
@@ -62,37 +62,36 @@ function AddRelationModal({ currentId, entries, onClose, onAdded }: {
   const candidates = entries.filter((e) => e.id !== currentId);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
-      onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--color-bg-primary)", borderRadius: 10, padding: "1.5rem", width: 380, border: "1px solid var(--color-separator)" }}>
+    <div style={MODAL_OVERLAY} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ ...MODAL_CARD, width: 380 }}>
         <h3 style={{ margin: "0 0 1rem", fontSize: "0.9rem" }}>添加关系</h3>
 
-        <label style={{ fontSize: "0.72rem", color: "var(--color-label-tertiary)", display: "block", marginBottom: "0.3rem" }}>目标条目</label>
+        <label style={LABEL}>目标条目</label>
         <select
           value={targetId}
           onChange={(e) => setTargetId(e.target.value ? Number(e.target.value) : "")}
-          style={{ width: "100%", padding: "0.5rem", background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)", borderRadius: 6, color: "var(--color-label-primary)", fontSize: "0.82rem", fontFamily: "inherit", boxSizing: "border-box", marginBottom: "0.75rem" }}
+          style={{ ...INPUT, marginBottom: "0.75rem" }}
         >
           <option value="">选择...</option>
           {candidates.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
 
-        <label style={{ fontSize: "0.72rem", color: "var(--color-label-tertiary)", display: "block", marginBottom: "0.3rem" }}>关系类型</label>
+        <label style={LABEL}>关系类型</label>
         <input
           value={relationType}
           onChange={(e) => setRelationType(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           placeholder="例: 影响、合作、出演..."
           list="relation-types"
-          style={{ width: "100%", padding: "0.5rem", background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)", borderRadius: 6, color: "var(--color-label-primary)", fontSize: "0.82rem", fontFamily: "inherit", boxSizing: "border-box" }}
+          style={INPUT}
         />
         <datalist id="relation-types">
           {existingTypes.map((t) => <option key={t} value={t} />)}
         </datalist>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1rem" }}>
-          <button onClick={onClose} style={{ background: "none", border: "1px solid var(--color-separator)", borderRadius: 6, padding: "0.35rem 0.75rem", color: "var(--color-label-secondary)", cursor: "pointer", fontSize: "0.78rem", fontFamily: "inherit" }}>取消</button>
-          <button onClick={handleAdd} style={{ background: "var(--color-accent)", border: "none", borderRadius: 6, padding: "0.35rem 0.75rem", color: "#000", cursor: "pointer", fontSize: "0.78rem", fontFamily: "inherit", fontWeight: 600 }}>添加</button>
+          <button onClick={onClose} style={BTN_SECONDARY}>取消</button>
+          <button onClick={handleAdd} style={BTN_ACCENT}>添加</button>
         </div>
       </div>
     </div>
@@ -168,7 +167,7 @@ function EntryDetailView({ entry, entries, onWikiChange, onDeleted, onUpdated }:
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       {/* Tags */}
       <div>
-        <p style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 0.4rem", fontWeight: 600 }}>标签</p>
+        <p style={{ ...SECTION_HEADER, marginBottom: "0.4rem" }}>标签</p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem", alignItems: "center" }}>
           {entry.tags.map((tag) => (
             <Chip key={tag} label={tag} onRemove={() => handleRemoveTag(tag)} />
@@ -186,7 +185,7 @@ function EntryDetailView({ entry, entries, onWikiChange, onDeleted, onUpdated }:
       {/* Relations */}
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem" }}>
-          <p style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", textTransform: "uppercase", letterSpacing: "0.06em", margin: 0, fontWeight: 600 }}>关系</p>
+          <p style={SECTION_HEADER}>关系</p>
           <button
             onClick={() => setShowRelModal(true)}
             style={{ background: "none", border: "none", color: "var(--color-accent)", cursor: "pointer", fontSize: "0.72rem", fontFamily: "inherit", padding: 0 }}
@@ -216,7 +215,7 @@ function EntryDetailView({ entry, entries, onWikiChange, onDeleted, onUpdated }:
 
   return (
     <WikiDetailView
-      title={titleEl as unknown as string}
+      title={titleEl}
       wikiContent={wiki}
       onWikiChange={setWiki}
       onWikiSave={handleSaveWiki}
