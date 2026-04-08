@@ -202,12 +202,6 @@ export default function Search() {
 
   const doSearch = useCallback(() => runSearch(query, 1, false), [query, runSearch]);
 
-  // Re-search when filters change (not query — query uses Enter)
-  useEffect(() => {
-    if (apiKey) runSearch(query, 1, false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yearFrom, yearTo, genreIds, minRating, sortBy]);
-
   const loadMore = () => runSearch(query, page + 1, true);
 
   const selectedGenreNames = genres

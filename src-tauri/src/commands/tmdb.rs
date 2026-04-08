@@ -327,6 +327,26 @@ pub async fn search_movies(
     let mut results: Vec<MovieListItem> = title_resp
         .results
         .into_iter()
+        .filter(|i| {
+            // TMDB /search/movie doesn't support date range params,
+            // so filter client-side to respect year filters
+            let year: Option<u32> = i
+                .release_date
+                .as_deref()
+                .and_then(|d| d.get(..4))
+                .and_then(|y| y.parse().ok());
+            if let Some(from) = filters.year_from
+                && year.is_none_or(|y| y < from)
+            {
+                return false;
+            }
+            if let Some(to) = filters.year_to
+                && year.is_none_or(|y| y > to)
+            {
+                return false;
+            }
+            true
+        })
         .map(|i| {
             seen.insert(i.id);
             to_list_item(i)
