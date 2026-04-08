@@ -16,6 +16,8 @@ Search and discover films via TMDB, build your own film/people/genre knowledge g
 
 Built with **Tauri v2** (Rust backend) and **React 19** (TypeScript frontend). The entire toolchain is open-source.
 
+**Platform support:** macOS and Windows are first-class targets. Linux support is on hold.
+
 ### Pages
 
 | Page | Description |

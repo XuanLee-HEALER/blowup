@@ -16,6 +16,8 @@
 
 基于 **Tauri v2**（Rust 后端）和 **React 19**（TypeScript 前端）构建，工具链全部开源。
 
+**平台支持：** macOS 和 Windows 为第一优先级，Linux 暂时搁置。
+
 ### 功能页面
 
 | 页面 | 说明 |
