@@ -1,64 +1,258 @@
 // src-tauri/src/commands/subtitle.rs
 //
-// Merged from _sub_fetch.rs, _sub_align.rs, _sub_shift.rs, _sub_mod.rs
+// OpenSubtitles.com REST API + alass alignment + SRT shift + ffmpeg extraction
 
-// ── Imports ────────────────────────────────────────────────────────────────
 use crate::config::Config;
 use crate::error::SubError;
 use crate::ffmpeg::{FfmpegError, FfmpegTool};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Read;
 use std::path::Path;
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::Instant;
 use which::which;
 
-// ── SubSource (from _sub_fetch.rs) ─────────────────────────────────────────
-pub enum SubSource {
-    OpenSubtitles,
-    All,
+// ── OpenSubtitles REST API ────────────────────────────────────────────────
+
+const API_BASE: &str = "https://api.opensubtitles.com/api/v1";
+const USER_AGENT: &str = "blowup v2.0.2";
+/// JWT token cache: (token, created_at). Token is valid for 24h,
+/// we refresh after 23h to avoid edge-case expiry during a request.
+const TOKEN_TTL_SECS: u64 = 23 * 3600;
+static TOKEN_CACHE: Mutex<Option<(String, Instant)>> = Mutex::new(None);
+
+// -- Response types --
+
+#[derive(Debug, Deserialize)]
+struct OsSearchResponse {
+    data: Vec<OsSearchResult>,
 }
 
-// ── fetch_subtitle and helpers (from _sub_fetch.rs) ────────────────────────
-const XMLRPC_URL: &str = "https://api.opensubtitles.org/xml-rpc";
-const USER_AGENT: &str = "blowup v0.1";
+#[derive(Debug, Deserialize)]
+struct OsSearchResult {
+    attributes: OsSubAttributes,
+}
 
+#[derive(Debug, Deserialize)]
+struct OsSubAttributes {
+    release: Option<String>,
+    download_count: i64,
+    files: Vec<OsSubFile>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OsSubFile {
+    file_id: i64,
+    file_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OsLoginResponse {
+    token: String,
+}
+
+#[derive(Debug, Serialize)]
+struct OsDownloadRequest {
+    file_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct OsDownloadResponse {
+    link: String,
+    remaining: i64,
+}
+
+/// Build a reqwest client with the API key and User-Agent headers.
+fn os_client(api_key: &str) -> Result<reqwest::Client, SubError> {
+    use reqwest::header::{HeaderMap, HeaderValue};
+    let mut headers = HeaderMap::new();
+    headers.insert("Api-Key", HeaderValue::from_str(api_key).map_err(|e| {
+        SubError::InvalidSrt(format!("invalid API key header: {e}"))
+    })?);
+    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+    headers.insert("Accept", HeaderValue::from_static("application/json"));
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .default_headers(headers)
+        .build()
+        .map_err(SubError::HttpFailed)
+}
+
+/// Search subtitles via REST API.
+async fn os_search(
+    client: &reqwest::Client,
+    query: &str,
+    lang: &str,
+) -> Result<Vec<OsSearchResult>, SubError> {
+    let url = format!("{API_BASE}/subtitles");
+    let resp = client
+        .get(&url)
+        .query(&[("query", query), ("languages", lang)])
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(SubError::InvalidSrt(format!(
+            "OpenSubtitles search failed ({status}): {body}"
+        )));
+    }
+
+    let search: OsSearchResponse = resp.json().await?;
+    Ok(search.data)
+}
+
+/// Login to get JWT token (needed for downloads).
+async fn os_login(
+    client: &reqwest::Client,
+    username: &str,
+    password: &str,
+) -> Result<String, SubError> {
+    let url = format!("{API_BASE}/login");
+    let body = serde_json::json!({
+        "username": username,
+        "password": password,
+    });
+
+    let resp = client.post(&url).json(&body).send().await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(SubError::InvalidSrt(format!(
+            "OpenSubtitles login failed ({status}): {body}"
+        )));
+    }
+
+    let login: OsLoginResponse = resp.json().await?;
+    Ok(login.token)
+}
+
+/// Request a download link for a subtitle file.
+/// If `token` is provided, uses authenticated download (higher quota).
+/// Otherwise tries unauthenticated download (5 per IP per day).
+async fn os_download(
+    client: &reqwest::Client,
+    token: Option<&str>,
+    file_id: i64,
+) -> Result<OsDownloadResponse, SubError> {
+    let url = format!("{API_BASE}/download");
+    let body = OsDownloadRequest { file_id };
+
+    let mut req = client.post(&url);
+    if let Some(t) = token {
+        req = req.header("Authorization", format!("Bearer {t}"));
+    }
+    let resp = req.json(&body).send().await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(SubError::InvalidSrt(format!(
+            "OpenSubtitles download failed ({status}): {body}"
+        )));
+    }
+
+    resp.json().await.map_err(SubError::HttpFailed)
+}
+
+/// Fetch and save a subtitle file from OpenSubtitles.
 pub async fn fetch_subtitle(
     video: &Path,
     lang: &str,
-    _source: SubSource,
-    _cfg: &Config,
+    cfg: &Config,
 ) -> Result<(), SubError> {
+    let api_key = &cfg.opensubtitles.api_key;
+    if api_key.is_empty() {
+        return Err(SubError::InvalidSrt(
+            "OpenSubtitles API key not configured. Set it in Settings → OpenSubtitles.".into(),
+        ));
+    }
+
+    let client = os_client(api_key)?;
+
+    // Build search query from filename
     let stem = video
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_string();
-
     let query = clean_query(&stem);
-    let os_lang = to_opensubtitles_lang(lang);
 
-    let client = reqwest::Client::new();
-
-    let token = xmlrpc_login(&client).await?;
-    let results = xmlrpc_search(&client, &token, &query, os_lang).await?;
-
+    // Search
+    let results = os_search(&client, &query, lang).await?;
     if results.is_empty() {
         return Err(SubError::NoSubtitleFound);
     }
 
+    // Pick best result (first file of first result — sorted by relevance)
     let best = &results[0];
-    let out_path = video.with_extension(format!("{lang}.srt"));
-    download_subtitle(&client, &best.download_url, &out_path).await?;
-    println!("Saved subtitle: {}", out_path.display());
-    println!("Source file:    {}", best.filename);
-    Ok(())
-}
+    let file = best
+        .attributes
+        .files
+        .first()
+        .ok_or(SubError::NoSubtitleFound)?;
 
-struct SubtitleResult {
-    filename: String,
-    download_url: String,
+    // Login if credentials are configured (higher download quota).
+    // Token is cached in memory for ~23h (JWT valid for 24h).
+    let username = &cfg.opensubtitles.username;
+    let password = &cfg.opensubtitles.password;
+    let token = if !username.is_empty() && !password.is_empty() {
+        // Check cache first
+        let cached = {
+            let guard = TOKEN_CACHE.lock().unwrap();
+            guard
+                .as_ref()
+                .filter(|(_, created)| created.elapsed().as_secs() < TOKEN_TTL_SECS)
+                .map(|(t, _)| t.clone())
+        };
+        if let Some(t) = cached {
+            tracing::debug!("OpenSubtitles: using cached token");
+            Some(t)
+        } else {
+            match os_login(&client, username, password).await {
+                Ok(t) => {
+                    tracing::info!("OpenSubtitles: logged in as {username}");
+                    *TOKEN_CACHE.lock().unwrap() = Some((t.clone(), Instant::now()));
+                    Some(t)
+                }
+                Err(e) => {
+                    tracing::warn!("OpenSubtitles login failed, trying without auth: {e}");
+                    None
+                }
+            }
+        }
+    } else {
+        None
+    };
+
+    // Request download link
+    let dl = os_download(&client, token.as_deref(), file.file_id).await?;
+    tracing::info!(
+        file_name = file.file_name,
+        remaining = dl.remaining,
+        "subtitle download link obtained"
+    );
+
+    // Download the subtitle file (temporary URL, no auth needed)
+    let out_path = video.with_extension(format!("{lang}.srt"));
+    let resp = reqwest::get(&dl.link).await?;
+    if !resp.status().is_success() {
+        return Err(SubError::NoSubtitleFound);
+    }
+    let bytes = resp.bytes().await?;
+    std::fs::write(&out_path, &bytes).map_err(SubError::Io)?;
+
+    tracing::info!(
+        path = %out_path.display(),
+        release = best.attributes.release.as_deref().unwrap_or(""),
+        downloads = best.attributes.download_count,
+        "subtitle saved"
+    );
+    Ok(())
 }
 
 fn clean_query(stem: &str) -> String {
@@ -89,135 +283,8 @@ fn clean_query(stem: &str) -> String {
     }
 }
 
-fn to_opensubtitles_lang(lang: &str) -> &str {
-    match lang {
-        "zh" | "zh-CN" | "chs" => "chi",
-        "en" => "eng",
-        "ja" => "jpn",
-        "ko" => "kor",
-        "fr" => "fre",
-        "de" => "ger",
-        "es" => "spa",
-        other => other,
-    }
-}
+// ── align_subtitle (alass) ───────────────────────────────────────────────
 
-async fn xmlrpc_login(client: &reqwest::Client) -> Result<String, SubError> {
-    let body = r#"<?xml version="1.0"?><methodCall><methodName>LogIn</methodName><params><param><value><string></string></value></param><param><value><string></string></value></param><param><value><string>en</string></value></param><param><value><string>blowup v0.1</string></value></param></params></methodCall>"#;
-
-    let resp = client
-        .post(XMLRPC_URL)
-        .header("User-Agent", USER_AGENT)
-        .header("Content-Type", "text/xml")
-        .body(body)
-        .send()
-        .await?;
-
-    let text = resp.text().await?;
-    extract_xmlrpc_string(&text, "token")
-        .ok_or_else(|| SubError::InvalidSrt("OpenSubtitles login: no token in response".into()))
-}
-
-async fn xmlrpc_search(
-    client: &reqwest::Client,
-    token: &str,
-    query: &str,
-    lang: &str,
-) -> Result<Vec<SubtitleResult>, SubError> {
-    let body = format!(
-        r#"<?xml version="1.0"?><methodCall><methodName>SearchSubtitles</methodName><params><param><value><string>{token}</string></value></param><param><value><array><data><value><struct><member><name>sublanguageid</name><value><string>{lang}</string></value></member><member><name>query</name><value><string>{query}</string></value></member></struct></value></data></array></value></param></params></methodCall>"#
-    );
-
-    let resp = client
-        .post(XMLRPC_URL)
-        .header("User-Agent", USER_AGENT)
-        .header("Content-Type", "text/xml")
-        .body(body)
-        .send()
-        .await?;
-
-    let text = resp.text().await?;
-    parse_xmlrpc_search_results(&text)
-}
-
-fn extract_xmlrpc_string(xml: &str, member_name: &str) -> Option<String> {
-    let pattern = format!(r"<name>{member_name}</name><value><string>([^<]+)</string>");
-    let re = Regex::new(&pattern).ok()?;
-    re.captures(xml)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
-}
-
-fn parse_xmlrpc_search_results(xml: &str) -> Result<Vec<SubtitleResult>, SubError> {
-    let name_re = Regex::new(r"<name>SubFileName</name><value><string>([^<]+)</string>")
-        .expect("valid regex");
-    let link_re = Regex::new(r"<name>SubDownloadLink</name><value><string>([^<]+)</string>")
-        .expect("valid regex");
-
-    let names: Vec<&str> = name_re
-        .captures_iter(xml)
-        .filter_map(|c| c.get(1).map(|m| m.as_str()))
-        .collect();
-    let links: Vec<&str> = link_re
-        .captures_iter(xml)
-        .filter_map(|c| c.get(1).map(|m| m.as_str()))
-        .collect();
-
-    let results = names
-        .into_iter()
-        .zip(links)
-        .filter(|(name, _)| name.ends_with(".srt"))
-        .map(|(name, link)| SubtitleResult {
-            filename: name.to_string(),
-            download_url: link.to_string(),
-        })
-        .collect();
-
-    Ok(results)
-}
-
-fn strip_session_from_url(url: &str) -> String {
-    // OpenSubtitles embeds the session token as a path segment like /sid-TOKEN/
-    // which triggers a restricted "VIP only" download; remove it.
-    let re = Regex::new(r"/sid-[^/]+").expect("valid regex");
-    re.replace(url, "").to_string()
-}
-
-async fn download_subtitle(
-    client: &reqwest::Client,
-    url: &str,
-    out_path: &Path,
-) -> Result<(), SubError> {
-    let clean_url = strip_session_from_url(url);
-    let resp = client
-        .get(&clean_url)
-        .header("User-Agent", USER_AGENT)
-        .send()
-        .await?;
-
-    if !resp.status().is_success() {
-        return Err(SubError::NoSubtitleFound);
-    }
-
-    let bytes = resp.bytes().await?;
-
-    let content = if bytes.starts_with(&[0x1f, 0x8b]) {
-        let mut gz = flate2::read::GzDecoder::new(&bytes[..]);
-        let mut out = Vec::new();
-        gz.read_to_end(&mut out)
-            .map_err(|e| SubError::InvalidSrt(e.to_string()))?;
-        out
-    } else {
-        bytes.to_vec()
-    };
-
-    std::fs::write(out_path, &content).map_err(SubError::Io)?;
-    Ok(())
-}
-
-// ── align_subtitle and helpers (from _sub_align.rs) ────────────────────────
-
-/// 使用 alass 自动对齐字幕时间轴
 pub fn align_subtitle(video: &Path, srt: &Path, alass_path: Option<&str>) -> Result<(), SubError> {
     let alass = if let Some(p) = alass_path.filter(|s| !s.is_empty()) {
         std::path::PathBuf::from(p)
@@ -232,7 +299,6 @@ pub fn align_subtitle(video: &Path, srt: &Path, alass_path: Option<&str>) -> Res
 fn align_with_binary(alass: &Path, video: &Path, srt: &Path) -> Result<(), SubError> {
     let backup = srt.with_extension("bak.srt");
 
-    // 先尝试运行 alass，只有 binary 可执行时才做备份
     let run_result = Command::new(alass)
         .arg(video)
         .arg(srt)
@@ -245,14 +311,12 @@ fn align_with_binary(alass: &Path, video: &Path, srt: &Path) -> Result<(), SubEr
         return Err(SubError::AlassFailed(stderr));
     }
 
-    // alass 成功后将输出（backup）覆盖回原路径
     std::fs::copy(&backup, srt).map_err(SubError::Io)?;
     Ok(())
 }
 
-// ── shift_srt and helpers (from _sub_shift.rs) ─────────────────────────────
+// ── shift_srt ────────────────────────────────────────────────────────────
 
-/// 将 SRT 文件中所有时间戳偏移 offset_ms 毫秒
 pub fn shift_srt(srt_path: &Path, offset_ms: i64) -> Result<(), SubError> {
     let content = fs::read_to_string(srt_path).map_err(SubError::Io)?;
     let shifted = apply_offset(&content, offset_ms)?;
@@ -288,10 +352,8 @@ fn format_ts(total_ms: i64) -> String {
     format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
 }
 
-// ── extract_sub_srt, list_all_subtitle_stream, structs (from _sub_mod.rs) ──
+// ── extract / list subtitle streams (ffmpeg) ─────────────────────────────
 
-/// 将 file 视频容器中的指定字幕流以 srt 文件格式提取到 sub 路径中。
-/// stream 为 None 时提取第一个字幕流（0:s:0）。
 pub async fn extract_sub_srt(
     file: impl AsRef<Path>,
     stream: Option<u32>,
@@ -299,7 +361,6 @@ pub async fn extract_sub_srt(
     let stream_idx = stream.unwrap_or(0);
     let map_spec = format!("0:s:{}", stream_idx);
     let file_str = file.as_ref().to_str().unwrap_or("");
-    // 输出到同目录下的 .srt 文件
     let out = file
         .as_ref()
         .with_extension("srt")
@@ -313,13 +374,11 @@ pub async fn extract_sub_srt(
     Ok(())
 }
 
-/// 视频流的顶层结构体，用于解析 ffprobe 的 JSON 输出。
 #[derive(Debug, Deserialize, Serialize)]
 struct FfprobeOutput {
     streams: Vec<FfprobeStream>,
 }
 
-/// 单个流的详细信息
 #[derive(Debug, Deserialize, Serialize)]
 struct FfprobeStream {
     index: u32,
@@ -330,14 +389,12 @@ struct FfprobeStream {
     tags: Option<FfprobeTags>,
 }
 
-/// 流的标签信息
 #[derive(Debug, Deserialize, Serialize)]
 struct FfprobeTags {
     language: Option<String>,
     title: Option<String>,
 }
 
-/// 最终返回给调用者的字幕流信息结构体
 #[derive(Debug, Clone, Serialize)]
 pub struct SubtitleStreamInfo {
     pub index: u32,
@@ -347,7 +404,6 @@ pub struct SubtitleStreamInfo {
     pub title: Option<String>,
 }
 
-/// 列出视频文件中所有的字幕流信息并返回。
 pub async fn list_all_subtitle_stream(
     file: impl AsRef<Path>,
 ) -> anyhow::Result<Vec<SubtitleStreamInfo>> {
@@ -391,7 +447,7 @@ pub async fn list_all_subtitle_stream(
     Ok(streams)
 }
 
-// ── Tauri commands ──────────────────────────────────────────────────────────
+// ── Tauri commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn fetch_subtitle_cmd(
@@ -401,7 +457,7 @@ pub async fn fetch_subtitle_cmd(
 ) -> std::result::Result<(), String> {
     let cfg = crate::config::load_config();
     let video_path = std::path::Path::new(&video);
-    fetch_subtitle(video_path, &lang, SubSource::All, &cfg)
+    fetch_subtitle(video_path, &lang, &cfg)
         .await
         .map_err(|e| e.to_string())
 }
@@ -441,13 +497,12 @@ pub fn shift_subtitle_cmd(srt: String, offset_ms: i64) -> std::result::Result<()
     shift_srt(std::path::Path::new(&srt), offset_ms).map_err(|e| e.to_string())
 }
 
-// ── Tests ───────────────────────────────────────────────────────────────────
+// ── Tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    // Tests from _sub_fetch.rs
     #[test]
     fn clean_query_strips_quality_tags() {
         let q = clean_query("Blow-Up.1966.1080p.BluRay.x264.AAC-YTS.MX");
@@ -461,45 +516,6 @@ mod tests {
     }
 
     #[test]
-    fn lang_mapping_zh() {
-        assert_eq!(to_opensubtitles_lang("zh"), "chi");
-        assert_eq!(to_opensubtitles_lang("en"), "eng");
-        assert_eq!(to_opensubtitles_lang("ja"), "jpn");
-    }
-
-    #[test]
-    fn extract_xmlrpc_token() {
-        let xml = r#"<member><name>token</name><value><string>abc123</string></value></member>"#;
-        assert_eq!(extract_xmlrpc_string(xml, "token"), Some("abc123".into()));
-    }
-
-    #[test]
-    fn strip_session_removes_sid_segment() {
-        let url =
-            "https://dl.opensubtitles.org/en/download/src-api/vrf-abc/sid-TOK,EN/filead/123.gz";
-        let clean = strip_session_from_url(url);
-        assert_eq!(
-            clean,
-            "https://dl.opensubtitles.org/en/download/src-api/vrf-abc/filead/123.gz"
-        );
-    }
-
-    #[test]
-    fn strip_session_noop_when_no_sid() {
-        let url = "https://dl.opensubtitles.org/en/download/src-api/vrf-abc/filead/123.gz";
-        assert_eq!(strip_session_from_url(url), url);
-    }
-
-    #[test]
-    fn parse_xmlrpc_search_single_result() {
-        let xml = r#"<member><name>SubFileName</name><value><string>Blow-Up.srt</string></value></member><member><name>SubDownloadLink</name><value><string>https://example.com/sub.gz</string></value></member>"#;
-        let results = parse_xmlrpc_search_results(xml).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].filename, "Blow-Up.srt");
-    }
-
-    // Tests from _sub_align.rs
-    #[test]
     fn align_returns_error_when_alass_missing() {
         let result = align_with_binary(
             Path::new("nonexistent_alass_binary_xyz"),
@@ -509,7 +525,6 @@ mod tests {
         assert!(matches!(result, Err(SubError::AlassFailed(_))));
     }
 
-    // Tests from _sub_shift.rs
     #[test]
     fn offset_positive() {
         let srt = "1\n00:01:00,000 --> 00:01:05,000\nHello\n";

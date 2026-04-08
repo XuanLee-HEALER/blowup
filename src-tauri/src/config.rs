@@ -69,6 +69,10 @@ pub struct SubtitleConfig {
 pub struct OpenSubtitlesConfig {
     #[serde(default)]
     pub api_key: String,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
