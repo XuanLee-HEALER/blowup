@@ -368,14 +368,47 @@ pub async fn delete_download(
     Ok(())
 }
 
-/// Re-download from history: check if already in library, refuse if exists.
+/// List files that already exist on disk for a download record's output directory.
+#[tauri::command]
+pub async fn list_download_existing_files(
+    pool: tauri::State<'_, SqlitePool>,
+    index: tauri::State<'_, LibraryIndex>,
+    id: i64,
+) -> Result<Vec<String>, String> {
+    let record = sqlx::query_as::<_, DownloadRecord>("SELECT * FROM downloads WHERE id=?")
+        .bind(id)
+        .fetch_optional(pool.inner())
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("download not found")?;
+
+    let tmdb_id = record.tmdb_id.unwrap_or(0) as u64;
+    let director = record.director.as_deref().unwrap_or("Unknown");
+    let dir = index.compute_download_path(director, tmdb_id);
+
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let files = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| e.file_name().into_string().ok())
+        .collect();
+
+    Ok(files)
+}
+
+/// Re-download: reuse existing record, start download with selected files.
 #[tauri::command]
 pub async fn redownload(
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     index: tauri::State<'_, LibraryIndex>,
     id: i64,
-) -> Result<i64, String> {
+    only_files: Option<Vec<usize>>,
+) -> Result<(), String> {
     let record = sqlx::query_as::<_, DownloadRecord>(
         "SELECT * FROM downloads WHERE id=? AND status IN ('completed','failed')",
     )
@@ -387,40 +420,30 @@ pub async fn redownload(
 
     let tmdb_id = record.tmdb_id.unwrap_or(0) as u64;
 
-    // Check if already in library
-    if let Some(entry) = index.get_entry(tmdb_id)
-        && !entry.files.is_empty()
-    {
-        return Err(format!("「{}」已存在于电影库中", entry.title));
-    }
-
     validate_library_root(&index)?;
     let director = record.director.unwrap_or_else(|| "Unknown".to_string());
     let output_folder = index.compute_download_path(&director, tmdb_id);
 
     let (torrent_id, handle) = tm
-        .start_download(&record.target, output_folder.clone(), None)
+        .start_download(&record.target, output_folder.clone(), only_files)
         .await?;
 
-    // Insert new record (keep old one in history)
-    let new_id = sqlx::query_scalar::<_, i64>(
-        "INSERT INTO downloads (tmdb_id, title, director, quality, target, status, torrent_id) \
-         VALUES (?, ?, ?, ?, ?, 'downloading', ?) RETURNING id",
+    // Reset existing record
+    sqlx::query(
+        "UPDATE downloads SET status='downloading', torrent_id=?, \
+         progress_bytes=0, total_bytes=0, error_message=NULL, \
+         completed_at=NULL, started_at=datetime('now') WHERE id=?",
     )
-    .bind(record.tmdb_id)
-    .bind(&record.title)
-    .bind(&director)
-    .bind(&record.quality)
-    .bind(&record.target)
     .bind(torrent_id as i64)
-    .fetch_one(pool.inner())
+    .bind(id)
+    .execute(pool.inner())
     .await
     .map_err(|e| e.to_string())?;
 
     spawn_download_monitor(MonitorParams {
         pool: pool.inner().clone(),
         handle,
-        download_id: new_id,
+        download_id: id,
         output_folder,
         director,
         title: record.title,
@@ -429,7 +452,7 @@ pub async fn redownload(
         genres: Vec::new(),
     });
 
-    Ok(new_id)
+    Ok(())
 }
 
 #[cfg(test)]

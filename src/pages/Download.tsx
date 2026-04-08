@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { download } from "../lib/tauri";
-import type { DownloadRecord } from "../lib/tauri";
+import type { DownloadRecord, TorrentFileInfo } from "../lib/tauri";
 import { formatSize } from "../lib/format";
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -147,6 +147,14 @@ export default function Download() {
   const [downloads, setDownloads] = useState<DownloadRecord[]>([]);
   const [prevBytes, setPrevBytes] = useState<Map<number, number>>(new Map());
   const [deleteTarget, setDeleteTarget] = useState<DownloadRecord | null>(null);
+  // Redownload file-pick modal state
+  const [redownloadTarget, setRedownloadTarget] = useState<DownloadRecord | null>(null);
+  const [redownloadFiles, setRedownloadFiles] = useState<TorrentFileInfo[]>([]);
+  const [redownloadExisting, setRedownloadExisting] = useState<Set<string>>(new Set());
+  const [redownloadSelected, setRedownloadSelected] = useState<Set<number>>(new Set());
+  const [redownloadFetching, setRedownloadFetching] = useState(false);
+  const [redownloadSubmitting, setRedownloadSubmitting] = useState(false);
+  const [overwriteConfirm, setOverwriteConfirm] = useState(false);
 
   const refresh = useCallback(async () => {
     const list = await download.listDownloads();
@@ -206,13 +214,60 @@ export default function Download() {
     refresh();
   };
 
-  const handleRedownload = async (id: number) => {
+  // Step 1: fetch torrent files + existing files on disk
+  const handleRedownload = async (record: DownloadRecord) => {
+    setRedownloadFetching(true);
+    setRedownloadTarget(record);
     try {
-      await download.redownload(id);
+      const [files, existing] = await Promise.all([
+        download.getTorrentFiles(record.target),
+        download.listExistingFiles(record.id),
+      ]);
+      setRedownloadFiles(files);
+      setRedownloadExisting(new Set(existing));
+      setRedownloadSelected(new Set(files.map((f) => f.index)));
+    } catch (e) {
+      console.error("fetch torrent files failed:", e);
+      setRedownloadTarget(null);
+    } finally {
+      setRedownloadFetching(false);
+    }
+  };
+
+  // Step 2: confirm and start redownload
+  const handleRedownloadConfirm = async () => {
+    if (!redownloadTarget) return;
+
+    // Check if any selected files already exist
+    const selectedNames = redownloadFiles
+      .filter((f) => redownloadSelected.has(f.index))
+      .map((f) => f.name);
+    const conflicts = selectedNames.filter((n) => redownloadExisting.has(n));
+
+    if (conflicts.length > 0 && !overwriteConfirm) {
+      setOverwriteConfirm(true);
+      return;
+    }
+
+    setRedownloadSubmitting(true);
+    try {
+      await download.redownload(redownloadTarget.id, [...redownloadSelected]);
+      closeRedownloadModal();
       refresh();
     } catch (e) {
       console.error("redownload failed:", e);
+      closeRedownloadModal();
     }
+  };
+
+  const closeRedownloadModal = () => {
+    setRedownloadTarget(null);
+    setRedownloadFiles([]);
+    setRedownloadExisting(new Set());
+    setRedownloadSelected(new Set());
+    setRedownloadSubmitting(false);
+    setOverwriteConfirm(false);
+    setRedownloadFetching(false);
   };
 
   const active = downloads.filter((d) => d.status === "downloading" || d.status === "paused" || d.status === "pending");
@@ -239,7 +294,7 @@ export default function Download() {
               onPause={() => handlePause(d.id)}
               onResume={() => handleResume(d.id)}
               onDelete={() => handleDelete(d)}
-              onRedownload={() => handleRedownload(d.id)}
+              onRedownload={() => handleRedownload(d)}
             />
           ))}
         </div>
@@ -262,7 +317,7 @@ export default function Download() {
             onPause={() => {}}
             onResume={() => {}}
             onDelete={() => handleDelete(d)}
-            onRedownload={() => handleRedownload(d.id)}
+            onRedownload={() => handleRedownload(d)}
           />
         ))}
       </div>
@@ -273,6 +328,149 @@ export default function Download() {
           onConfirm={handleDeleteConfirm}
           onCancel={() => setDeleteTarget(null)}
         />
+      )}
+
+      {/* Redownload file selection modal */}
+      {redownloadTarget && (
+        <div
+          onClick={() => !redownloadSubmitting && !redownloadFetching && closeRedownloadModal()}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--color-bg-primary)", borderRadius: 12, padding: 24,
+              width: 520, maxHeight: "70vh", display: "flex", flexDirection: "column",
+            }}
+          >
+            {redownloadFetching ? (
+              <div style={{ textAlign: "center", padding: "2rem 0", color: "var(--color-label-secondary)", fontSize: "0.85rem" }}>
+                正在获取种子文件列表...
+              </div>
+            ) : overwriteConfirm ? (
+              /* Overwrite confirmation */
+              <>
+                <h3 style={{ margin: "0 0 8px", fontSize: "0.95rem", fontWeight: 700 }}>文件已存在</h3>
+                <p style={{ margin: "0 0 12px", fontSize: "0.82rem", color: "var(--color-label-secondary)", lineHeight: 1.5 }}>
+                  以下文件已存在于库目录中，继续下载将覆盖现有文件：
+                </p>
+                <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
+                  {redownloadFiles
+                    .filter((f) => redownloadSelected.has(f.index) && redownloadExisting.has(f.name))
+                    .map((f) => (
+                      <div key={f.index} style={{ fontSize: "0.82rem", padding: "4px 0", color: "#e57373" }}>
+                        {f.name}
+                      </div>
+                    ))}
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <button
+                    onClick={closeRedownloadModal}
+                    style={{
+                      background: "var(--color-bg-control)", border: "1px solid var(--color-separator)",
+                      borderRadius: 6, padding: "6px 16px", color: "var(--color-label-primary)",
+                      cursor: "pointer", fontSize: 13,
+                    }}
+                  >取消</button>
+                  <button
+                    onClick={handleRedownloadConfirm}
+                    disabled={redownloadSubmitting}
+                    style={{
+                      background: "#e57373", border: "none", borderRadius: 6,
+                      padding: "6px 16px", color: "#fff", cursor: "pointer", fontSize: 13,
+                    }}
+                  >{redownloadSubmitting ? "开始中..." : "覆盖下载"}</button>
+                </div>
+              </>
+            ) : (
+              /* File selection */
+              <>
+                <h3 style={{ margin: "0 0 4px" }}>选择下载文件</h3>
+                <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--color-label-secondary)" }}>
+                  重新下载: {redownloadTarget.title} · 共 {redownloadFiles.length} 个文件
+                </p>
+
+                <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
+                  {redownloadFiles.map((f) => {
+                    const exists = redownloadExisting.has(f.name);
+                    return (
+                      <label
+                        key={f.index}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "6px 0", borderBottom: "1px solid var(--color-separator)",
+                          fontSize: 13, cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={redownloadSelected.has(f.index)}
+                          onChange={() => {
+                            setRedownloadSelected((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(f.index)) next.delete(f.index);
+                              else next.add(f.index);
+                              return next;
+                            });
+                          }}
+                        />
+                        <span style={{
+                          flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          color: exists ? "#e57373" : undefined,
+                        }}>
+                          {f.name}{exists ? " (已存在)" : ""}
+                        </span>
+                        <span style={{ color: "var(--color-label-tertiary)", flexShrink: 0 }}>
+                          {formatSize(f.size)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      if (redownloadSelected.size === redownloadFiles.length) setRedownloadSelected(new Set());
+                      else setRedownloadSelected(new Set(redownloadFiles.map((f) => f.index)));
+                    }}
+                    style={{
+                      background: "var(--color-bg-control)", border: "1px solid var(--color-separator)",
+                      borderRadius: 6, padding: "6px 16px", color: "var(--color-label-primary)",
+                      cursor: "pointer", fontSize: 13,
+                    }}
+                  >
+                    {redownloadSelected.size === redownloadFiles.length ? "取消全选" : "全选"}
+                  </button>
+                  <div style={{ flex: 1 }} />
+                  <button
+                    onClick={closeRedownloadModal}
+                    style={{
+                      background: "var(--color-bg-control)", border: "1px solid var(--color-separator)",
+                      borderRadius: 6, padding: "6px 16px", color: "var(--color-label-primary)",
+                      cursor: "pointer", fontSize: 13,
+                    }}
+                  >取消</button>
+                  <button
+                    onClick={handleRedownloadConfirm}
+                    disabled={redownloadSelected.size === 0 || redownloadSubmitting}
+                    style={{
+                      background: redownloadSelected.size === 0 ? "var(--color-bg-control)" : "var(--color-accent)",
+                      color: redownloadSelected.size === 0 ? "var(--color-label-tertiary)" : "#fff",
+                      border: "none", borderRadius: 6, padding: "6px 16px",
+                      cursor: redownloadSelected.size === 0 ? "not-allowed" : "pointer", fontSize: 13,
+                    }}
+                  >
+                    {redownloadSubmitting ? "开始中..." : `确认下载 (${redownloadSelected.size})`}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

@@ -99,6 +99,7 @@ pub fn run() {
             commands::download::resume_download,
             commands::download::delete_download,
             commands::download::redownload,
+            commands::download::list_download_existing_files,
             commands::tracker::update_trackers,
             // Subtitle & media
             commands::subtitle::fetch_subtitle_cmd,

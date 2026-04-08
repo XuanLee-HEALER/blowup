@@ -333,8 +333,10 @@ export const download = {
     invoke<void>("resume_download", { id }),
   deleteDownload: (id: number) =>
     invoke<void>("delete_download", { id }),
-  redownload: (id: number) =>
-    invoke<number>("redownload", { id }),
+  redownload: (id: number, onlyFiles?: number[]) =>
+    invoke<void>("redownload", { id, onlyFiles }),
+  listExistingFiles: (id: number) =>
+    invoke<string[]>("list_download_existing_files", { id }),
 };
 
 export const yts = {

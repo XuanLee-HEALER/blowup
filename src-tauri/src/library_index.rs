@@ -36,6 +36,7 @@ pub struct IndexEntry {
 
 /// Patch for updating TMDB metadata on an IndexEntry.
 pub struct EntryMetadata {
+    pub title: Option<String>,
     pub poster_url: Option<String>,
     pub overview: Option<String>,
     pub rating: Option<f64>,
@@ -289,6 +290,9 @@ impl LibraryIndex {
     pub fn update_entry_metadata(&self, tmdb_id: u64, meta: EntryMetadata) -> Option<IndexEntry> {
         let mut data = self.data.write().unwrap();
         let result = if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
+            if let Some(title) = meta.title {
+                entry.title = title;
+            }
             entry.poster_url = meta.poster_url;
             entry.overview = meta.overview;
             entry.rating = meta.rating;
