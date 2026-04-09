@@ -948,7 +948,213 @@ async fn download_by_id(
     }
 }
 
+// ── Subtitle parsing (SRT + ASS → unified SubEntry) ─────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SubEntry {
+    pub index: usize,
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub text: String,
+}
+
+/// Parse a subtitle file (SRT or ASS/SSA) into unified entries.
+fn parse_subtitle_file(path: &Path) -> Result<Vec<SubEntry>, String> {
+    let content = fs::read_to_string(path).map_err(|e| format!("读取字幕文件失败: {e}"))?;
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    match ext.as_str() {
+        "srt" => parse_srt(&content),
+        "ass" | "ssa" => parse_ass(&content),
+        _ => Err(format!("不支持的字幕格式: .{ext}")),
+    }
+}
+
+fn parse_srt(content: &str) -> Result<Vec<SubEntry>, String> {
+    static TS_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})")
+            .expect("valid SRT timestamp regex")
+    });
+
+    let mut entries = Vec::new();
+    let mut idx: usize = 0;
+    let mut lines = content.lines().peekable();
+
+    while lines.peek().is_some() {
+        // Skip blank lines and index line
+        let line = match lines.next() {
+            Some(l) => l.trim(),
+            None => break,
+        };
+        if line.is_empty() {
+            continue;
+        }
+        // Try to match timestamp line (could be index or timestamp)
+        if let Some(caps) = TS_RE.captures(line) {
+            let start = srt_ts_to_ms(&caps, 1);
+            let end = srt_ts_to_ms(&caps, 5);
+
+            // Collect text lines until blank line
+            let mut text_parts = Vec::new();
+            while let Some(tl) = lines.peek() {
+                if tl.trim().is_empty() {
+                    lines.next();
+                    break;
+                }
+                text_parts.push(lines.next().unwrap().trim().to_string());
+            }
+
+            idx += 1;
+            entries.push(SubEntry {
+                index: idx,
+                start_ms: start,
+                end_ms: end,
+                text: text_parts.join("\n"),
+            });
+        }
+        // else: index number line or garbage, skip
+    }
+
+    Ok(entries)
+}
+
+fn srt_ts_to_ms(caps: &regex::Captures, offset: usize) -> i64 {
+    let h: i64 = caps[offset].parse().unwrap_or(0);
+    let m: i64 = caps[offset + 1].parse().unwrap_or(0);
+    let s: i64 = caps[offset + 2].parse().unwrap_or(0);
+    let ms: i64 = caps[offset + 3].parse().unwrap_or(0);
+    h * 3_600_000 + m * 60_000 + s * 1_000 + ms
+}
+
+fn parse_ass(content: &str) -> Result<Vec<SubEntry>, String> {
+    // Strip BOM
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
+
+    // Find [Events] section and parse Dialogue lines
+    let mut in_events = false;
+    let mut format_indices: Option<(usize, usize, usize)> = None; // (start, end, text)
+    let mut entries = Vec::new();
+    let mut idx: usize = 0;
+
+    // Regex to strip ASS override tags like {\b1}, {\pos(x,y)}, {\an8}, etc.
+    static TAG_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\{[^}]*\}").expect("valid ASS tag regex"));
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.eq_ignore_ascii_case("[events]") {
+            in_events = true;
+            continue;
+        }
+        if trimmed.starts_with('[') && in_events {
+            break; // Next section
+        }
+        if !in_events {
+            continue;
+        }
+
+        if let Some(fmt) = trimmed.strip_prefix("Format:") {
+            let fields: Vec<&str> = fmt.split(',').map(|s| s.trim()).collect();
+            let start_idx = fields.iter().position(|&f| f == "Start");
+            let end_idx = fields.iter().position(|&f| f == "End");
+            let text_idx = fields.iter().position(|&f| f == "Text");
+            if let (Some(s), Some(e), Some(t)) = (start_idx, end_idx, text_idx) {
+                format_indices = Some((s, e, t));
+            }
+            continue;
+        }
+
+        if let Some(dialogue) = trimmed.strip_prefix("Dialogue:") {
+            let (si, ei, ti) = format_indices.unwrap_or((1, 2, 9));
+            // Split by comma, but text field may contain commas — split at most ti+1 parts
+            let parts: Vec<&str> = dialogue.splitn(ti + 1, ',').collect();
+            if parts.len() <= ti {
+                continue;
+            }
+
+            let start = ass_ts_to_ms(parts.get(si).unwrap_or(&"0:00:00.00").trim());
+            let end = ass_ts_to_ms(parts.get(ei).unwrap_or(&"0:00:00.00").trim());
+            let raw_text = parts[ti].trim();
+
+            // Strip ASS tags and convert \N to newline
+            let text = TAG_RE.replace_all(raw_text, "").replace("\\N", "\n");
+            let text = text.trim().to_string();
+
+            if !text.is_empty() {
+                idx += 1;
+                entries.push(SubEntry {
+                    index: idx,
+                    start_ms: start,
+                    end_ms: end,
+                    text,
+                });
+            }
+        }
+    }
+
+    // Sort by start time (ASS doesn't guarantee order)
+    entries.sort_by_key(|e| e.start_ms);
+    // Re-index after sort
+    for (i, e) in entries.iter_mut().enumerate() {
+        e.index = i + 1;
+    }
+
+    Ok(entries)
+}
+
+/// Parse ASS timestamp like "1:23:45.67" → milliseconds
+fn ass_ts_to_ms(ts: &str) -> i64 {
+    let parts: Vec<&str> = ts.split(':').collect();
+    if parts.len() != 3 {
+        return 0;
+    }
+    let h: i64 = parts[0].parse().unwrap_or(0);
+    let m: i64 = parts[1].parse().unwrap_or(0);
+    let (s, cs) = match parts[2].split_once('.') {
+        Some((s, cs)) => (
+            s.parse::<i64>().unwrap_or(0),
+            cs.parse::<i64>().unwrap_or(0) * 10, // centiseconds → ms
+        ),
+        None => (parts[2].parse::<i64>().unwrap_or(0), 0),
+    };
+    h * 3_600_000 + m * 60_000 + s * 1_000 + cs
+}
+
 // ── Tauri commands ───────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn parse_subtitle_cmd(path: String) -> Result<Vec<SubEntry>, String> {
+    parse_subtitle_file(Path::new(&path))
+}
+
+#[tauri::command]
+pub fn open_subtitle_viewer(app: tauri::AppHandle, file_path: String) -> Result<(), String> {
+    let label = format!(
+        "subtitle-viewer-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+
+    let url = format!(
+        "subtitle-viewer.html?file={}",
+        urlencoding::encode(&file_path)
+    );
+
+    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
+        .title("字幕查看器")
+        .inner_size(720.0, 600.0)
+        .min_inner_size(400.0, 300.0)
+        .build()
+        .map_err(|e| format!("创建字幕查看器失败: {e}"))?;
+
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn fetch_subtitle_cmd(

@@ -323,6 +323,7 @@ function SubtitleRow({ file, rootPath, videoFile, onStatusChange, onRefresh }: {
         </span>
         <ActionButton label="对齐" onClick={handleAlign} disabled={!videoFile} />
         <MoreMenu items={[
+          { label: "查看", onClick: () => subtitle.openViewer(fullPath) },
           { label: "时间偏移", onClick: () => setShowShift(!showShift) },
           { label: "删除", onClick: handleDelete, danger: true },
         ]} />

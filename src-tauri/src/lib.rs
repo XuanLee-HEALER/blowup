@@ -173,6 +173,8 @@ pub fn run() {
             commands::subtitle::extract_subtitle_cmd,
             commands::subtitle::list_subtitle_streams_cmd,
             commands::subtitle::shift_subtitle_cmd,
+            commands::subtitle::parse_subtitle_cmd,
+            commands::subtitle::open_subtitle_viewer,
             commands::subtitle::search_subtitles_cmd,
             commands::subtitle::download_subtitle_cmd,
             commands::media::probe_media,

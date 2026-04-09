@@ -23,6 +23,7 @@ export default defineConfig({
         main: resolve(__dirname, "index.html"),
         player: resolve(__dirname, "player.html"),
         waveform: resolve(__dirname, "waveform.html"),
+        "subtitle-viewer": resolve(__dirname, "subtitle-viewer.html"),
       },
     },
   },

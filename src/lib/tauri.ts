@@ -421,6 +421,8 @@ export const subtitle = {
     invoke<SubtitleStreamInfo[]>("list_subtitle_streams_cmd", { video }),
   shift: (srt: string, offsetMs: number) =>
     invoke<void>("shift_subtitle_cmd", { srt, offsetMs }),
+  openViewer: (filePath: string) =>
+    invoke<void>("open_subtitle_viewer", { filePath }),
 };
 
 export const media = {
