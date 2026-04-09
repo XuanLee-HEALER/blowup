@@ -42,26 +42,41 @@ function FilterPopover({ anchor, onClose, children }: {
 
 // ── Individual filter components ─────────────────────────────────
 
+const YEAR_MIN = 1920;
+const YEAR_MAX = new Date().getFullYear();
+const YEARS = Array.from({ length: YEAR_MAX - YEAR_MIN + 1 }, (_, i) => YEAR_MIN + i);
+
+const selectStyle: React.CSSProperties = {
+  padding: "0.3rem 0.4rem", fontSize: "0.78rem",
+  background: "var(--color-bg-control)", border: "1px solid var(--color-separator)",
+  borderRadius: 4, color: "var(--color-label-primary)", fontFamily: "inherit", outline: "none",
+};
+
 function YearFilter({ yearFrom, yearTo, onChange }: {
   yearFrom?: number; yearTo?: number;
   onChange: (from?: number, to?: number) => void;
 }) {
-  const [from, setFrom] = useState(yearFrom?.toString() ?? "");
-  const [to, setTo] = useState(yearTo?.toString() ?? "");
-  const inputStyle: React.CSSProperties = {
-    width: 72, padding: "0.3rem 0.5rem", fontSize: "0.78rem",
-    background: "var(--color-bg-control)", border: "1px solid var(--color-separator)",
-    borderRadius: 4, color: "var(--color-label-primary)", fontFamily: "inherit", outline: "none",
-  };
+  const fromOptions = YEARS.filter((y) => !yearTo || y <= yearTo);
+  const toOptions = YEARS.filter((y) => !yearFrom || y >= yearFrom);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-      <input type="number" placeholder="起始" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} />
+      <select
+        value={yearFrom ?? ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined, yearTo)}
+        style={selectStyle}
+      >
+        <option value="">起始</option>
+        {fromOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+      </select>
       <span style={{ color: "var(--color-label-quaternary)", fontSize: "0.75rem" }}>—</span>
-      <input type="number" placeholder="结束" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
-      <button onClick={() => onChange(from ? parseInt(from) : undefined, to ? parseInt(to) : undefined)}
-        style={{ background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#fff", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
-        确定
-      </button>
+      <select
+        value={yearTo ?? ""}
+        onChange={(e) => onChange(yearFrom, e.target.value ? Number(e.target.value) : undefined)}
+        style={selectStyle}
+      >
+        <option value="">结束</option>
+        {toOptions.map((y) => <option key={y} value={y}>{y}</option>)}
+      </select>
     </div>
   );
 }
@@ -94,17 +109,20 @@ function GenreFilter({ genres, selected, onChange }: {
   );
 }
 
+const RATINGS = Array.from({ length: 20 }, (_, i) => (i + 1) * 0.5); // 0.5 ~ 10.0
+
 function RatingFilter({ current, onChange }: { current?: number; onChange: (v?: number) => void }) {
-  const [val, setVal] = useState(current?.toString() ?? "");
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
       <span style={{ fontSize: "0.75rem", color: "var(--color-label-secondary)" }}>≥</span>
-      <input type="number" min="0" max="10" step="0.5" value={val} onChange={(e) => setVal(e.target.value)}
-        style={{ width: 60, padding: "0.3rem 0.5rem", fontSize: "0.78rem", background: "var(--color-bg-control)", border: "1px solid var(--color-separator)", borderRadius: 4, color: "var(--color-label-primary)", fontFamily: "inherit", outline: "none" }} />
-      <button onClick={() => onChange(val ? parseFloat(val) : undefined)}
-        style={{ background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#fff", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
-        确定
-      </button>
+      <select
+        value={current ?? ""}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+        style={selectStyle}
+      >
+        <option value="">不限</option>
+        {RATINGS.map((r) => <option key={r} value={r}>{r.toFixed(1)}</option>)}
+      </select>
     </div>
   );
 }
@@ -246,7 +264,7 @@ export default function Search() {
               />
               {openFilter === "year" && (
                 <FilterPopover anchor="年代范围" onClose={() => setOpenFilter(null)}>
-                  <YearFilter yearFrom={yearFrom} yearTo={yearTo} onChange={(f, t) => { setYearFrom(f); setYearTo(t); setOpenFilter(null); }} />
+                  <YearFilter yearFrom={yearFrom} yearTo={yearTo} onChange={(f, t) => { setYearFrom(f); setYearTo(t); }} />
                 </FilterPopover>
               )}
             </div>
