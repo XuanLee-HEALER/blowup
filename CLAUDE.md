@@ -50,13 +50,15 @@ src-tauri/                    # Rust backend (Tauri v2)
 │   ├── 001_initial.sql       # library_items, library_assets
 │   ├── 002_downloads.sql     # downloads table (legacy, replaced by 003)
 │   ├── 003_download_refactor.sql  # downloads table (librqbit)
-│   └── 004_knowledge_base_v2.sql  # entries, entry_tags, relations (unified KB model)
+│   ├── 004_knowledge_base_v2.sql  # entries, entry_tags, relations (unified KB model)
+│   └── 005_downloads_year_genres.sql  # Add year, genres to downloads
 └── Cargo.toml
 
 src/                          # React 19 frontend (TypeScript)
 ├── App.tsx                   # Router + sidebar nav + MusicPlayer
 ├── lib/
 │   ├── tauri.ts              # All Tauri invoke wrappers + TS types
+│   ├── useBackendEvent.ts    # Event hook + BackendEvent constants (notify+refetch)
 │   └── format.ts             # Shared formatters (size, duration, bitrate)
 ├── pages/
 │   ├── Search.tsx            # TMDB search/discover with filters
@@ -144,11 +146,30 @@ relations:   id, from_id, to_id, relation_type
 ### The only connection
 If a film mentioned in the knowledge base (e.g. in an entry's wiki) also exists in the film library, a hyperlink can navigate to the corresponding Library detail page. That's it.
 
+## Frontend-Backend Interaction: Event-Driven Refresh
+
+Data flow follows **notify + refetch** pattern — backend emits domain events after mutations, frontend listens and re-fetches via existing invoke wrappers.
+
+4 domain events (no payload, fire-and-forget):
+
+| Event | Emitters | Listeners |
+|-------|----------|-----------|
+| `downloads:changed` | download.rs (progress/state), monitor (every 2s) | Download.tsx |
+| `library:changed` | download monitor (on complete), items.rs, enrichment.rs | Library.tsx, Darkroom.tsx |
+| `entries:changed` | entries.rs (all 8 write ops), export.rs (import) | Wiki.tsx, Graph.tsx |
+| `config:changed` | config.rs (save), export.rs (import) | App.tsx, Search.tsx |
+
+- **Backend**: `app.emit("event:name", ())` via `tauri::Emitter` — add `app: tauri::AppHandle` param to commands
+- **Frontend**: `useBackendEvent(BackendEvent.XXX, refresh)` hook in `src/lib/useBackendEvent.ts`
+- Event name constants: `BackendEvent` enum (TS) — prevents typo-induced silent failures
+- Download.tsx uses events instead of polling (no `setInterval`)
+
 ## Key Patterns
 
 | Pattern | Location | Note |
 |---------|----------|------|
 | Tauri invoke wrappers | `src/lib/tauri.ts` | All backend calls go through typed wrappers |
+| Event-driven refresh | `src/lib/useBackendEvent.ts` | Backend emits → frontend refetches → React re-renders |
 | Entry + tags query | `library/entries.rs` | LEFT JOIN + GROUP_CONCAT for tag aggregation |
 | Background downloads | `commands/download.rs` | Torrent manager with librqbit |
 | File probing | `commands/media.rs` + `library/items.rs` | ffprobe JSON → structured MediaInfo |
@@ -167,7 +188,8 @@ If a film mentioned in the knowledge base (e.g. in an entry's wiki) also exists 
 |------|---------|-------------------|
 | `alass` / `alass-cli` | Subtitle alignment | `tools.alass` |
 | `ffmpeg` + `ffprobe` | Subtitle extraction, media probe, library scan | `tools.ffmpeg` |
-| `mpv` (optional) | Media playback | `tools.player` |
+
+Tool paths are auto-detected on startup (`config::resolve_tool_paths`): if the configured path is invalid, searches PATH and well-known dirs (`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`) then writes back to config. This handles macOS GUI apps not inheriting shell PATH.
 
 ## Config
 
@@ -177,12 +199,11 @@ Path: `{APP_DATA_DIR}/config.toml` (migrated from `~/.config/blowup/config.toml`
 [tools]
 alass  = "alass"
 ffmpeg = "ffmpeg"
-player = "mpv"
 
 [download]
 max_concurrent = 3
 enable_dht = true
-persist_session = true
+persist_session = false
 
 [tmdb]
 api_key = ""
@@ -205,7 +226,7 @@ mode = "sequential"    # or "random"
 playlist = []
 
 [cache]
-max_entries = 500
+max_entries = 200
 
 [sync]
 endpoint = ""
@@ -217,3 +238,5 @@ secret_key = ""
 ## Database
 
 SQLite at `{APP_DATA_DIR}/blowup.db`. Tables: `entries`, `entry_tags`, `relations`, `library_items`, `library_assets`, `downloads`.
+
+App lifecycle: on startup, stale `downloading` records are reset to `paused` (crash recovery). On clean exit, active downloads are paused before torrent session shutdown. `resume_download` re-adds torrent from magnet link if session was lost.
