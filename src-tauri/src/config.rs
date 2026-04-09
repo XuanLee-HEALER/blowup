@@ -30,6 +30,8 @@ pub struct Config {
     #[serde(default)]
     pub opensubtitles: OpenSubtitlesConfig,
     #[serde(default)]
+    pub assrt: AssrtConfig,
+    #[serde(default)]
     pub tmdb: TmdbConfig,
     #[serde(default)]
     pub library: LibraryConfig,
@@ -71,6 +73,12 @@ pub struct OpenSubtitlesConfig {
     pub username: String,
     #[serde(default)]
     pub password: String,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct AssrtConfig {
+    #[serde(default)]
+    pub token: String,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]

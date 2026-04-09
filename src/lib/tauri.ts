@@ -49,6 +49,7 @@ export interface AppConfig {
   search: { rate_limit_secs: number };
   subtitle: { default_lang: string };
   opensubtitles: { api_key: string; username: string; password: string };
+  assrt: { token: string };
   tmdb: { api_key: string };
   library: { root_dir: string };
   music: { enabled: boolean; mode: "sequential" | "random"; playlist: MusicTrack[] };
@@ -397,9 +398,21 @@ export const audio = {
     invoke<string>("extract_audio_cmd", { video, stream, format }),
 };
 
+export interface SubtitleSearchResult {
+  source: string;
+  title: string;
+  language: string | null;
+  download_count: number | null;
+  download_id: string;
+}
+
 export const subtitle = {
   fetch: (video: string, lang: string) =>
     invoke<void>("fetch_subtitle_cmd", { video, lang, apiKey: "" }),
+  search: (video: string, lang: string, title?: string, year?: number, tmdbId?: number) =>
+    invoke<SubtitleSearchResult[]>("search_subtitles_cmd", { video, lang, title, year, tmdbId }),
+  download: (video: string, lang: string, downloadId: string) =>
+    invoke<void>("download_subtitle_cmd", { video, lang, downloadId }),
   align: (video: string, srt: string) =>
     invoke<void>("align_subtitle_cmd", { video, srt }),
   extract: (video: string, stream?: number) =>

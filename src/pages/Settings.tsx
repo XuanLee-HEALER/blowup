@@ -110,6 +110,17 @@ export default function Settings() {
         </Field>
       </Section>
 
+      <Section title="ASSRT（射手网）">
+        <Field label="Token">
+          <TextInput
+            type="password"
+            defaultValue={cfg.assrt?.token ?? ""}
+            placeholder="从 assrt.net 获取"
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.assrt = { token: v }; }); }}
+          />
+        </Field>
+      </Section>
+
       <Section title="字幕">
         <Field label="默认语言">
           <select

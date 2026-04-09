@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { library, subtitle, media, audio, config } from "../lib/tauri";
-import type { IndexEntry, FileMediaInfo } from "../lib/tauri";
+import type { IndexEntry, FileMediaInfo, SubtitleSearchResult } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 import { formatSize, formatDuration, formatBitrate, formatFrameRate } from "../lib/format";
 import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
@@ -412,6 +412,8 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
   const [files, setFiles] = useState(entry.files);
   const [fetchingLang, setFetchingLang] = useState("zh");
   const [fetchingSub, setFetchingSub] = useState(false);
+  const [subResults, setSubResults] = useState<SubtitleSearchResult[] | null>(null);
+  const [downloadingSub, setDownloadingSub] = useState<string | null>(null);
   const [hoveredVideo, setHoveredVideo] = useState<string | null>(null);
   const [hoveredAudio, setHoveredAudio] = useState<string | null>(null);
 
@@ -445,19 +447,38 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
     return false;
   };
 
-  const handleFetchSubtitle = async () => {
+  const handleSearchSubtitle = async () => {
     if (!primaryVideo) {
       setStatus({ ok: false, msg: "无视频文件，无法搜索字幕" });
       return;
     }
     setFetchingSub(true);
     setStatus(null);
+    setSubResults(null);
     try {
-      await subtitle.fetch(`${rootPath}/${primaryVideo}`, fetchingLang);
-      setStatus({ ok: true, msg: "字幕下载成功" });
-      await refreshFiles();
+      const results = await subtitle.search(
+        `${rootPath}/${primaryVideo}`, fetchingLang,
+        entry.title, entry.year ?? undefined, entry.tmdb_id,
+      );
+      if (results.length === 0) {
+        setStatus({ ok: false, msg: "未找到字幕" });
+      } else {
+        setSubResults(results);
+      }
     } catch (e) { setStatus({ ok: false, msg: `字幕搜索失败: ${e}` }); }
     finally { setFetchingSub(false); }
+  };
+
+  const handleDownloadSubtitle = async (downloadId: string) => {
+    if (!primaryVideo) return;
+    setDownloadingSub(downloadId);
+    try {
+      await subtitle.download(`${rootPath}/${primaryVideo}`, fetchingLang, downloadId);
+      setStatus({ ok: true, msg: "字幕下载成功" });
+      setSubResults(null);
+      await refreshFiles();
+    } catch (e) { setStatus({ ok: false, msg: `字幕下载失败: ${e}` }); }
+    finally { setDownloadingSub(null); }
   };
 
   const handleExtractAllSubs = async () => {
@@ -538,8 +559,8 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
       )}
 
       {/* Subtitle actions */}
-      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: "1.2rem" }}>
-        <ActionButton label={fetchingSub ? "搜索中…" : "+ 获取字幕"} onClick={handleFetchSubtitle} disabled={!primaryVideo || fetchingSub} />
+      <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", marginBottom: subResults ? "0.5rem" : "1.2rem" }}>
+        <ActionButton label={fetchingSub ? "搜索中…" : "+ 搜索字幕"} onClick={handleSearchSubtitle} disabled={!primaryVideo || fetchingSub} />
         <select
           value={fetchingLang}
           onChange={(e) => setFetchingLang(e.target.value)}
@@ -557,6 +578,59 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
         </select>
         <ActionButton label="+ 从视频提取" onClick={handleExtractAllSubs} disabled={!primaryVideo} />
       </div>
+
+      {/* Subtitle search results */}
+      {subResults && (
+        <div style={{ marginBottom: "1.2rem" }}>
+          {subResults.map((r) => (
+            <div
+              key={r.download_id}
+              style={{
+                display: "flex", alignItems: "center", gap: "0.5rem",
+                padding: "0.4rem 0.75rem", marginBottom: "0.25rem",
+                background: "var(--color-bg-secondary)",
+                border: "1px solid var(--color-separator)", borderRadius: 6,
+              }}
+            >
+              <span style={{
+                fontSize: "0.6rem", fontWeight: 600, padding: "0.1rem 0.3rem",
+                borderRadius: 3, flexShrink: 0,
+                background: r.source === "assrt" ? "rgba(255,149,0,0.15)" : "rgba(100,149,237,0.15)",
+                color: r.source === "assrt" ? "rgb(255,149,0)" : "rgb(100,149,237)",
+              }}>
+                {r.source === "assrt" ? "ASSRT" : "OS"}
+              </span>
+              <span style={{ flex: 1, fontSize: "0.78rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.title}
+              </span>
+              {r.language && (
+                <span style={{ fontSize: "0.65rem", color: "var(--color-label-quaternary)", flexShrink: 0 }}>
+                  {r.language}
+                </span>
+              )}
+              {r.download_count != null && (
+                <span style={{ fontSize: "0.68rem", color: "var(--color-label-quaternary)", flexShrink: 0 }}>
+                  {r.download_count} 次
+                </span>
+              )}
+              <ActionButton
+                label={downloadingSub === r.download_id ? "下载中…" : "下载"}
+                onClick={() => handleDownloadSubtitle(r.download_id)}
+                disabled={downloadingSub !== null}
+                accent
+              />
+            </div>
+          ))}
+          <button
+            onClick={() => setSubResults(null)}
+            style={{
+              background: "none", border: "none", fontSize: "0.7rem",
+              color: "var(--color-label-tertiary)", cursor: "pointer",
+              fontFamily: "inherit", marginTop: "0.2rem",
+            }}
+          >关闭结果</button>
+        </div>
+      )}
 
       {/* Audio section */}
       {audioFiles.length > 0 && (
