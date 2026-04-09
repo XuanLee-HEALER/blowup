@@ -102,8 +102,17 @@ pub async fn enrich_index_entry(
         credits.insert("主演".to_string(), cast_names);
     }
 
+    let year = details
+        .release_date
+        .split('-')
+        .next()
+        .and_then(|y| y.parse::<u32>().ok());
+    let genres: Vec<String> = details.genres.iter().map(|g| g.name.clone()).collect();
+
     let meta = crate::library_index::EntryMetadata {
         title: Some(details.title),
+        year,
+        genres: if genres.is_empty() { None } else { Some(genres) },
         poster_url,
         overview: Some(details.overview),
         rating: Some(details.vote_average),
