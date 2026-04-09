@@ -1,3 +1,4 @@
+use crate::commands::tracker::TrackerManager;
 use crate::library_index::{IndexEntry, LibraryIndex};
 use crate::torrent::{TorrentFileInfo, TorrentManager};
 use serde::{Deserialize, Serialize};
@@ -84,6 +85,7 @@ pub async fn get_torrent_files(
 pub async fn start_download(
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
+    tracker_mgr: tauri::State<'_, TrackerManager>,
     index: tauri::State<'_, LibraryIndex>,
     req: StartDownloadRequest,
 ) -> Result<i64, String> {
@@ -104,9 +106,15 @@ pub async fn start_download(
     .await
     .map_err(|e| e.to_string())?;
 
-    // Start torrent
+    // Start torrent with hot tracker list
+    let trackers = tracker_mgr.hot_trackers().await;
     let (torrent_id, handle): (usize, crate::torrent::TorrentHandle) = match tm
-        .start_download(&req.target, output_folder.clone(), req.only_files)
+        .start_download(
+            &req.target,
+            output_folder.clone(),
+            req.only_files,
+            Some(trackers),
+        )
         .await
     {
         Ok(r) => r,
@@ -405,6 +413,7 @@ pub async fn list_download_existing_files(
 pub async fn redownload(
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
+    tracker_mgr: tauri::State<'_, TrackerManager>,
     index: tauri::State<'_, LibraryIndex>,
     id: i64,
     only_files: Option<Vec<usize>>,
@@ -424,8 +433,14 @@ pub async fn redownload(
     let director = record.director.unwrap_or_else(|| "Unknown".to_string());
     let output_folder = index.compute_download_path(&director, tmdb_id);
 
+    let trackers = tracker_mgr.hot_trackers().await;
     let (torrent_id, handle) = tm
-        .start_download(&record.target, output_folder.clone(), only_files)
+        .start_download(
+            &record.target,
+            output_folder.clone(),
+            only_files,
+            Some(trackers),
+        )
         .await?;
 
     // Reset existing record

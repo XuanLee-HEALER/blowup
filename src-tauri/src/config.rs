@@ -49,8 +49,6 @@ pub struct ToolsConfig {
     pub alass: String,
     #[serde(default = "default_ffmpeg")]
     pub ffmpeg: String,
-    #[serde(default = "default_player")]
-    pub player: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -165,9 +163,6 @@ fn default_music_mode() -> String {
     "sequential".to_string()
 }
 
-fn default_player() -> String {
-    "mpv".to_string()
-}
 fn default_alass() -> String {
     "alass".to_string()
 }
@@ -193,7 +188,6 @@ impl Default for ToolsConfig {
         Self {
             alass: default_alass(),
             ffmpeg: default_ffmpeg(),
-            player: default_player(),
         }
     }
 }
@@ -256,6 +250,56 @@ pub fn load_config() -> Config {
     toml::from_str(&content).unwrap_or_default()
 }
 
+/// Well-known directories where CLI tools are commonly installed.
+/// macOS GUI apps don't inherit the shell PATH, so we probe these manually.
+const WELL_KNOWN_DIRS: &[&str] = &[
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+];
+
+/// Try to find `name` via PATH first, then fall back to well-known directories.
+fn find_tool(name: &str) -> Option<PathBuf> {
+    if let Ok(p) = which::which(name) {
+        return Some(p);
+    }
+    for dir in WELL_KNOWN_DIRS {
+        let candidate = PathBuf::from(dir).join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Check tool paths in config; if invalid, try to find them in PATH and
+/// well-known directories, then update and save.
+/// Returns true if any path was changed.
+pub fn resolve_tool_paths(config: &mut Config) -> bool {
+    let mut changed = false;
+
+    // alass / alass-cli
+    if which::which(&config.tools.alass).is_err() {
+        if let Some(p) = find_tool("alass").or_else(|| find_tool("alass-cli")) {
+            config.tools.alass = p.to_string_lossy().into_owned();
+            changed = true;
+        }
+    }
+
+    // ffmpeg
+    if which::which(&config.tools.ffmpeg).is_err() {
+        if let Some(p) = find_tool("ffmpeg") {
+            config.tools.ffmpeg = p.to_string_lossy().into_owned();
+            changed = true;
+        }
+    }
+
+    if changed {
+        save_config(config).ok();
+    }
+    changed
+}
+
 pub fn save_config(config: &Config) -> Result<(), String> {
     let path = config_path();
     if let Some(parent) = path.parent() {
@@ -275,7 +319,6 @@ mod tests {
         let cfg = Config::default();
         assert_eq!(cfg.tools.alass, "alass");
         assert_eq!(cfg.tools.ffmpeg, "ffmpeg");
-        assert_eq!(cfg.tools.player, "mpv");
         assert_eq!(cfg.search.rate_limit_secs, 5);
         assert_eq!(cfg.subtitle.default_lang, "zh");
     }

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { TextInput } from "../components/ui/TextInput";
 import { Button } from "../components/ui/Button";
-import { config, dataIO, type AppConfig, type MusicTrack } from "../lib/tauri";
+import { config, dataIO, tracker, type AppConfig, type MusicTrack, type TrackerStatus } from "../lib/tauri";
 
 const LANG_OPTIONS = [
   { value: "zh", label: "中文 (zh)" },
@@ -15,10 +15,14 @@ export default function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [cachePath, setCachePath] = useState("");
+  const [trackerStatus, setTrackerStatus] = useState<TrackerStatus | null>(null);
+  const [trackerInput, setTrackerInput] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     config.get().then(setCfg);
     config.getCachePath().then(setCachePath);
+    tracker.getStatus().then(setTrackerStatus);
   }, []);
 
   const update = (mutate: (draft: AppConfig) => void) => {
@@ -133,7 +137,7 @@ export default function Settings() {
       </Section>
 
       <Section title="工具路径">
-        {(["alass", "ffmpeg", "player"] as const).map((tool) => (
+        {(["alass", "ffmpeg"] as const).map((tool) => (
           <Field key={tool} label={tool}>
             <TextInput
               defaultValue={cfg.tools[tool]}
@@ -171,6 +175,75 @@ export default function Settings() {
             onChange={(e) => update((c) => { c.download.persist_session = e.target.checked; })}
             style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
           />
+        </Field>
+      </Section>
+
+      <Section title="TRACKER 服务器">
+        <Field label="自动维护">
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+            <span style={{ fontSize: "0.82rem", color: "var(--color-label-tertiary)" }}>
+              {trackerStatus
+                ? `${trackerStatus.auto_count} 个服务器` +
+                  (trackerStatus.last_updated
+                    ? `，最后更新于 ${new Date(trackerStatus.last_updated).toLocaleString("zh-CN")}`
+                    : "，从未更新")
+                : "加载中..."}
+            </span>
+            <Button
+              disabled={refreshing}
+              onClick={async () => {
+                setRefreshing(true);
+                try {
+                  const s = await tracker.refresh();
+                  setTrackerStatus(s);
+                } catch (e) {
+                  alert("更新失败: " + e);
+                } finally {
+                  setRefreshing(false);
+                }
+              }}
+            >
+              {refreshing ? "更新中..." : "立即更新"}
+            </Button>
+          </div>
+        </Field>
+        <Field label="自定义服务器">
+          <div>
+            <textarea
+              value={trackerInput}
+              onChange={(e) => setTrackerInput(e.target.value)}
+              placeholder={"每行一个 tracker 地址\nudp://tracker.example.com:1337/announce\nhttps://tracker.example.com/announce"}
+              rows={4}
+              style={{
+                width: "100%",
+                background: "var(--color-bg-control)",
+                border: "1px solid var(--color-separator)",
+                borderRadius: 8,
+                padding: "0.5rem 0.75rem",
+                color: "var(--color-label-primary)",
+                fontSize: "0.85rem",
+                fontFamily: "inherit",
+                resize: "vertical",
+                boxSizing: "border-box",
+              }}
+            />
+            <div style={{ marginTop: "0.5rem" }}>
+              <Button
+                onClick={async () => {
+                  if (!trackerInput.trim()) return;
+                  try {
+                    const s = await tracker.addUserTrackers(trackerInput);
+                    setTrackerStatus(s);
+                    setTrackerInput("");
+                  } catch (e) {
+                    alert("添加失败: " + e);
+                  }
+                }}
+              >
+                添加
+              </Button>
+            </div>
+          </div>
         </Field>
       </Section>
 

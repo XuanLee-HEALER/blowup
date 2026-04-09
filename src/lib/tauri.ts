@@ -44,7 +44,7 @@ export interface TmdbMovieCredits {
 export interface MusicTrack { src: string; name: string; }
 
 export interface AppConfig {
-  tools: { alass: string; ffmpeg: string; player: string };
+  tools: { alass: string; ffmpeg: string };
   download: { max_concurrent: number; enable_dht: boolean; persist_session: boolean };
   search: { rate_limit_secs: number };
   subtitle: { default_lang: string };
@@ -344,9 +344,17 @@ export const yts = {
     invoke<MovieResult[]>("search_yify_cmd", { query, year, tmdbId }),
 };
 
+export interface TrackerStatus {
+  auto_count: number;
+  user_count: number;
+  total_count: number;
+  last_updated: string | null;
+}
+
 export const tracker = {
-  update: (source?: string) =>
-    invoke<void>("update_trackers", { source }),
+  getStatus: () => invoke<TrackerStatus>("get_tracker_status"),
+  refresh: () => invoke<TrackerStatus>("refresh_trackers"),
+  addUserTrackers: (raw: string) => invoke<TrackerStatus>("add_user_trackers", { raw }),
 };
 
 export const subtitle = {

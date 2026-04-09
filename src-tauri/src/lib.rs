@@ -33,7 +33,8 @@ pub fn run() {
             config::init_app_data_dir(data_dir);
             cache::init_cache();
 
-            let cfg = config::load_config();
+            let mut cfg = config::load_config();
+            config::resolve_tool_paths(&mut cfg);
 
             // Initialize library index
             let t0 = std::time::Instant::now();
@@ -49,8 +50,12 @@ pub fn run() {
                 tracing::warn!(error = %e, "failed to register library root in asset scope");
             }
 
+            // Init tracker manager (loads trackers.json, migrates legacy format)
+            let (tracker_mgr, trackers) = commands::tracker::TrackerManager::load();
+            handle.manage(tracker_mgr);
+            tracing::info!(count = trackers.len(), "tracker manager loaded");
+
             // Init DB (must complete before window opens — commands depend on pool)
-            let trackers = commands::tracker::load_trackers();
             let t1 = std::time::Instant::now();
             tauri::async_runtime::block_on(async {
                 match db::init_db(&handle).await {
@@ -93,6 +98,24 @@ pub fn run() {
                 }
             });
 
+            // Background tracker auto-refresh (daily, with staleness check on startup)
+            let tracker_state = handle.state::<commands::tracker::TrackerManager>().inner().clone();
+            tauri::async_runtime::spawn(async move {
+                if tracker_state.is_stale().await {
+                    tracing::info!("tracker list stale, refreshing");
+                    if let Err(e) = tracker_state.refresh_auto().await {
+                        tracing::warn!(error = %e, "startup tracker refresh failed");
+                    }
+                }
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(24 * 3600)).await;
+                    tracing::info!("periodic tracker refresh");
+                    if let Err(e) = tracker_state.refresh_auto().await {
+                        tracing::warn!(error = %e, "periodic tracker refresh failed");
+                    }
+                }
+            });
+
             // Open devtools in debug builds
             #[cfg(debug_assertions)]
             {
@@ -120,7 +143,9 @@ pub fn run() {
             commands::download::delete_download,
             commands::download::redownload,
             commands::download::list_download_existing_files,
-            commands::tracker::update_trackers,
+            commands::tracker::get_tracker_status,
+            commands::tracker::refresh_trackers,
+            commands::tracker::add_user_trackers,
             // Subtitle & media
             commands::subtitle::fetch_subtitle_cmd,
             commands::subtitle::align_subtitle_cmd,
@@ -129,7 +154,6 @@ pub fn run() {
             commands::subtitle::shift_subtitle_cmd,
             commands::media::probe_media,
             commands::media::probe_media_detail,
-            commands::media::open_in_player,
             // Config
             commands::config::get_config,
             commands::config::save_config_cmd,

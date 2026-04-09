@@ -1,5 +1,4 @@
 // src-tauri/src/commands/media.rs
-use crate::config::load_config;
 use crate::ffmpeg::FfmpegTool;
 use serde::Serialize;
 
@@ -106,43 +105,3 @@ pub async fn probe_media_detail(file_path: String) -> Result<MediaInfo, String> 
     })
 }
 
-#[tauri::command]
-pub async fn open_in_player(file_path: String) -> Result<(), String> {
-    let config = load_config();
-    let player = config.tools.player.clone();
-
-    if !player.is_empty() && which::which(&player).is_ok() {
-        std::process::Command::new(&player)
-            .arg(&file_path)
-            .spawn()
-            .map_err(|e| format!("启动播放器失败: {}", e))?;
-        return Ok(());
-    }
-
-    open_with_system_default(&file_path)
-}
-
-fn open_with_system_default(file_path: &str) -> Result<(), String> {
-    #[cfg(target_family = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(file_path)
-            .spawn()
-            .map_err(|e| format!("打开文件失败: {}", e))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(file_path)
-            .spawn()
-            .map_err(|e| format!("打开文件失败: {}", e))?;
-    }
-    #[cfg(all(target_family = "unix", not(target_os = "macos")))]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(file_path)
-            .spawn()
-            .map_err(|e| format!("打开文件失败: {}", e))?;
-    }
-    Ok(())
-}

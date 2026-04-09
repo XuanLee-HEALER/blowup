@@ -64,11 +64,15 @@ impl TorrentManager {
     }
 
     /// Start downloading a torrent. Returns (torrent_id, handle).
+    ///
+    /// `trackers` — optional extra tracker URLs to inject into this torrent
+    /// (merged with session-level and torrent-embedded trackers by librqbit).
     pub async fn start_download(
         &self,
         target: &str,
         output_folder: PathBuf,
         only_files: Option<Vec<usize>>,
+        trackers: Option<Vec<String>>,
     ) -> Result<(TorrentId, TorrentHandle), String> {
         let _permit = self.semaphore.acquire().await.map_err(|e| e.to_string())?;
 
@@ -78,6 +82,7 @@ impl TorrentManager {
             output_folder: Some(output_folder.to_string_lossy().to_string()),
             only_files,
             overwrite: true,
+            trackers,
             ..Default::default()
         };
 
