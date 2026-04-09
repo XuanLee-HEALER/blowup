@@ -1,6 +1,6 @@
 {
   "productName": "blowup",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "identifier": "io.github.xuanlee-healer.blowup",
   "build": {
     "beforeDevCommand": "bun run dev",
