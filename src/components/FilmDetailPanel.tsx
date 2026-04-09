@@ -119,7 +119,7 @@ function TorrentSearchModal({
         )}
 
         {error && (
-          <div style={{ color: "#e53935", fontSize: 13 }}>
+          <div style={{ color: "var(--color-danger)", fontSize: 13 }}>
             {error.includes("NoResults") ? "未找到资源" : `搜索失败: ${error}`}
           </div>
         )}

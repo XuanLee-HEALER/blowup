@@ -17,7 +17,7 @@ interface StatusMsg { ok: boolean; msg: string }
 function StatusBadge({ status }: { status: StatusMsg | null }) {
   if (!status) return null;
   return (
-    <span style={{ fontSize: "0.72rem", color: status.ok ? "#4caf50" : "#e53935" }}>
+    <span style={{ fontSize: "0.72rem", color: status.ok ? "var(--color-success)" : "var(--color-danger)" }}>
       {status.ok ? "✓ " : "✗ "}{status.msg}
     </span>
   );
@@ -35,7 +35,7 @@ function ActionButton({ label, onClick, disabled, accent }: {
         border: accent ? "none" : "1px solid var(--color-separator)",
         borderRadius: 4,
         padding: "0.2rem 0.5rem",
-        color: accent ? "#0B1628" : "var(--color-label-secondary)",
+        color: accent ? "#fff" : "var(--color-label-secondary)",
         cursor: disabled ? "not-allowed" : "pointer",
         fontSize: "0.72rem",
         fontFamily: "inherit",
@@ -84,9 +84,9 @@ function MoreMenu({ items }: { items: { label: string; onClick: () => void; dang
               onClick={() => { item.onClick(); setOpen(false); }}
               style={{
                 padding: "6px 14px", fontSize: "0.78rem", cursor: "pointer",
-                color: item.danger ? "#e53935" : "var(--color-label-primary)",
+                color: item.danger ? "var(--color-danger)" : "var(--color-label-primary)",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = item.danger ? "rgba(229,57,53,0.1)" : "rgba(255,255,255,0.06)")}
+              onMouseEnter={(e) => (e.currentTarget.style.background = item.danger ? "var(--color-danger-soft)" : "var(--color-hover)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
               {item.label}
@@ -512,7 +512,7 @@ export default function Darkroom() {
                     onClick={() => setSelectedEntry(e)}
                     style={{
                       padding: "0.35rem 1rem 0.35rem 1.8rem", cursor: "pointer", fontSize: "0.78rem",
-                      background: selectedEntry?.tmdb_id === e.tmdb_id ? "rgba(255,255,255,0.06)" : "transparent",
+                      background: selectedEntry?.tmdb_id === e.tmdb_id ? "var(--color-hover)" : "transparent",
                     }}
                   >
                     <span>{e.title}</span>

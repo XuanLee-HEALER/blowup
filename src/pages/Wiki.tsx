@@ -346,7 +346,7 @@ export default function Wiki() {
                 borderRadius: 5,
                 margin: "0 0.25rem",
               }}
-              onMouseEnter={(e) => { if (selectedId !== entry.id) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+              onMouseEnter={(e) => { if (selectedId !== entry.id) e.currentTarget.style.background = "var(--color-hover)"; }}
               onMouseLeave={(e) => { if (selectedId !== entry.id) e.currentTarget.style.background = "transparent"; }}
             >
               <div style={{ fontSize: "0.82rem", fontWeight: 500, color: "var(--color-label-primary)" }}>{entry.name}</div>

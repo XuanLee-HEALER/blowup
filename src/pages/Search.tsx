@@ -59,7 +59,7 @@ function YearFilter({ yearFrom, yearTo, onChange }: {
       <span style={{ color: "var(--color-label-quaternary)", fontSize: "0.75rem" }}>—</span>
       <input type="number" placeholder="结束" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
       <button onClick={() => onChange(from ? parseInt(from) : undefined, to ? parseInt(to) : undefined)}
-        style={{ background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#0B1628", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
+        style={{ background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#fff", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
         确定
       </button>
     </div>
@@ -87,7 +87,7 @@ function GenreFilter({ genres, selected, onChange }: {
         ))}
       </div>
       <button onClick={() => onChange([...ids])}
-        style={{ marginTop: "0.5rem", background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#0B1628", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, width: "100%" }}>
+        style={{ marginTop: "0.5rem", background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#fff", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, width: "100%" }}>
         确定
       </button>
     </div>
@@ -102,7 +102,7 @@ function RatingFilter({ current, onChange }: { current?: number; onChange: (v?: 
       <input type="number" min="0" max="10" step="0.5" value={val} onChange={(e) => setVal(e.target.value)}
         style={{ width: 60, padding: "0.3rem 0.5rem", fontSize: "0.78rem", background: "var(--color-bg-control)", border: "1px solid var(--color-separator)", borderRadius: 4, color: "var(--color-label-primary)", fontFamily: "inherit", outline: "none" }} />
       <button onClick={() => onChange(val ? parseFloat(val) : undefined)}
-        style={{ background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#0B1628", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
+        style={{ background: "var(--color-accent)", border: "none", borderRadius: 4, padding: "0.25rem 0.6rem", color: "#fff", fontSize: "0.72rem", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
         确定
       </button>
     </div>
@@ -322,7 +322,7 @@ export default function Search() {
                 background: selected?.id === m.id ? "var(--color-bg-elevated)" : "transparent",
               }}
               onMouseEnter={(e) => {
-                if (selected?.id !== m.id) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,0.04)";
+                if (selected?.id !== m.id) (e.currentTarget as HTMLDivElement).style.background = "var(--color-hover)";
               }}
               onMouseLeave={(e) => {
                 if (selected?.id !== m.id) (e.currentTarget as HTMLDivElement).style.background = "transparent";

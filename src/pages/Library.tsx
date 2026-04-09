@@ -196,7 +196,7 @@ export default function Library() {
                     onContextMenu={(ev) => onEntryContextMenu(ev, e)}
                     style={{
                       padding: "0.35rem 1rem 0.35rem 1.8rem", cursor: "pointer", fontSize: "0.78rem",
-                      background: selectedEntry?.tmdb_id === e.tmdb_id ? "rgba(255,255,255,0.06)" : "transparent",
+                      background: selectedEntry?.tmdb_id === e.tmdb_id ? "var(--color-hover)" : "transparent",
                     }}
                   >
                     <span>{e.title}</span>
@@ -388,9 +388,9 @@ export default function Library() {
             <div
               onClick={() => handleDeleteFilm(contextMenu.entry)}
               style={{
-                padding: "6px 14px", fontSize: "0.78rem", cursor: "pointer", color: "#e53935",
+                padding: "6px 14px", fontSize: "0.78rem", cursor: "pointer", color: "var(--color-danger)",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(229,57,53,0.1)")}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-danger-soft)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
             >
               删除电影
@@ -423,12 +423,12 @@ const smallBtnStyle: React.CSSProperties = {
 
 const accentBtnStyle: React.CSSProperties = {
   background: "var(--color-accent)", border: "none", borderRadius: 4,
-  padding: "0.2rem 0.6rem", color: "#0B1628", cursor: "pointer",
+  padding: "0.2rem 0.6rem", color: "#fff", cursor: "pointer",
   fontSize: "0.72rem", fontWeight: 600,
 };
 
 const dangerBtnStyle: React.CSSProperties = {
-  background: "none", border: "1px solid rgba(229,57,53,0.4)", borderRadius: 4,
-  padding: "0.2rem 0.45rem", color: "#e53935", cursor: "pointer",
+  background: "none", border: "1px solid var(--color-danger-soft)", borderRadius: 4,
+  padding: "0.2rem 0.45rem", color: "var(--color-danger)", cursor: "pointer",
   fontSize: "0.72rem", fontWeight: 600,
 };

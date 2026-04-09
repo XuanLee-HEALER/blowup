@@ -12,8 +12,8 @@ interface SimNode extends GraphNode {
 interface SimLink { source: SimNode; target: SimNode; relation_type: string; }
 
 const nodeRadius = (n: SimNode) => 6 + n.weight * 5;
-const nodeFill = () => "#C5A050";
-const nodeStroke = () => "rgba(197,160,80,0.3)";
+const nodeFill = () => "#007AFF";
+const nodeStroke = () => "rgba(0,122,255,0.3)";
 
 export default function Graph() {
   const svgRef = useRef<SVGSVGElement | null>(null);

@@ -45,7 +45,7 @@ export const BTN_ACCENT: React.CSSProperties = {
   border: "none",
   borderRadius: 6,
   padding: "0.35rem 0.75rem",
-  color: "#000",
+  color: "#fff",
   cursor: "pointer",
   fontSize: "0.78rem",
   fontFamily: "inherit",

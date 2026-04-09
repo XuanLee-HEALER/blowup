@@ -15,7 +15,7 @@ export function Chip({ label, active, onRemove, onClick }: ChipProps) {
         alignItems: "center",
         gap: "0.3rem",
         background: active ? "var(--color-accent-soft)" : "var(--color-bg-control)",
-        border: `1px solid ${active ? "rgba(197,160,80,0.3)" : "var(--color-separator)"}`,
+        border: `1px solid ${active ? "var(--color-accent)" : "var(--color-separator)"}`,
         borderRadius: "100px",
         padding: "0.18rem 0.6rem",
         fontSize: "0.72rem",

@@ -470,6 +470,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
         {title}
       </p>
       <div
+        className="settings-fields"
         style={{
           background: "var(--color-bg-secondary)",
           border: "1px solid var(--color-separator)",

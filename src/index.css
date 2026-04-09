@@ -1,22 +1,39 @@
 :root {
-  /* Backgrounds */
-  --color-bg-primary:    #0B1628;
-  --color-bg-secondary:  #122040;
-  --color-bg-elevated:   #1A2E56;
-  --color-bg-control:    rgba(255 255 255 / 0.06);
+  /* Apple HIG Light Mode — Backgrounds */
+  --color-bg-primary:    #FFFFFF;
+  --color-bg-secondary:  #F2F2F7;
+  --color-bg-elevated:   #FFFFFF;
+  --color-bg-control:    rgba(120 120 128 / 0.12);
 
   /* Separators */
-  --color-separator:     rgba(100 130 200 / 0.12);
+  --color-separator:     rgba(60 60 67 / 0.29);
+  --color-separator-opaque: #C6C6C8;
 
   /* Labels */
-  --color-label-primary:    #FFFFFF;
-  --color-label-secondary:  rgba(255 255 255 / 0.60);
-  --color-label-tertiary:   rgba(255 255 255 / 0.30);
-  --color-label-quaternary: rgba(255 255 255 / 0.16);
+  --color-label-primary:    #000000;
+  --color-label-secondary:  rgba(60 60 67 / 0.60);
+  --color-label-tertiary:   rgba(60 60 67 / 0.30);
+  --color-label-quaternary: rgba(60 60 67 / 0.18);
 
-  /* Accent */
-  --color-accent:       #C5A050;
-  --color-accent-soft:  rgba(197 160 80 / 0.15);
+  /* Accent — Apple systemBlue */
+  --color-accent:       #007AFF;
+  --color-accent-soft:  rgba(0 122 255 / 0.10);
+
+  /* Semantic status */
+  --color-danger:       #FF3B30;
+  --color-danger-soft:  rgba(255 59 48 / 0.10);
+  --color-success:      #34C759;
+  --color-success-soft: rgba(52 199 89 / 0.10);
+  --color-warning:      #FF9500;
+
+  /* Fills (interactive controls) */
+  --color-fill:           rgba(120 120 128 / 0.20);
+  --color-fill-secondary: rgba(120 120 128 / 0.16);
+
+  /* Hover / interaction */
+  --color-hover:    rgba(0 0 0 / 0.04);
+  --color-active:   rgba(0 0 0 / 0.08);
+  --color-overlay:  rgba(0 0 0 / 0.4);
 
   /* Font */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text",
@@ -40,12 +57,16 @@ body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255 255 255 / 0.12);
+  background: rgba(0 0 0 / 0.15);
   border-radius: 3px;
 }
 
-/* Force dark background on native select dropdowns */
 select option {
-  background: #122040;
-  color: #fff;
+  background: var(--color-bg-primary);
+  color: var(--color-label-primary);
+}
+
+/* Settings field separator: hide on last child */
+.settings-fields > :last-child {
+  border-bottom: none !important;
 }

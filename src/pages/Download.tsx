@@ -19,8 +19,8 @@ function statusColor(s: string) {
   switch (s) {
     case "downloading": return "var(--color-accent)";
     case "paused": return "var(--color-label-secondary)";
-    case "completed": return "#66bb6a";
-    case "failed": return "#e57373";
+    case "completed": return "var(--color-success)";
+    case "failed": return "var(--color-danger)";
     default: return "var(--color-label-tertiary)";
   }
 }
@@ -89,7 +89,7 @@ function DownloadRow({
           )}
           <button onClick={onDelete} style={{
             background: "none", border: "1px solid var(--color-separator)", borderRadius: 4,
-            padding: "0.2rem 0.5rem", color: "#e57373", cursor: "pointer", fontSize: "0.7rem", fontFamily: "inherit",
+            padding: "0.2rem 0.5rem", color: "var(--color-danger)", cursor: "pointer", fontSize: "0.7rem", fontFamily: "inherit",
           }}>删除</button>
         </div>
       </div>
@@ -114,7 +114,7 @@ function DownloadRow({
 
       {/* Error message */}
       {record.error_message && (
-        <div style={{ fontSize: "0.7rem", color: "#e57373", marginTop: "0.25rem" }}>
+        <div style={{ fontSize: "0.7rem", color: "var(--color-danger)", marginTop: "0.25rem" }}>
           {record.error_message}
         </div>
       )}
@@ -136,7 +136,7 @@ function DeleteConfirmModal({ title, onConfirm, onCancel }: {
         </p>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
           <button onClick={onCancel} style={{ background: "none", border: "none", color: "var(--color-label-tertiary)", cursor: "pointer", fontSize: "0.8rem", fontFamily: "inherit" }}>取消</button>
-          <button onClick={onConfirm} style={{ background: "#e57373", border: "none", borderRadius: 6, padding: "0.35rem 1rem", color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: "0.8rem", fontFamily: "inherit" }}>删除</button>
+          <button onClick={onConfirm} style={{ background: "var(--color-danger)", border: "none", borderRadius: 6, padding: "0.35rem 1rem", color: "#fff", fontWeight: 600, cursor: "pointer", fontSize: "0.8rem", fontFamily: "inherit" }}>删除</button>
         </div>
       </div>
     </div>
@@ -361,7 +361,7 @@ export default function Download() {
                   {redownloadFiles
                     .filter((f) => redownloadSelected.has(f.index) && redownloadExisting.has(f.name))
                     .map((f) => (
-                      <div key={f.index} style={{ fontSize: "0.82rem", padding: "4px 0", color: "#e57373" }}>
+                      <div key={f.index} style={{ fontSize: "0.82rem", padding: "4px 0", color: "var(--color-danger)" }}>
                         {f.name}
                       </div>
                     ))}
@@ -379,7 +379,7 @@ export default function Download() {
                     onClick={handleRedownloadConfirm}
                     disabled={redownloadSubmitting}
                     style={{
-                      background: "#e57373", border: "none", borderRadius: 6,
+                      background: "var(--color-danger)", border: "none", borderRadius: 6,
                       padding: "6px 16px", color: "#fff", cursor: "pointer", fontSize: 13,
                     }}
                   >{redownloadSubmitting ? "开始中..." : "覆盖下载"}</button>
@@ -419,7 +419,7 @@ export default function Download() {
                         />
                         <span style={{
                           flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          color: exists ? "#e57373" : undefined,
+                          color: exists ? "var(--color-danger)" : undefined,
                         }}>
                           {f.name}{exists ? " (已存在)" : ""}
                         </span>
