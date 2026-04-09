@@ -282,17 +282,19 @@ fn find_tool(name: &str) -> Option<PathBuf> {
 pub fn resolve_tool_paths(config: &mut Config) -> bool {
     let mut changed = false;
 
-    // alass / alass-cli
-    if which::which(&config.tools.alass).is_err()
-        && let Some(p) = find_tool("alass").or_else(|| find_tool("alass-cli"))
+    // alass / alass-cli — resolve to absolute path if not already
+    if !PathBuf::from(&config.tools.alass).is_absolute()
+        && let Some(p) = find_tool(&config.tools.alass)
+            .or_else(|| find_tool("alass"))
+            .or_else(|| find_tool("alass-cli"))
     {
         config.tools.alass = p.to_string_lossy().into_owned();
         changed = true;
     }
 
-    // ffmpeg
-    if which::which(&config.tools.ffmpeg).is_err()
-        && let Some(p) = find_tool("ffmpeg")
+    // ffmpeg — resolve to absolute path if not already
+    if !PathBuf::from(&config.tools.ffmpeg).is_absolute()
+        && let Some(p) = find_tool(&config.tools.ffmpeg).or_else(|| find_tool("ffmpeg"))
     {
         config.tools.ffmpeg = p.to_string_lossy().into_owned();
         changed = true;

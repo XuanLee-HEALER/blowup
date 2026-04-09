@@ -270,25 +270,38 @@ function ProbeDetail({ info }: { info: FileMediaInfo }) {
 
 // ── Subtitle resource row ───────────────────────────────────────
 
-function SubtitleRow({ file, rootPath, videoFile, onStatusChange, onRefresh }: {
-  file: string; rootPath: string; videoFile: string | null;
+function SubtitleRow({ file, rootPath, audioFiles, alignedFiles, onStatusChange, onRefresh }: {
+  file: string; rootPath: string; audioFiles: string[];
+  alignedFiles: string[];
   onStatusChange: (s: StatusMsg) => void; onRefresh: () => void;
 }) {
   const fullPath = `${rootPath}/${file}`;
   const [shifting, setShifting] = useState(false);
   const [offsetMs, setOffsetMs] = useState(0);
   const [showShift, setShowShift] = useState(false);
+  const [showAlignModal, setShowAlignModal] = useState(false);
+  // align states: "idle" | "loading" | "success" | "error"
+  const [alignState, setAlignState] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [alignMsg, setAlignMsg] = useState("");
+  const [showAlignBubble, setShowAlignBubble] = useState(false);
+  const [bubbleExpanded, setBubbleExpanded] = useState(false);
+  const bubbleRef = useRef<HTMLDivElement>(null);
 
-  const handleAlign = async () => {
-    if (!videoFile) {
-      onStatusChange({ ok: false, msg: "目录中没有视频文件，无法对齐" });
-      return;
-    }
-    const videoPath = `${rootPath}/${videoFile}`;
-    try {
-      await subtitle.align(videoPath, fullPath);
-      onStatusChange({ ok: true, msg: `${file} 对齐完成` });
-    } catch (e) { onStatusChange({ ok: false, msg: `对齐失败: ${e}` }); }
+  const handleAlignConfirm = (audioFile: string) => {
+    setShowAlignModal(false);
+    setAlignState("loading");
+    setAlignMsg("");
+    setShowAlignBubble(false);
+    subtitle.alignToAudio(fullPath, `${rootPath}/${audioFile}`)
+      .then((result) => {
+        setAlignState("success");
+        setAlignMsg(result.summary);
+        onRefresh();
+      })
+      .catch((e) => {
+        setAlignState("error");
+        setAlignMsg(`${e}`);
+      });
   };
 
   const handleShift = async () => {
@@ -313,6 +326,7 @@ function SubtitleRow({ file, rootPath, videoFile, onStatusChange, onRefresh }: {
 
   return (
     <div style={{ marginBottom: "0.3rem" }}>
+      {/* Main row */}
       <div style={{
         display: "flex", alignItems: "center", gap: "0.4rem",
         padding: "0.4rem 0.75rem", background: "var(--color-bg-secondary)",
@@ -321,13 +335,133 @@ function SubtitleRow({ file, rootPath, videoFile, onStatusChange, onRefresh }: {
         <span style={{ flex: 1, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {file}
         </span>
-        <ActionButton label="对齐" onClick={handleAlign} disabled={!videoFile} />
+        {/* Align button — all states self-contained */}
+        <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+          <button
+            disabled={alignState === "loading"}
+            onClick={() => {
+              if (alignState === "success" || alignState === "error") {
+                setShowAlignBubble(!showAlignBubble);
+              } else {
+                setShowAlignModal(true);
+              }
+            }}
+            style={{
+              position: "relative",
+              background: alignState === "loading" ? "none" : "none",
+              border: "1px solid var(--color-separator)", borderRadius: 4,
+              padding: "0.2rem 0.5rem",
+              color: alignState === "loading" ? "var(--color-label-quaternary)" : "var(--color-label-secondary)",
+              cursor: alignState === "loading" ? "not-allowed" : "pointer",
+              fontSize: "0.72rem", fontFamily: "inherit",
+              opacity: alignState === "loading" ? 0.6 : 1,
+              animation: alignState === "loading" ? "pulse 1.2s infinite" : "none",
+            }}
+          >
+            {alignState === "loading" ? "对齐中…" : "对齐"}
+            {/* Status dot */}
+            {(alignState === "success" || alignState === "error") && (
+              <span style={{
+                position: "absolute", top: -2, right: -2,
+                width: 7, height: 7, borderRadius: "50%",
+                background: alignState === "success" ? "var(--color-success)" : "var(--color-danger)",
+              }} />
+            )}
+          </button>
+          {/* Bubble tooltip — click bubble to expand, click outside to close */}
+          {showAlignBubble && (alignState === "success" || alignState === "error") && (
+            <>
+              {/* Invisible overlay to catch outside clicks */}
+              <div
+                onClick={() => { setShowAlignBubble(false); setBubbleExpanded(false); setAlignState("idle"); }}
+                style={{ position: "fixed", inset: 0, zIndex: 49 }}
+              />
+              <div
+                ref={bubbleRef}
+                onClick={(e) => { e.stopPropagation(); setBubbleExpanded(!bubbleExpanded); }}
+                style={{
+                  position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 50,
+                  background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)",
+                  borderRadius: 6, padding: "6px 10px",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.35)",
+                  fontSize: "0.72rem", cursor: "pointer",
+                  color: alignState === "success" ? "var(--color-success)" : "var(--color-danger)",
+                  ...(bubbleExpanded
+                    ? { whiteSpace: "pre-wrap", width: 360, wordBreak: "break-word" as const }
+                    : { whiteSpace: "nowrap", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }),
+                }}
+              >
+                {alignMsg}
+              </div>
+            </>
+          )}
+        </div>
         <MoreMenu items={[
           { label: "查看", onClick: () => subtitle.openViewer(fullPath) },
           { label: "时间偏移", onClick: () => setShowShift(!showShift) },
           { label: "删除", onClick: handleDelete, danger: true },
         ]} />
       </div>
+
+      {/* Align modal — select audio file */}
+      {showAlignModal && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 100,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onClick={() => setShowAlignModal(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--color-bg-elevated)", borderRadius: 10,
+              border: "1px solid var(--color-separator)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+              padding: "1.2rem 1.5rem", minWidth: 300, maxWidth: 420,
+            }}
+          >
+            <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+              选择对齐目标音频
+            </div>
+            {audioFiles.length === 0 ? (
+              <div style={{ fontSize: "0.82rem", color: "var(--color-label-tertiary)", padding: "0.5rem 0" }}>
+                当前目录下没有音频文件。请先从视频中提取音轨。
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                {audioFiles.map((af) => (
+                  <button
+                    key={af}
+                    onClick={() => handleAlignConfirm(af)}
+                    style={{
+                      background: "var(--color-bg-control)",
+                      border: "1px solid var(--color-separator)", borderRadius: 6,
+                      padding: "0.45rem 0.75rem", fontSize: "0.82rem",
+                      color: "var(--color-label-primary)",
+                      cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-hover)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-bg-control)")}
+                  >{af}</button>
+                ))}
+              </div>
+            )}
+            <div style={{ marginTop: "0.75rem", textAlign: "right" }}>
+              <button
+                onClick={() => setShowAlignModal(false)}
+                style={{
+                  background: "none", border: "none", fontSize: "0.78rem",
+                  color: "var(--color-label-tertiary)", cursor: "pointer", fontFamily: "inherit",
+                }}
+              >取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shift panel */}
       {showShift && (
         <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.35rem 0.75rem 0.35rem 1.5rem" }}>
           <input
@@ -351,6 +485,37 @@ function SubtitleRow({ file, rootPath, videoFile, onStatusChange, onRefresh }: {
           <ActionButton label={shifting ? "处理中…" : "应用"} onClick={handleShift} disabled={offsetMs === 0 || shifting} accent />
         </div>
       )}
+
+      {/* Aligned child files */}
+      {alignedFiles.map((af) => (
+        <div key={af} style={{
+          display: "flex", alignItems: "center", gap: "0.4rem",
+          padding: "0.3rem 0.75rem 0.3rem 1.8rem",
+          marginTop: "0.15rem",
+          background: "var(--color-bg-secondary)",
+          border: "1px solid var(--color-separator)", borderRadius: 4,
+          opacity: 0.85,
+        }}>
+          <span style={{ fontSize: "0.65rem", color: "var(--color-accent)", marginRight: "0.2rem" }}>↳</span>
+          <span style={{ flex: 1, fontSize: "0.78rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--color-label-secondary)" }}>
+            {af}
+          </span>
+          <ActionButton label="查看" onClick={() => subtitle.openViewer(`${rootPath}/${af}`)} />
+          <button
+            onClick={async () => {
+              try {
+                await library.deleteLibraryResource(`${rootPath}/${af}`);
+                onRefresh();
+              } catch (e) { onStatusChange({ ok: false, msg: `删除失败: ${e}` }); }
+            }}
+            style={{
+              background: "none", border: "1px solid var(--color-separator)", borderRadius: 4,
+              padding: "0.2rem 0.5rem", cursor: "pointer", fontSize: "0.72rem",
+              color: "var(--color-danger)", fontFamily: "inherit",
+            }}
+          >删除</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -427,7 +592,15 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
   }, [entry.tmdb_id]);
 
   const videoFiles = files.filter((f) => VIDEO_EXTS.includes(getExt(f)));
-  const subtitleFiles = files.filter((f) => SUB_EXTS.includes(getExt(f)));
+  const allSubtitleFiles = files.filter((f) => SUB_EXTS.includes(getExt(f)));
+  // Split subtitles into primary (non-aligned) and aligned child files
+  const isAligned = (f: string) => f.includes(".aligned.");
+  const subtitleFiles = allSubtitleFiles.filter((f) => !isAligned(f));
+  // Map each primary subtitle to its aligned children
+  const getAlignedFiles = (parentFile: string) => {
+    const stem = getStem(parentFile); // e.g. "sub.zh" from "sub.zh.srt"
+    return allSubtitleFiles.filter((f) => isAligned(f) && f.startsWith(stem + ".aligned."));
+  };
   const audioFiles = files.filter((f) => AUDIO_EXTS.includes(getExt(f)));
   const otherFiles = files.filter((f) =>
     !VIDEO_EXTS.includes(getExt(f)) && !SUB_EXTS.includes(getExt(f)) && !AUDIO_EXTS.includes(getExt(f))
@@ -551,7 +724,8 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
               key={f}
               file={f}
               rootPath={rootPath}
-              videoFile={primaryVideo}
+              audioFiles={audioFiles}
+              alignedFiles={getAlignedFiles(f)}
               onStatusChange={setStatus}
               onRefresh={refreshFiles}
             />
@@ -711,8 +885,9 @@ export default function Darkroom() {
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      <style>{`@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
       {/* Left: film selector */}
-      <div style={{ width: 240, flexShrink: 0, borderRight: "1px solid var(--color-separator)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ width: 240, flexShrink: 0, borderRight: "1px solid var(--color-separator)", display: "flex", flexDirection: "column", overflow: "hidden", userSelect: "none", WebkitUserSelect: "none" }}>
         <div style={{ padding: "1.4rem 1rem 0" }}>
           <h1 style={{ fontSize: "1.3rem", fontWeight: 700, letterSpacing: "-0.035em", marginBottom: "0.8rem" }}>
             暗房
@@ -738,7 +913,7 @@ export default function Darkroom() {
 
         <div style={{ height: 1, background: "var(--color-separator)", margin: "0 1rem" }} />
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem 0", userSelect: "none" }}>
+        <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem 0", userSelect: "none", WebkitUserSelect: "none" }}>
           {searchResults ? (
             searchResults.map((e) => (
               <div

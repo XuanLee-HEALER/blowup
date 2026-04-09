@@ -42,12 +42,19 @@ function Minimap({
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const dragOffsetRef = useRef(0);
+  const [containerHeight, setContainerHeight] = useState(clientHeight);
 
-  // Ratio: how much of the total content the minimap represents per pixel
-  const containerHeight = containerRef.current?.clientHeight ?? clientHeight;
+  // Track container size
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerHeight(el.clientHeight);
+    const ro = new ResizeObserver(() => setContainerHeight(el.clientHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const scale = containerHeight > 0 && scrollHeight > 0 ? containerHeight / scrollHeight : 1;
-
-  // Viewport indicator dimensions in minimap space
   const vpH = Math.max(12, clientHeight * scale);
   const vpY = scrollTop * scale;
 

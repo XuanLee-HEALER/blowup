@@ -423,7 +423,15 @@ export const subtitle = {
     invoke<void>("shift_subtitle_cmd", { srt, offsetMs }),
   openViewer: (filePath: string) =>
     invoke<void>("open_subtitle_viewer", { filePath }),
+  alignToAudio: (srt: string, audio: string) =>
+    invoke<AlignResult>("align_to_audio_cmd", { srt, audio }),
 };
+
+export interface AlignResult {
+  output_path: string;
+  output_filename: string;
+  summary: string;
+}
 
 export const media = {
   probeDetail: (filePath: string) =>
