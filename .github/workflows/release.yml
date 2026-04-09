@@ -112,9 +112,10 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
-  # Update Homebrew cask after all builds complete
+  # Update Homebrew cask (only needs macOS DMG, don't block on Windows/Linux)
   update-homebrew:
     needs: build
+    if: always() && needs.build.result != 'cancelled'
     runs-on: ubuntu-latest
     steps:
       - name: Extract version
