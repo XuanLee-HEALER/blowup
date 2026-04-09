@@ -78,11 +78,13 @@ impl TorrentManager {
 
         std::fs::create_dir_all(&output_folder).map_err(|e| e.to_string())?;
 
+        let output = output_folder.to_string_lossy().to_string();
+
         let opts = AddTorrentOptions {
-            output_folder: Some(output_folder.to_string_lossy().to_string()),
-            only_files,
+            output_folder: Some(output.clone()),
+            only_files: only_files.clone(),
             overwrite: true,
-            trackers,
+            trackers: trackers.clone(),
             ..Default::default()
         };
 
@@ -97,9 +99,42 @@ impl TorrentManager {
                 tracing::info!(id, "torrent added");
                 Ok((id, handle))
             }
-            AddTorrentResponse::AlreadyManaged(id, handle) => {
-                tracing::info!(id, "torrent already managed");
-                Ok((id, handle))
+            AddTorrentResponse::AlreadyManaged(id, _) => {
+                if only_files.is_none() {
+                    // No file selection — reuse existing torrent as-is
+                    let handle = self
+                        .get_handle(id)
+                        .ok_or_else(|| format!("torrent {id} not found"))?;
+                    tracing::info!(id, "torrent already managed, reusing");
+                    return Ok((id, handle));
+                }
+                // File selection specified — remove stale torrent and re-add
+                // so that only_files takes effect
+                self.session
+                    .delete(id.into(), false)
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                let opts = AddTorrentOptions {
+                    output_folder: Some(output),
+                    only_files,
+                    overwrite: true,
+                    trackers,
+                    ..Default::default()
+                };
+                let response = self
+                    .session
+                    .add_torrent(AddTorrent::from_url(target), Some(opts))
+                    .await
+                    .map_err(|e| e.to_string())?;
+
+                match response {
+                    AddTorrentResponse::Added(id, handle) => {
+                        tracing::info!(id, "torrent re-added with file selection");
+                        Ok((id, handle))
+                    }
+                    _ => Err("failed to re-add torrent with file selection".to_string()),
+                }
             }
             AddTorrentResponse::ListOnly(_) => Err("unexpected list_only response".to_string()),
         }

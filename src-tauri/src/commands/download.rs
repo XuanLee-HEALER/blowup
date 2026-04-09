@@ -301,6 +301,8 @@ pub async fn pause_download(
 pub async fn resume_download(
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
+    tracker_mgr: tauri::State<'_, TrackerManager>,
+    index: tauri::State<'_, LibraryIndex>,
     id: i64,
 ) -> Result<(), String> {
     let record = sqlx::query_as::<_, DownloadRecord>(
@@ -312,15 +314,50 @@ pub async fn resume_download(
     .map_err(|e| e.to_string())?
     .ok_or("download not found or not paused")?;
 
-    if let Some(tid) = record.torrent_id {
-        tm.unpause(tid as usize).await?;
+    // Try to unpause the existing torrent in session
+    let resumed = match record.torrent_id {
+        Some(tid) => tm.unpause(tid as usize).await.is_ok(),
+        None => false,
+    };
+
+    if resumed {
+        sqlx::query("UPDATE downloads SET status='downloading' WHERE id=?")
+            .bind(id)
+            .execute(pool.inner())
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(());
     }
 
-    sqlx::query("UPDATE downloads SET status='downloading' WHERE id=?")
+    // Torrent not in session (e.g. after app restart) — re-add from magnet link
+    let tmdb_id = record.tmdb_id.unwrap_or(0) as u64;
+    let director = record.director.unwrap_or_else(|| "Unknown".to_string());
+    let output_folder = index.compute_download_path(&director, tmdb_id);
+
+    let trackers = tracker_mgr.hot_trackers().await;
+    let (torrent_id, handle) = tm
+        .start_download(&record.target, output_folder.clone(), None, Some(trackers))
+        .await?;
+
+    sqlx::query("UPDATE downloads SET status='downloading', torrent_id=? WHERE id=?")
+        .bind(torrent_id as i64)
         .bind(id)
         .execute(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
+
+    spawn_download_monitor(MonitorParams {
+        pool: pool.inner().clone(),
+        handle,
+        download_id: id,
+        output_folder,
+        director,
+        title: record.title,
+        tmdb_id,
+        year: None,
+        genres: Vec::new(),
+    });
+
     Ok(())
 }
 

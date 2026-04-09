@@ -75,6 +75,23 @@ pub fn run() {
             });
             tracing::info!(elapsed_ms = t1.elapsed().as_millis(), "database initialized");
 
+            // Mark stale 'downloading' records as 'paused' (crash recovery)
+            tauri::async_runtime::block_on(async {
+                let pool = handle.state::<sqlx::SqlitePool>();
+                let res = sqlx::query(
+                    "UPDATE downloads SET status='paused' WHERE status='downloading'",
+                )
+                .execute(pool.inner())
+                .await;
+                match res {
+                    Ok(r) if r.rows_affected() > 0 => {
+                        tracing::info!(count = r.rows_affected(), "paused stale downloads");
+                    }
+                    Err(e) => tracing::warn!(error = %e, "failed to pause stale downloads"),
+                    _ => {}
+                }
+            });
+
             // Init torrent manager in background — don't block window creation
             let tm_handle = handle.clone();
             let t2 = std::time::Instant::now();
@@ -221,6 +238,17 @@ pub fn run() {
                 cache::flush_cache();
                 if let Some(idx) = handle.try_state::<library_index::LibraryIndex>() {
                     idx.flush();
+                }
+                // Pause active downloads before shutting down torrent session
+                if let Some(pool) = handle.try_state::<sqlx::SqlitePool>() {
+                    tauri::async_runtime::block_on(async {
+                        sqlx::query(
+                            "UPDATE downloads SET status='paused' WHERE status='downloading'",
+                        )
+                        .execute(pool.inner())
+                        .await
+                        .ok();
+                    });
                 }
                 if let Some(tm) = handle.try_state::<torrent::TorrentManager>() {
                     tm.shutdown();

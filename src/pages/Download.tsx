@@ -81,7 +81,7 @@ function DownloadRow({
               padding: "0.2rem 0.5rem", color: "var(--color-accent)", cursor: "pointer", fontSize: "0.7rem", fontFamily: "inherit",
             }}>继续</button>
           )}
-          {record.status === "completed" && (
+          {(record.status === "completed" || record.status === "failed") && (
             <button onClick={onRedownload} style={{
               background: "none", border: "1px solid var(--color-separator)", borderRadius: 4,
               padding: "0.2rem 0.5rem", color: "var(--color-label-secondary)", cursor: "pointer", fontSize: "0.7rem", fontFamily: "inherit",
