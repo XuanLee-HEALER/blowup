@@ -9,14 +9,26 @@ interface SimNode extends GraphNode {
   fx?: number | null; fy?: number | null;
 }
 
-interface SimLink { source: SimNode; target: SimNode; relation_type: string; }
+interface SimLink { source: SimNode; target: SimNode; relation_type: string; index: number; linkCount: number; }
 
+const ARROW_SIZE = 7;
 const nodeRadius = (n: SimNode) => 6 + n.weight * 5;
-const nodeFill = () => "#007AFF";
-const nodeStroke = () => "rgba(0,122,255,0.3)";
+const nodeFill = () => "var(--color-accent)";
+const nodeStroke = () => "var(--color-accent-soft)";
+const linkColor = "var(--color-label-quaternary)";
+const linkLabelColor = "var(--color-label-tertiary)";
+const labelColor = "var(--color-label-secondary)";
+
+const gridBg: React.CSSProperties = {
+  backgroundImage:
+    "linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px)," +
+    "linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px)",
+  backgroundSize: "16px 16px",
+};
 
 export default function Graph() {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [data, setData] = useState<GraphData | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<SimNode | null>(null);
@@ -29,36 +41,69 @@ export default function Graph() {
     svg.selectAll("*").remove();
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
+
+    // Arrow marker
+    const defs = svg.append("defs");
+    defs.append("marker")
+      .attr("id", "arrow")
+      .attr("viewBox", "0 0 10 6")
+      .attr("refX", 10).attr("refY", 3)
+      .attr("markerWidth", ARROW_SIZE).attr("markerHeight", ARROW_SIZE)
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M0,0 L10,3 L0,6 z")
+      .attr("fill", "var(--color-label-tertiary)");
+
     const g = svg.append("g");
 
-    svg.call(
-      d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 4])
-        .on("zoom", (e) => g.attr("transform", e.transform))
-    );
+    const zoom = d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.2, 4])
+      .on("zoom", (e) => g.attr("transform", e.transform));
+    svg.call(zoom);
+    zoomRef.current = zoom;
 
     const nodes: SimNode[] = data.nodes.map((n) => ({ ...n }));
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
-    const links: SimLink[] = data.links
+    // Build links — count per unordered pair for curve offsets
+    const pairCount = new Map<string, number>();
+    const pairIndex = new Map<string, number>();
+    const rawLinks = data.links
       .map((l) => ({ source: nodeById.get(l.source)!, target: nodeById.get(l.target)!, relation_type: l.relation_type }))
       .filter((l) => l.source && l.target);
 
+    for (const l of rawLinks) {
+      const key = [l.source.id, l.target.id].sort().join("-");
+      pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
+    }
+
+    const links: SimLink[] = rawLinks.map((l) => {
+      const key = [l.source.id, l.target.id].sort().join("-");
+      const idx = pairIndex.get(key) ?? 0;
+      pairIndex.set(key, idx + 1);
+      return { ...l, index: idx, linkCount: pairCount.get(key) ?? 1 };
+    });
+
     const simulation = d3.forceSimulation<SimNode>(nodes)
-      .force("link", d3.forceLink<SimNode, SimLink>(links).id((d) => d.id).distance(120))
+      .force("link", d3.forceLink<SimNode, SimLink>(links).id((d) => d.id).distance(140))
       .force("charge", d3.forceManyBody().strength(-200))
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force("collide", d3.forceCollide<SimNode>().radius((d) => nodeRadius(d) + 8))
       .alphaDecay(0.02);
 
-    // Links
-    const link = g.append("g").selectAll("line").data(links).join("line")
-      .attr("stroke", "rgba(255,255,255,0.12)").attr("stroke-width", 1);
+    // Links — directed paths with arrows
+    const link = g.append("g").selectAll<SVGPathElement, SimLink>("path").data(links).join("path")
+      .attr("class", "graph-link")
+      .attr("fill", "none")
+      .attr("stroke", linkColor)
+      .attr("stroke-width", 1.2)
+      .attr("stroke-opacity", 0.6)
+      .attr("marker-end", "url(#arrow)");
 
-    // Link labels (relation type)
-    const linkLabel = g.append("g").selectAll("text").data(links).join("text")
+    // Link labels
+    const linkLabel = g.append("g").selectAll<SVGTextElement, SimLink>("text").data(links).join("text")
       .text((d) => d.relation_type)
-      .attr("font-size", 8)
-      .attr("fill", "rgba(255,255,255,0.3)")
+      .attr("font-size", 9)
+      .attr("fill", linkLabelColor)
       .attr("text-anchor", "middle")
       .style("pointer-events", "none").style("user-select", "none");
 
@@ -79,19 +124,79 @@ export default function Graph() {
       .on("click", (_, d) => setSelectedNode((prev) => prev?.id === d.id ? null : d));
 
     // Node labels
-    const label = g.append("g").selectAll("text").data(nodes).join("text")
+    const label = g.append("g").selectAll<SVGTextElement, SimNode>("text").data(nodes).join("text")
       .text((d) => d.label)
       .attr("font-size", 10)
-      .attr("fill", "rgba(255,255,255,0.7)").attr("text-anchor", "middle")
+      .attr("fill", labelColor).attr("text-anchor", "middle")
       .attr("dy", (d) => nodeRadius(d) + 13)
       .style("pointer-events", "none").style("user-select", "none");
 
+    // ── Path geometry helpers ────────────────────────────────────
+    const SPREAD = 30;
+
+    /** Shorten a vector (dx,dy) by `amount` from the tip, return new tip. */
+    function shorten(ox: number, oy: number, dx: number, dy: number, amount: number): [number, number] {
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      return [ox + dx - (dx / d) * amount, oy + dy - (dy / d) * amount];
+    }
+
+    /** Canonical perpendicular: always computed from the smaller-id node
+     *  to the larger-id node so A→B and B→A share the same normal direction. */
+    function canonicalNormal(dd: SimLink): [number, number] {
+      const sx = dd.source.x ?? 0, sy = dd.source.y ?? 0;
+      const tx = dd.target.x ?? 0, ty = dd.target.y ?? 0;
+      // Always go from smaller id to larger id
+      const flip = dd.source.id > dd.target.id;
+      const cdx = flip ? sx - tx : tx - sx;
+      const cdy = flip ? sy - ty : ty - sy;
+      const dist = Math.sqrt(cdx * cdx + cdy * cdy) || 1;
+      return [-cdy / dist, cdx / dist];
+    }
+
+    function linkPath(dd: SimLink) {
+      const sx = dd.source.x ?? 0, sy = dd.source.y ?? 0;
+      const tx = dd.target.x ?? 0, ty = dd.target.y ?? 0;
+      const sr = nodeRadius(dd.source);
+      const tr = nodeRadius(dd.target) + ARROW_SIZE;
+      const dx = tx - sx, dy = ty - sy;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+
+      if (dd.linkCount <= 1) {
+        const ux = dx / dist, uy = dy / dist;
+        const x1 = sx + ux * sr, y1 = sy + uy * sr;
+        const x2 = tx - ux * tr, y2 = ty - uy * tr;
+        return `M${x1},${y1}L${x2},${y2}`;
+      }
+
+      const [nx, ny] = canonicalNormal(dd);
+      const offset = (dd.index - (dd.linkCount - 1) / 2) * SPREAD;
+      const cx = (sx + tx) / 2 + nx * offset;
+      const cy = (sy + ty) / 2 + ny * offset;
+
+      const [x1, y1] = shorten(sx, sy, cx - sx, cy - sy, sr);
+      const [x2, y2] = shorten(cx, cy, tx - cx, ty - cy, tr);
+
+      return `M${x1},${y1}Q${cx},${cy} ${x2},${y2}`;
+    }
+
+    function linkMid(dd: SimLink): [number, number] {
+      const sx = dd.source.x ?? 0, sy = dd.source.y ?? 0;
+      const tx = dd.target.x ?? 0, ty = dd.target.y ?? 0;
+      if (dd.linkCount <= 1) {
+        return [(sx + tx) / 2, (sy + ty) / 2];
+      }
+      const [nx, ny] = canonicalNormal(dd);
+      const offset = (dd.index - (dd.linkCount - 1) / 2) * SPREAD;
+      const cx = (sx + tx) / 2 + nx * offset;
+      const cy = (sy + ty) / 2 + ny * offset;
+      return [0.25 * sx + 0.5 * cx + 0.25 * tx, 0.25 * sy + 0.5 * cy + 0.25 * ty];
+    }
+
     simulation.on("tick", () => {
-      link.attr("x1", (d) => d.source.x ?? 0).attr("y1", (d) => d.source.y ?? 0)
-          .attr("x2", (d) => d.target.x ?? 0).attr("y2", (d) => d.target.y ?? 0);
+      link.attr("d", linkPath);
       linkLabel
-        .attr("x", (d) => ((d.source.x ?? 0) + (d.target.x ?? 0)) / 2)
-        .attr("y", (d) => ((d.source.y ?? 0) + (d.target.y ?? 0)) / 2 - 4);
+        .attr("x", (d) => linkMid(d)[0])
+        .attr("y", (d) => linkMid(d)[1] - 4);
       node.attr("cx", (d) => d.x ?? 0).attr("cy", (d) => d.y ?? 0);
       label.attr("x", (d) => d.x ?? 0).attr("y", (d) => d.y ?? 0);
     });
@@ -105,7 +210,7 @@ export default function Graph() {
     if (!svgRef.current || !data) return;
     const svg = d3.select(svgRef.current);
     if (!hoveredId) {
-      svg.selectAll("circle, line, text").attr("opacity", 1);
+      svg.selectAll("circle, .graph-link, text").attr("opacity", 1);
       return;
     }
     const connected = new Set([hoveredId]);
@@ -114,7 +219,7 @@ export default function Graph() {
       if (l.target === hoveredId) connected.add(l.source as string);
     });
     svg.selectAll<SVGCircleElement, SimNode>("circle").attr("opacity", (d) => connected.has(d.id) ? 1 : 0.15);
-    svg.selectAll<SVGLineElement, SimLink>("line").attr("opacity", (d) =>
+    svg.selectAll<SVGPathElement, SimLink>(".graph-link").attr("opacity", (d) =>
       connected.has((d.source as SimNode).id) && connected.has((d.target as SimNode).id) ? 0.8 : 0.05
     );
     svg.selectAll<SVGTextElement, SimNode>("text").attr("opacity", (d) => {
@@ -131,7 +236,7 @@ export default function Graph() {
   };
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--color-bg-primary)" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--color-bg-primary)", ...gridBg }}>
       {data === null ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>
           加载图谱数据…
@@ -147,9 +252,9 @@ export default function Graph() {
       {/* Toolbar */}
       <div style={{ position: "absolute", top: "1rem", right: "1rem", display: "flex", flexDirection: "column", gap: "0.4rem", zIndex: 10 }}>
         <button onClick={() => {
-          if (!svgRef.current) return;
+          if (!svgRef.current || !zoomRef.current) return;
           d3.select(svgRef.current).transition().duration(500)
-            .call((d3.zoom() as d3.ZoomBehavior<SVGSVGElement, unknown>).transform, d3.zoomIdentity);
+            .call(zoomRef.current.transform, d3.zoomIdentity);
         }} style={toolbarBtnStyle}>重置视角</button>
       </div>
 
