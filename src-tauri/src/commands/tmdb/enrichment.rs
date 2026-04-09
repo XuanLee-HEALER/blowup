@@ -1,9 +1,11 @@
 use super::MovieDetails;
+use tauri::Emitter;
 
 /// Fetch TMDB movie details by ID and cache in the library index.
 /// Returns the updated IndexEntry. If already enriched, returns immediately.
 #[tauri::command]
 pub async fn enrich_index_entry(
+    app: tauri::AppHandle,
     tmdb_id: u64,
     force: Option<bool>,
     index: tauri::State<'_, crate::library_index::LibraryIndex>,
@@ -109,7 +111,13 @@ pub async fn enrich_index_entry(
         original_title: details.original_title,
     };
 
-    index
+    let result = index
         .update_entry_metadata(tmdb_id, meta)
-        .ok_or_else(|| "更新后未找到索引条目".to_string())
+        .ok_or_else(|| "更新后未找到索引条目".to_string());
+    if result.is_ok() {
+        if let Err(e) = app.emit("library:changed", ()) {
+            tracing::warn!(error = %e, "failed to emit library:changed");
+        }
+    }
+    result
 }

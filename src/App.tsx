@@ -1,5 +1,5 @@
 // src/App.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { NavItem } from "./components/ui/NavItem";
 import Search from "./pages/Search";
@@ -11,6 +11,7 @@ import Download from "./pages/Download";
 import Darkroom from "./pages/Darkroom";
 import { MusicPlayer } from "./components/MusicPlayer";
 import { config, type MusicTrack } from "./lib/tauri";
+import { useBackendEvent, BackendEvent } from "./lib/useBackendEvent";
 
 const NAV_SECTIONS = [
   {
@@ -48,10 +49,8 @@ export default function App() {
   const [musicMode, setMusicMode] = useState<"sequential" | "random">("sequential");
   const [musicPlaylist, setMusicPlaylist] = useState<MusicTrack[]>([]);
 
-  useEffect(() => {
-    console.log("[blowup] App mounted", performance.now().toFixed(0) + "ms");
+  const loadMusicConfig = useCallback(() => {
     config.get().then((cfg) => {
-      console.log("[blowup] config loaded", performance.now().toFixed(0) + "ms");
       if (cfg.music) {
         setMusicEnabled(!!cfg.music.enabled);
         setMusicMode(cfg.music.mode === "random" ? "random" : "sequential");
@@ -59,6 +58,13 @@ export default function App() {
       }
     }).catch((e) => console.error("[blowup] config.get failed:", e));
   }, []);
+
+  useEffect(() => {
+    console.log("[blowup] App mounted", performance.now().toFixed(0) + "ms");
+    loadMusicConfig();
+  }, [loadMusicConfig]);
+
+  useBackendEvent(BackendEvent.CONFIG_CHANGED, loadMusicConfig);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>

@@ -1,4 +1,5 @@
 use sqlx::SqlitePool;
+use tauri::Emitter;
 
 use super::{
     LibraryAssetEntry, LibraryItemDetail, LibraryItemSummary, LibraryStats, ScanResult, StatEntry,
@@ -360,9 +361,13 @@ pub fn search_index(
 
 #[tauri::command]
 pub fn rebuild_index(
+    app: tauri::AppHandle,
     index: tauri::State<'_, crate::library_index::LibraryIndex>,
 ) -> Result<(), String> {
     index.rebuild_from_disk();
+    if let Err(e) = app.emit("library:changed", ()) {
+        tracing::warn!(error = %e, "failed to emit library:changed");
+    }
     Ok(())
 }
 
@@ -395,16 +400,21 @@ pub async fn delete_library_resource(
 /// Refresh an index entry's file list by re-scanning its directory.
 #[tauri::command]
 pub fn refresh_index_entry(
+    app: tauri::AppHandle,
     tmdb_id: u64,
     index: tauri::State<'_, crate::library_index::LibraryIndex>,
 ) -> Result<(), String> {
     index.update_files(tmdb_id);
+    if let Err(e) = app.emit("library:changed", ()) {
+        tracing::warn!(error = %e, "failed to emit library:changed");
+    }
     Ok(())
 }
 
 /// Delete a film's entire directory from disk + index.
 #[tauri::command]
 pub async fn delete_film_directory(
+    app: tauri::AppHandle,
     tmdb_id: u64,
     index: tauri::State<'_, crate::library_index::LibraryIndex>,
 ) -> Result<(), String> {
@@ -429,6 +439,9 @@ pub async fn delete_film_directory(
     }
 
     index.remove_entry(tmdb_id);
+    if let Err(e) = app.emit("library:changed", ()) {
+        tracing::warn!(error = %e, "failed to emit library:changed");
+    }
     Ok(())
 }
 

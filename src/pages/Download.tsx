@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { download } from "../lib/tauri";
 import type { DownloadRecord, TorrentFileInfo } from "../lib/tauri";
 import { formatSize } from "../lib/format";
+import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -47,9 +48,9 @@ function DownloadRow({
     ? Math.min(100, (record.progress_bytes / record.total_bytes) * 100)
     : 0;
 
-  // Speed calc: bytes diff over 3s polling interval
+  // Speed calc: bytes diff over 2s event interval
   const speed = isActive && prevBytes > 0
-    ? Math.max(0, record.progress_bytes - prevBytes) / 3
+    ? Math.max(0, record.progress_bytes - prevBytes) / 2
     : 0;
 
   return (
@@ -146,7 +147,7 @@ function DeleteConfirmModal({ title, onConfirm, onCancel }: {
 
 export default function Download() {
   const [downloads, setDownloads] = useState<DownloadRecord[]>([]);
-  const [prevBytes, setPrevBytes] = useState<Map<number, number>>(new Map());
+  const prevBytesRef = useRef<Map<number, number>>(new Map());
   const [deleteTarget, setDeleteTarget] = useState<DownloadRecord | null>(null);
   // Redownload file-pick modal state
   const [redownloadTarget, setRedownloadTarget] = useState<DownloadRecord | null>(null);
@@ -159,17 +160,11 @@ export default function Download() {
 
   const refresh = useCallback(async () => {
     const list = await download.listDownloads();
-    setPrevBytes((prev) => {
-      // Build new map from current downloads before updating
-      const map = new Map<number, number>();
-      for (const [k, v] of prev) { map.set(k, v); }
-      return map;
-    });
     setDownloads((prev) => {
-      // Save current bytes as prev for next refresh
+      // Snapshot current bytes as prev for speed calc
       const map = new Map<number, number>();
       for (const d of prev) { map.set(d.id, d.progress_bytes); }
-      setPrevBytes(map);
+      prevBytesRef.current = map;
       return list;
     });
   }, []);
@@ -178,13 +173,8 @@ export default function Download() {
     download.listDownloads().then(setDownloads);
   }, []);
 
-  // Auto-refresh if active downloads
-  useEffect(() => {
-    const hasActive = downloads.some((d) => d.status === "downloading");
-    if (!hasActive) return;
-    const timer = setInterval(refresh, 3000);
-    return () => clearInterval(timer);
-  }, [downloads, refresh]);
+  // Re-fetch on backend events (replaces polling)
+  useBackendEvent(BackendEvent.DOWNLOADS_CHANGED, refresh);
 
   const handlePause = async (id: number) => {
     await download.pauseDownload(id);
@@ -291,7 +281,7 @@ export default function Download() {
             <DownloadRow
               key={d.id}
               record={d}
-              prevBytes={prevBytes.get(d.id) ?? 0}
+              prevBytes={prevBytesRef.current.get(d.id) ?? 0}
               onPause={() => handlePause(d.id)}
               onResume={() => handleResume(d.id)}
               onDelete={() => handleDelete(d)}

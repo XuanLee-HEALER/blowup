@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import * as d3 from "d3";
 import { kb } from "../lib/tauri";
 import type { GraphData, GraphNode } from "../lib/tauri";
+import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
 
 interface SimNode extends GraphNode {
   x?: number; y?: number; vx?: number; vy?: number;
@@ -33,7 +34,9 @@ export default function Graph() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<SimNode | null>(null);
 
-  useEffect(() => { kb.getGraphData().then(setData).catch(console.error); }, []);
+  const fetchGraph = useCallback(() => { kb.getGraphData().then(setData).catch(console.error); }, []);
+  useEffect(fetchGraph, [fetchGraph]);
+  useBackendEvent(BackendEvent.ENTRIES_CHANGED, fetchGraph);
 
   const buildGraph = useCallback(() => {
     if (!data || !svgRef.current) return;

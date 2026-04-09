@@ -3,6 +3,7 @@ import { library, media, config, player } from "../lib/tauri";
 import type { IndexEntry } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
 
 const VIDEO_EXTS = ["mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v"];
 const SUB_EXTS = ["srt", "ass", "sub", "idx"];
@@ -29,6 +30,8 @@ export default function Library() {
     library.listIndexByDirector().then(setDirectorMap);
     config.get().then((c) => { rootDir.current = c.library.root_dir; });
   }, []);
+
+  useBackendEvent(BackendEvent.LIBRARY_CHANGED, refresh);
 
   const selectEntry = useCallback((entry: IndexEntry) => {
     setSelectedEntry(entry);

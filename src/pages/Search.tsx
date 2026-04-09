@@ -3,6 +3,7 @@ import { TextInput } from "../components/ui/TextInput";
 import { Chip } from "../components/ui/Chip";
 import { tmdb, config, type MovieListItem, type TmdbGenre, type SearchFilters } from "../lib/tauri";
 import { FilmDetailPanel } from "../components/FilmDetailPanel";
+import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
 
 const SORT_OPTIONS = [
   { value: "vote_average.desc", label: "按评分排序" },
@@ -163,8 +164,7 @@ export default function Search() {
   // Popover state
   const [openFilter, setOpenFilter] = useState<string | null>(null);
 
-  // Load API key and genre list on mount
-  useEffect(() => {
+  const loadApiConfig = useCallback(() => {
     config.get().then((cfg) => {
       setApiKey(cfg.tmdb.api_key);
       if (cfg.tmdb.api_key) {
@@ -172,6 +172,9 @@ export default function Search() {
       }
     });
   }, []);
+
+  useEffect(loadApiConfig, [loadApiConfig]);
+  useBackendEvent(BackendEvent.CONFIG_CHANGED, loadApiConfig);
 
   const buildFilters = useCallback(
     (p = 1): SearchFilters => ({

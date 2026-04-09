@@ -3,6 +3,13 @@ use crate::library_index::{IndexEntry, LibraryIndex};
 use crate::torrent::{TorrentFileInfo, TorrentManager};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use tauri::{Emitter, Manager};
+
+fn emit(app: &tauri::AppHandle, event: &str) {
+    if let Err(e) = app.emit(event, ()) {
+        tracing::warn!(error = %e, event, "failed to emit event");
+    }
+}
 
 fn validate_library_root(index: &LibraryIndex) -> Result<(), String> {
     let root = index.root();
@@ -83,6 +90,7 @@ pub async fn get_torrent_files(
 
 #[tauri::command]
 pub async fn start_download(
+    app: tauri::AppHandle,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     tracker_mgr: tauri::State<'_, TrackerManager>,
@@ -139,6 +147,7 @@ pub async fn start_download(
 
     // Spawn background monitor
     spawn_download_monitor(MonitorParams {
+        app_handle: app,
         pool: pool.inner().clone(),
         handle,
         download_id,
@@ -154,6 +163,7 @@ pub async fn start_download(
 }
 
 struct MonitorParams {
+    app_handle: tauri::AppHandle,
     pool: SqlitePool,
     handle: crate::torrent::TorrentHandle,
     download_id: i64,
@@ -185,6 +195,8 @@ fn spawn_download_monitor(p: MonitorParams) {
             .await
             .ok();
 
+            emit(&p.app_handle, "downloads:changed");
+
             if stats.finished {
                 tracing::info!(p.download_id, "download completed");
                 sqlx::query(
@@ -211,9 +223,13 @@ fn spawn_download_monitor(p: MonitorParams) {
                     added_at: chrono::Utc::now().to_rfc3339(),
                     ..Default::default()
                 };
-                if let Some(root) = p.output_folder.parent().and_then(|pp| pp.parent()) {
-                    append_to_index_file(&root.join(".index.json"), entry);
+                // Update in-memory index + persist to disk
+                if let Some(idx) = p.app_handle.try_state::<crate::library_index::LibraryIndex>() {
+                    if let Err(e) = idx.add_entry(entry) {
+                        tracing::warn!(error = %e, "failed to add entry to library index");
+                    }
                 }
+                emit(&p.app_handle, "library:changed");
                 break;
             }
 
@@ -231,35 +247,6 @@ fn spawn_download_monitor(p: MonitorParams) {
     });
 }
 
-/// Append an entry to the index file on disk (used from background tasks
-/// that don't have access to the LibraryIndex managed state).
-fn append_to_index_file(index_path: &std::path::Path, entry: IndexEntry) {
-    #[derive(Serialize, Deserialize, Default)]
-    struct IndexFile {
-        #[serde(default)]
-        version: u32,
-        #[serde(default)]
-        entries: Vec<IndexEntry>,
-    }
-
-    let mut index = if index_path.exists() {
-        std::fs::read_to_string(index_path)
-            .ok()
-            .and_then(|c| serde_json::from_str::<IndexFile>(&c).ok())
-            .unwrap_or_default()
-    } else {
-        IndexFile::default()
-    };
-
-    index.entries.retain(|e| e.tmdb_id != entry.tmdb_id);
-    index.entries.push(entry);
-    index.version = 1;
-
-    if let Ok(content) = serde_json::to_string_pretty(&index) {
-        std::fs::write(index_path, content).ok();
-    }
-}
-
 #[tauri::command]
 pub async fn list_downloads(
     pool: tauri::State<'_, SqlitePool>,
@@ -272,6 +259,7 @@ pub async fn list_downloads(
 
 #[tauri::command]
 pub async fn pause_download(
+    app: tauri::AppHandle,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     id: i64,
@@ -294,11 +282,13 @@ pub async fn pause_download(
         .execute(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
+    emit(&app, "downloads:changed");
     Ok(())
 }
 
 #[tauri::command]
 pub async fn resume_download(
+    app: tauri::AppHandle,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     tracker_mgr: tauri::State<'_, TrackerManager>,
@@ -347,6 +337,7 @@ pub async fn resume_download(
         .map_err(|e| e.to_string())?;
 
     spawn_download_monitor(MonitorParams {
+        app_handle: app,
         pool: pool.inner().clone(),
         handle,
         download_id: id,
@@ -366,6 +357,7 @@ pub async fn resume_download(
 /// - History (completed/failed): only delete DB record
 #[tauri::command]
 pub async fn delete_download(
+    app: tauri::AppHandle,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     index: tauri::State<'_, LibraryIndex>,
@@ -410,6 +402,10 @@ pub async fn delete_download(
         .execute(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
+    emit(&app, "downloads:changed");
+    if is_active {
+        emit(&app, "library:changed");
+    }
     Ok(())
 }
 
@@ -448,6 +444,7 @@ pub async fn list_download_existing_files(
 /// Re-download: reuse existing record, start download with selected files.
 #[tauri::command]
 pub async fn redownload(
+    app: tauri::AppHandle,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     tracker_mgr: tauri::State<'_, TrackerManager>,
@@ -493,6 +490,7 @@ pub async fn redownload(
     .map_err(|e| e.to_string())?;
 
     spawn_download_monitor(MonitorParams {
+        app_handle: app,
         pool: pool.inner().clone(),
         handle,
         download_id: id,

@@ -1,6 +1,7 @@
 use super::s3;
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use tauri::Emitter;
 
 // ── Export types ─────────────────────────────────────────────────
 
@@ -174,11 +175,16 @@ pub async fn export_knowledge_base(
 
 #[tauri::command]
 pub async fn import_knowledge_base(
+    app: tauri::AppHandle,
     path: String,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    import_knowledge_base_data(pool.inner(), &json).await
+    let result = import_knowledge_base_data(pool.inner(), &json).await?;
+    if let Err(e) = app.emit("entries:changed", ()) {
+        tracing::warn!(error = %e, "failed to emit entries:changed");
+    }
+    Ok(result)
 }
 
 // ── Config export/import ─────────────────────────────────────────
@@ -197,7 +203,7 @@ pub fn export_config(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn import_config(path: String) -> Result<(), String> {
+pub fn import_config(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let _: crate::config::Config =
         toml::from_str(&content).map_err(|e| format!("配置文件格式错误: {}", e))?;
@@ -206,6 +212,9 @@ pub fn import_config(path: String) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+    if let Err(e) = app.emit("config:changed", ()) {
+        tracing::warn!(error = %e, "failed to emit config:changed");
+    }
     Ok(())
 }
 
@@ -228,12 +237,17 @@ pub async fn export_knowledge_base_s3(pool: tauri::State<'_, SqlitePool>) -> Res
 
 #[tauri::command]
 pub async fn import_knowledge_base_s3(
+    app: tauri::AppHandle,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let sync_cfg = load_sync_config()?;
     let bytes = s3::s3_get(&sync_cfg, S3_KEY_KB).await?;
     let json = String::from_utf8(bytes).map_err(|e| format!("数据编码错误: {}", e))?;
-    import_knowledge_base_data(pool.inner(), &json).await
+    let result = import_knowledge_base_data(pool.inner(), &json).await?;
+    if let Err(e) = app.emit("entries:changed", ()) {
+        tracing::warn!(error = %e, "failed to emit entries:changed");
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -246,7 +260,7 @@ pub async fn export_config_s3() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn import_config_s3() -> Result<(), String> {
+pub async fn import_config_s3(app: tauri::AppHandle) -> Result<(), String> {
     let sync_cfg = load_sync_config()?;
     let bytes = s3::s3_get(&sync_cfg, S3_KEY_CONFIG).await?;
     let content = String::from_utf8(bytes).map_err(|e| format!("数据编码错误: {}", e))?;
@@ -257,6 +271,9 @@ pub async fn import_config_s3() -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     std::fs::write(&config_path, content).map_err(|e| e.to_string())?;
+    if let Err(e) = app.emit("config:changed", ()) {
+        tracing::warn!(error = %e, "failed to emit config:changed");
+    }
     Ok(())
 }
 

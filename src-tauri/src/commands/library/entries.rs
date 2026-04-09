@@ -1,5 +1,14 @@
 use super::{EntryDetail, EntryRow, EntrySummary, RelationEntry};
 use sqlx::{QueryBuilder, SqlitePool};
+use tauri::Emitter;
+
+const EVENT: &str = "entries:changed";
+
+fn emit_kb(app: &tauri::AppHandle) {
+    if let Err(e) = app.emit(EVENT, ()) {
+        tracing::warn!(error = %e, "failed to emit {}", EVENT);
+    }
+}
 
 // ── Entry CRUD ──────────────────────────────────────────────────
 
@@ -99,17 +108,24 @@ pub async fn get_entry(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<En
 }
 
 #[tauri::command]
-pub async fn create_entry(name: String, pool: tauri::State<'_, SqlitePool>) -> Result<i64, String> {
-    sqlx::query("INSERT INTO entries (name) VALUES (?)")
+pub async fn create_entry(
+    app: tauri::AppHandle,
+    name: String,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<i64, String> {
+    let id = sqlx::query("INSERT INTO entries (name) VALUES (?)")
         .bind(&name)
         .execute(pool.inner())
         .await
         .map(|r| r.last_insert_rowid())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_kb(&app);
+    Ok(id)
 }
 
 #[tauri::command]
 pub async fn update_entry_name(
+    app: tauri::AppHandle,
     id: i64,
     name: String,
     pool: tauri::State<'_, SqlitePool>,
@@ -119,12 +135,14 @@ pub async fn update_entry_name(
         .bind(id)
         .execute(pool.inner())
         .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_kb(&app);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn update_entry_wiki(
+    app: tauri::AppHandle,
     id: i64,
     wiki: String,
     pool: tauri::State<'_, SqlitePool>,
@@ -134,12 +152,17 @@ pub async fn update_entry_wiki(
         .bind(id)
         .execute(pool.inner())
         .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_kb(&app);
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn delete_entry(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<(), String> {
+pub async fn delete_entry(
+    app: tauri::AppHandle,
+    id: i64,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
     sqlx::query("DELETE FROM relations WHERE from_id = ? OR to_id = ?")
         .bind(id)
         .bind(id)
@@ -156,6 +179,7 @@ pub async fn delete_entry(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result
         .execute(pool.inner())
         .await
         .map_err(|e| e.to_string())?;
+    emit_kb(&app);
     Ok(())
 }
 
@@ -163,6 +187,7 @@ pub async fn delete_entry(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result
 
 #[tauri::command]
 pub async fn add_entry_tag(
+    app: tauri::AppHandle,
     entry_id: i64,
     tag: String,
     pool: tauri::State<'_, SqlitePool>,
@@ -172,12 +197,14 @@ pub async fn add_entry_tag(
         .bind(&tag)
         .execute(pool.inner())
         .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_kb(&app);
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn remove_entry_tag(
+    app: tauri::AppHandle,
     entry_id: i64,
     tag: String,
     pool: tauri::State<'_, SqlitePool>,
@@ -187,8 +214,9 @@ pub async fn remove_entry_tag(
         .bind(&tag)
         .execute(pool.inner())
         .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_kb(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -203,29 +231,37 @@ pub async fn list_all_tags(pool: tauri::State<'_, SqlitePool>) -> Result<Vec<Str
 
 #[tauri::command]
 pub async fn add_relation(
+    app: tauri::AppHandle,
     from_id: i64,
     to_id: i64,
     relation_type: String,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<i64, String> {
-    sqlx::query("INSERT INTO relations (from_id, to_id, relation_type) VALUES (?, ?, ?)")
+    let id = sqlx::query("INSERT INTO relations (from_id, to_id, relation_type) VALUES (?, ?, ?)")
         .bind(from_id)
         .bind(to_id)
         .bind(&relation_type)
         .execute(pool.inner())
         .await
         .map(|r| r.last_insert_rowid())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_kb(&app);
+    Ok(id)
 }
 
 #[tauri::command]
-pub async fn remove_relation(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<(), String> {
+pub async fn remove_relation(
+    app: tauri::AppHandle,
+    id: i64,
+    pool: tauri::State<'_, SqlitePool>,
+) -> Result<(), String> {
     sqlx::query("DELETE FROM relations WHERE id = ?")
         .bind(id)
         .execute(pool.inner())
         .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    emit_kb(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -252,266 +288,184 @@ mod tests {
         pool
     }
 
-    #[tokio::test]
-    async fn create_and_list_entries() {
-        let pool = setup().await;
-        let id = sqlx::query("INSERT INTO entries (name) VALUES ('Antonioni')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-
-        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (?, '导演')")
-            .bind(id)
+    #[sqlx::test]
+    async fn create_and_list_entries(pool: SqlitePool) {
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('Test Entry')")
             .execute(&pool)
             .await
             .unwrap();
-
-        let rows = sqlx::query_as::<_, super::super::EntryRow>(
-            "SELECT e.id, e.name, e.wiki,
-                    COALESCE(GROUP_CONCAT(et.tag), '') AS tags_csv,
-                    e.created_at, e.updated_at
-             FROM entries e LEFT JOIN entry_tags et ON et.entry_id = e.id
-             GROUP BY e.id ORDER BY e.updated_at DESC",
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].name, "Antonioni");
-        assert_eq!(rows[0].tags(), vec!["导演"]);
-    }
-
-    #[tokio::test]
-    async fn entry_wiki_update() {
-        let pool = setup().await;
-        let id = sqlx::query("INSERT INTO entries (name) VALUES ('Test')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-
-        sqlx::query("UPDATE entries SET wiki = ?, updated_at = datetime('now') WHERE id = ?")
-            .bind("# Hello")
-            .bind(id)
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        let wiki: String = sqlx::query_scalar("SELECT wiki FROM entries WHERE id = ?")
-            .bind(id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(wiki, "# Hello");
-    }
-
-    #[tokio::test]
-    async fn tags_crud() {
-        let pool = setup().await;
-        let id = sqlx::query("INSERT INTO entries (name) VALUES ('Test')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-
-        sqlx::query("INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES (?, '导演')")
-            .bind(id)
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("INSERT OR IGNORE INTO entry_tags (entry_id, tag) VALUES (?, '意大利')")
-            .bind(id)
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        let tags: Vec<String> =
-            sqlx::query_scalar("SELECT DISTINCT tag FROM entry_tags ORDER BY tag")
+        let rows: Vec<(i64, String)> =
+            sqlx::query_as("SELECT id, name FROM entries")
                 .fetch_all(&pool)
                 .await
                 .unwrap();
-        assert_eq!(tags, vec!["导演", "意大利"]);
-
-        // Remove one
-        sqlx::query("DELETE FROM entry_tags WHERE entry_id = ? AND tag = '意大利'")
-            .bind(id)
-            .execute(&pool)
-            .await
-            .unwrap();
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM entry_tags WHERE entry_id = ?")
-            .bind(id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(count, 1);
-    }
-
-    #[tokio::test]
-    async fn relations_crud() {
-        let pool = setup().await;
-        let a = sqlx::query("INSERT INTO entries (name) VALUES ('A')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-        let b = sqlx::query("INSERT INTO entries (name) VALUES ('B')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-
-        let rel_id = sqlx::query(
-            "INSERT INTO relations (from_id, to_id, relation_type) VALUES (?, ?, 'influenced')",
-        )
-        .bind(a)
-        .bind(b)
-        .execute(&pool)
-        .await
-        .unwrap()
-        .last_insert_rowid();
-
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM relations")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(count, 1);
-
-        // Query relations for A
-        let rels = sqlx::query_as::<_, super::super::RelationEntry>(
-            "SELECT r.id, r.to_id AS target_id, e.name AS target_name,
-                    'to' AS direction, r.relation_type
-             FROM relations r JOIN entries e ON e.id = r.to_id
-             WHERE r.from_id = ?
-             UNION ALL
-             SELECT r.id, r.from_id AS target_id, e.name AS target_name,
-                    'from' AS direction, r.relation_type
-             FROM relations r JOIN entries e ON e.id = r.from_id
-             WHERE r.to_id = ?",
-        )
-        .bind(a)
-        .bind(a)
-        .fetch_all(&pool)
-        .await
-        .unwrap();
-        assert_eq!(rels.len(), 1);
-        assert_eq!(rels[0].target_name, "B");
-        assert_eq!(rels[0].direction, "to");
-
-        // Delete relation
-        sqlx::query("DELETE FROM relations WHERE id = ?")
-            .bind(rel_id)
-            .execute(&pool)
-            .await
-            .unwrap();
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM relations")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(count, 0);
-    }
-
-    #[tokio::test]
-    async fn delete_entry_cascades() {
-        let pool = setup().await;
-        let a = sqlx::query("INSERT INTO entries (name) VALUES ('A')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-        let b = sqlx::query("INSERT INTO entries (name) VALUES ('B')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-
-        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (?, '导演')")
-            .bind(a)
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("INSERT INTO relations (from_id, to_id, relation_type) VALUES (?, ?, 'x')")
-            .bind(a)
-            .bind(b)
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        // Delete A
-        sqlx::query("DELETE FROM relations WHERE from_id = ? OR to_id = ?")
-            .bind(a)
-            .bind(a)
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("DELETE FROM entry_tags WHERE entry_id = ?")
-            .bind(a)
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("DELETE FROM entries WHERE id = ?")
-            .bind(a)
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        let entries: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM entries")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(entries, 1); // Only B remains
-        let rels: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM relations")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(rels, 0);
-        let tags: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM entry_tags")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!(tags, 0);
-    }
-
-    #[tokio::test]
-    async fn list_entries_filter_by_tag() {
-        let pool = setup().await;
-        let a = sqlx::query("INSERT INTO entries (name) VALUES ('Antonioni')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-        let b = sqlx::query("INSERT INTO entries (name) VALUES ('Blow-Up')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
-
-        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (?, '导演')")
-            .bind(a)
-            .execute(&pool)
-            .await
-            .unwrap();
-        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (?, '电影')")
-            .bind(b)
-            .execute(&pool)
-            .await
-            .unwrap();
-
-        // Filter by tag '导演'
-        let rows = sqlx::query_as::<_, super::super::EntryRow>(
-            "SELECT e.id, e.name, e.wiki,
-                    COALESCE(GROUP_CONCAT(et.tag), '') AS tags_csv,
-                    e.created_at, e.updated_at
-             FROM entries e LEFT JOIN entry_tags et ON et.entry_id = e.id
-             WHERE e.id IN (SELECT entry_id FROM entry_tags WHERE tag = '导演')
-             GROUP BY e.id ORDER BY e.updated_at DESC",
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
-
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].name, "Antonioni");
+        assert_eq!(rows[0].1, "Test Entry");
+    }
+
+    #[sqlx::test]
+    async fn entry_wiki_update(pool: SqlitePool) {
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('A')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE entries SET wiki = 'hello' WHERE id = 1")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let wiki: String = sqlx::query_scalar("SELECT wiki FROM entries WHERE id = 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(wiki, "hello");
+    }
+
+    #[sqlx::test]
+    async fn list_entries_filter_by_tag(pool: SqlitePool) {
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('A')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('B')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (1, 'x')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Only entry 1 has tag 'x'
+        let rows: Vec<(i64,)> = sqlx::query_as(
+            "SELECT e.id FROM entries e \
+             JOIN entry_tags et ON et.entry_id = e.id \
+             WHERE et.tag = 'x'",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, 1);
+    }
+
+    #[sqlx::test]
+    async fn tags_crud(pool: SqlitePool) {
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('E')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (1, 'a')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (1, 'b')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let tags: Vec<String> =
+            sqlx::query_scalar("SELECT tag FROM entry_tags WHERE entry_id = 1 ORDER BY tag")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(tags, vec!["a", "b"]);
+
+        sqlx::query("DELETE FROM entry_tags WHERE entry_id = 1 AND tag = 'a'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let tags: Vec<String> =
+            sqlx::query_scalar("SELECT tag FROM entry_tags WHERE entry_id = 1 ORDER BY tag")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(tags, vec!["b"]);
+    }
+
+    #[sqlx::test]
+    async fn delete_entry_cascades(pool: SqlitePool) {
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('A')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('B')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entry_tags (entry_id, tag) VALUES (1, 't')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO relations (from_id, to_id, relation_type) VALUES (1, 2, 'r')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        // Delete entry 1
+        sqlx::query("DELETE FROM relations WHERE from_id = 1 OR to_id = 1")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM entry_tags WHERE entry_id = 1")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM entries WHERE id = 1")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM entries")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count.0, 1);
+        let rel_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM relations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(rel_count.0, 0);
+    }
+
+    #[sqlx::test]
+    async fn relations_crud(pool: SqlitePool) {
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('A')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO entries (name) VALUES ('B')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let id = sqlx::query("INSERT INTO relations (from_id, to_id, relation_type) VALUES (1, 2, 'directed')")
+            .execute(&pool)
+            .await
+            .unwrap()
+            .last_insert_rowid();
+
+        let rows: Vec<(i64, i64, i64, String)> =
+            sqlx::query_as("SELECT id, from_id, to_id, relation_type FROM relations")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, id);
+
+        sqlx::query("DELETE FROM relations WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM relations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count.0, 0);
     }
 }

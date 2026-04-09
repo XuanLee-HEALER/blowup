@@ -3,6 +3,7 @@ import { kb } from "../lib/tauri";
 import type { EntrySummary, EntryDetail, RelationEntry } from "../lib/tauri";
 import { WikiDetailView } from "../components/WikiDetailView";
 import { Chip } from "../components/ui/Chip";
+import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
 import { MODAL_OVERLAY, MODAL_CARD, INPUT, BTN_SECONDARY, BTN_ACCENT, LABEL, SECTION_HEADER } from "../lib/styles";
 
 // ── Add Entry Modal ─────────────────────────────────────────────
@@ -266,6 +267,8 @@ export default function Wiki() {
   const refreshRef = useRef(0);
   const refresh = () => { refreshRef.current += 1; setRefreshKey(refreshRef.current); };
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useBackendEvent(BackendEvent.ENTRIES_CHANGED, refresh);
 
   useEffect(() => {
     const q = searchQuery.trim() || undefined;

@@ -1,4 +1,5 @@
 use crate::config::{Config, app_data_dir, load_config, save_config};
+use tauri::Emitter;
 
 #[tauri::command]
 pub fn get_config() -> Result<Config, String> {
@@ -6,8 +7,12 @@ pub fn get_config() -> Result<Config, String> {
 }
 
 #[tauri::command]
-pub fn save_config_cmd(new_config: Config) -> Result<(), String> {
-    save_config(&new_config)
+pub fn save_config_cmd(app: tauri::AppHandle, new_config: Config) -> Result<(), String> {
+    save_config(&new_config)?;
+    if let Err(e) = app.emit("config:changed", ()) {
+        tracing::warn!(error = %e, "failed to emit config:changed");
+    }
+    Ok(())
 }
 
 #[tauri::command]

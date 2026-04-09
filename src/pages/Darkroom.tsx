@@ -3,6 +3,7 @@ import { library, subtitle, media, config } from "../lib/tauri";
 import type { IndexEntry, MediaInfo } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 import { formatSize, formatDuration, formatBitrate, formatFrameRate } from "../lib/format";
+import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
 
 const VIDEO_EXTS = ["mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v"];
 const SUB_EXTS = ["srt", "ass", "sub", "idx", "vtt"];
@@ -431,10 +432,16 @@ export default function Darkroom() {
   const [searchResults, setSearchResults] = useState<IndexEntry[] | null>(null);
   const [rootDir, setRootDir] = useState("");
 
-  useEffect(() => {
+  const refreshDirectorMap = useCallback(() => {
     library.listIndexByDirector().then(setDirectorMap);
-    config.get().then((c) => setRootDir(c.library.root_dir));
   }, []);
+
+  useEffect(() => {
+    refreshDirectorMap();
+    config.get().then((c) => setRootDir(c.library.root_dir));
+  }, [refreshDirectorMap]);
+
+  useBackendEvent(BackendEvent.LIBRARY_CHANGED, refreshDirectorMap);
 
   const doSearch = async () => {
     if (!searchQuery.trim()) { setSearchResults(null); return; }
