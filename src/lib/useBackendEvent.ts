@@ -16,7 +16,10 @@ export type BackendEventName = (typeof BackendEvent)[keyof typeof BackendEvent];
  */
 export function useBackendEvent(eventName: BackendEventName, callback: () => void): void {
   const cbRef = useRef(callback);
-  cbRef.current = callback;
+
+  useEffect(() => {
+    cbRef.current = callback;
+  });
 
   useEffect(() => {
     const unlisten = listen(eventName, () => cbRef.current());
