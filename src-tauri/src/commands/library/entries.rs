@@ -295,11 +295,10 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        let rows: Vec<(i64, String)> =
-            sqlx::query_as("SELECT id, name FROM entries")
-                .fetch_all(&pool)
-                .await
-                .unwrap();
+        let rows: Vec<(i64, String)> = sqlx::query_as("SELECT id, name FROM entries")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].1, "Test Entry");
     }
@@ -443,11 +442,13 @@ mod tests {
             .await
             .unwrap();
 
-        let id = sqlx::query("INSERT INTO relations (from_id, to_id, relation_type) VALUES (1, 2, 'directed')")
-            .execute(&pool)
-            .await
-            .unwrap()
-            .last_insert_rowid();
+        let id = sqlx::query(
+            "INSERT INTO relations (from_id, to_id, relation_type) VALUES (1, 2, 'directed')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap()
+        .last_insert_rowid();
 
         let rows: Vec<(i64, i64, i64, String)> =
             sqlx::query_as("SELECT id, from_id, to_id, relation_type FROM relations")

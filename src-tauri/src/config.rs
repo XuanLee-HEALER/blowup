@@ -252,11 +252,7 @@ pub fn load_config() -> Config {
 
 /// Well-known directories where CLI tools are commonly installed.
 /// macOS GUI apps don't inherit the shell PATH, so we probe these manually.
-const WELL_KNOWN_DIRS: &[&str] = &[
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    "/usr/bin",
-];
+const WELL_KNOWN_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
 
 /// Try to find `name` via PATH first, then fall back to well-known directories.
 fn find_tool(name: &str) -> Option<PathBuf> {

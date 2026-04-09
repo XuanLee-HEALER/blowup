@@ -118,7 +118,7 @@ function VideoRow({ file, rootPath, onStatusChange }: {
     try {
       const info = await media.probeDetail(fullPath);
       setProbeInfo(info);
-    } catch (e) { onStatusChange({ ok: false, msg: `探测失败: ${e}` }); }
+    } catch (e) { onStatusChange({ ok: false, msg: `获取媒体信息失败: ${e}` }); }
     finally { setProbing(false); }
   };
 
@@ -145,7 +145,7 @@ function VideoRow({ file, rootPath, onStatusChange }: {
           {file}
         </span>
         <ActionButton label="▶ 播放" onClick={handlePlay} accent />
-        <ActionButton label={probing ? "探测中…" : "探测"} onClick={handleProbe} disabled={probing} />
+        <ActionButton label={probing ? "获取中…" : "媒体信息"} onClick={handleProbe} disabled={probing} />
         <MoreMenu items={[
           { label: "提取字幕轨", onClick: handleExtractSubtitle },
         ]} />

@@ -103,7 +103,11 @@ pub async fn start_download(
     let output_folder = index.compute_download_path(&req.director, req.tmdb_id);
 
     // Insert DB record
-    let genres_csv = req.genres.as_deref().map(|g| g.join(",")).unwrap_or_default();
+    let genres_csv = req
+        .genres
+        .as_deref()
+        .map(|g| g.join(","))
+        .unwrap_or_default();
     let download_id = sqlx::query_scalar::<_, i64>(
         "INSERT INTO downloads (tmdb_id, title, director, quality, target, status, year, genres) \
          VALUES (?, ?, ?, ?, ?, 'downloading', ?, ?) RETURNING id",
@@ -229,7 +233,10 @@ fn spawn_download_monitor(p: MonitorParams) {
                     ..Default::default()
                 };
                 // Update in-memory index + persist to disk
-                if let Some(idx) = p.app_handle.try_state::<crate::library_index::LibraryIndex>() {
+                if let Some(idx) = p
+                    .app_handle
+                    .try_state::<crate::library_index::LibraryIndex>()
+                {
                     if let Err(e) = idx.add_entry(entry) {
                         tracing::warn!(error = %e, "failed to add entry to library index");
                     }
@@ -351,7 +358,14 @@ pub async fn resume_download(
         title: record.title,
         tmdb_id,
         year: record.year.map(|y| y as u32),
-        genres: record.genres.as_deref().unwrap_or("").split(',').filter(|s| !s.is_empty()).map(String::from).collect(),
+        genres: record
+            .genres
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect(),
     });
 
     Ok(())
@@ -504,7 +518,14 @@ pub async fn redownload(
         title: record.title,
         tmdb_id,
         year: record.year.map(|y| y as u32),
-        genres: record.genres.as_deref().unwrap_or("").split(',').filter(|s| !s.is_empty()).map(String::from).collect(),
+        genres: record
+            .genres
+            .as_deref()
+            .unwrap_or("")
+            .split(',')
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .collect(),
     });
 
     Ok(())

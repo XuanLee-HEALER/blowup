@@ -32,6 +32,34 @@ pub struct IndexEntry {
     pub credits: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub original_title: Option<String>,
+    /// Cached media info per video file (keyed by filename).
+    #[serde(default)]
+    pub media_info: HashMap<String, FileMediaInfo>,
+}
+
+/// Cached media probe result for a single video file.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileMediaInfo {
+    pub file_size: Option<i64>,
+    pub duration_secs: Option<f64>,
+    pub format_name: Option<String>,
+    pub bit_rate: Option<i64>,
+    pub streams: Vec<FileStreamInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileStreamInfo {
+    pub index: i64,
+    pub codec_type: String,
+    pub codec_name: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub frame_rate: Option<String>,
+    pub bit_rate: Option<i64>,
+    pub channels: Option<i64>,
+    pub sample_rate: Option<String>,
+    pub language: Option<String>,
+    pub title: Option<String>,
 }
 
 /// Patch for updating TMDB metadata on an IndexEntry.
@@ -286,6 +314,25 @@ impl LibraryIndex {
     pub fn compute_download_path(&self, director_raw: &str, tmdb_id: u64) -> PathBuf {
         let dir_name = normalize_director_name(director_raw);
         self.root.join(&dir_name).join(tmdb_id.to_string())
+    }
+
+    /// Store cached media info for a video file within an entry.
+    pub fn set_file_media_info(
+        &self,
+        tmdb_id: u64,
+        filename: &str,
+        info: FileMediaInfo,
+    ) -> Option<FileMediaInfo> {
+        let mut data = self.data.write().unwrap();
+        let result = if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
+            entry.media_info.insert(filename.to_string(), info.clone());
+            Some(info)
+        } else {
+            None
+        };
+        drop(data);
+        self.save();
+        result
     }
 
     /// Update TMDB metadata for an entry and persist. Returns the updated entry.

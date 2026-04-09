@@ -112,7 +112,11 @@ pub async fn enrich_index_entry(
     let meta = crate::library_index::EntryMetadata {
         title: Some(details.title),
         year,
-        genres: if genres.is_empty() { None } else { Some(genres) },
+        genres: if genres.is_empty() {
+            None
+        } else {
+            Some(genres)
+        },
         poster_url,
         overview: Some(details.overview),
         rating: Some(details.vote_average),

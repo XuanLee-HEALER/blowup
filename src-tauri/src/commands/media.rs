@@ -1,5 +1,6 @@
 // src-tauri/src/commands/media.rs
 use crate::ffmpeg::FfmpegTool;
+use crate::library_index::{FileMediaInfo, FileStreamInfo, LibraryIndex};
 use serde::Serialize;
 
 /// Returns JSON output from ffprobe for the given file (streams info).
@@ -105,3 +106,58 @@ pub async fn probe_media_detail(file_path: String) -> Result<MediaInfo, String> 
     })
 }
 
+/// Probe a video file and cache the result in the library index.
+/// Returns the cached `FileMediaInfo`. If the file already has cached info,
+/// returns it without re-probing (unless `force` is true).
+#[tauri::command]
+pub async fn probe_and_cache(
+    index: tauri::State<'_, LibraryIndex>,
+    tmdb_id: u64,
+    filename: String,
+) -> Result<FileMediaInfo, String> {
+    // Check cache first
+    if let Some(entry) = index.get_entry(tmdb_id) {
+        if let Some(cached) = entry.media_info.get(&filename) {
+            return Ok(cached.clone());
+        }
+    }
+
+    // Resolve full path
+    let entry = index.get_entry(tmdb_id).ok_or("影片条目未找到")?;
+    let full_path = index.root().join(&entry.path).join(&filename);
+    let full_path_str = full_path.to_string_lossy().to_string();
+
+    // Probe via ffprobe
+    let detail = probe_media_detail(full_path_str).await?;
+
+    // Convert to cacheable struct
+    let info = FileMediaInfo {
+        file_size: detail.file_size,
+        duration_secs: detail.duration_secs,
+        format_name: detail.format_name,
+        bit_rate: detail.bit_rate,
+        streams: detail
+            .streams
+            .into_iter()
+            .map(|s| FileStreamInfo {
+                index: s.index,
+                codec_type: s.codec_type,
+                codec_name: s.codec_name,
+                width: s.width,
+                height: s.height,
+                frame_rate: s.frame_rate,
+                bit_rate: s.bit_rate,
+                channels: s.channels,
+                sample_rate: s.sample_rate,
+                language: s.language,
+                title: s.title,
+            })
+            .collect(),
+    };
+
+    index
+        .set_file_media_info(tmdb_id, &filename, info.clone())
+        .ok_or("影片条目未找到")?;
+
+    Ok(info)
+}
