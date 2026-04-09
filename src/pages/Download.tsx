@@ -95,13 +95,14 @@ function DownloadRow({
       </div>
 
       {/* Progress bar */}
-      {isActive && record.total_bytes > 0 && (
+      {(isActive || record.status === "paused") && record.total_bytes > 0 && (
         <div>
           <div style={{
             height: 4, borderRadius: 2, background: "var(--color-separator)", overflow: "hidden",
           }}>
             <div style={{
-              height: "100%", borderRadius: 2, background: "var(--color-accent)",
+              height: "100%", borderRadius: 2,
+              background: isActive ? "var(--color-accent)" : "var(--color-label-tertiary)",
               width: `${progress}%`, transition: "width 0.5s ease",
             }} />
           </div>
