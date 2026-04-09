@@ -116,10 +116,10 @@ pub async fn probe_and_cache(
     filename: String,
 ) -> Result<FileMediaInfo, String> {
     // Check cache first
-    if let Some(entry) = index.get_entry(tmdb_id) {
-        if let Some(cached) = entry.media_info.get(&filename) {
-            return Ok(cached.clone());
-        }
+    if let Some(entry) = index.get_entry(tmdb_id)
+        && let Some(cached) = entry.media_info.get(&filename)
+    {
+        return Ok(cached.clone());
     }
 
     // Resolve full path

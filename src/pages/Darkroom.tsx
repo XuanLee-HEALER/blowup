@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { library, subtitle, media, config } from "../lib/tauri";
-import type { IndexEntry, MediaInfo } from "../lib/tauri";
+import type { IndexEntry, FileMediaInfo } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 import { formatSize, formatDuration, formatBitrate, formatFrameRate } from "../lib/format";
 import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
@@ -101,11 +101,11 @@ function MoreMenu({ items }: { items: { label: string; onClick: () => void; dang
 
 // ── Video resource row ──────────────────────────────────────────
 
-function VideoRow({ file, rootPath, onStatusChange }: {
-  file: string; rootPath: string; onStatusChange: (s: StatusMsg) => void;
+function VideoRow({ file, rootPath, tmdbId, cachedInfo, onStatusChange }: {
+  file: string; rootPath: string; tmdbId: number; cachedInfo?: FileMediaInfo; onStatusChange: (s: StatusMsg) => void;
 }) {
   const fullPath = `${rootPath}/${file}`;
-  const [probeInfo, setProbeInfo] = useState<MediaInfo | null>(null);
+  const [probeInfo, setProbeInfo] = useState<FileMediaInfo | null>(cachedInfo ?? null);
   const [probing, setProbing] = useState(false);
 
   const handlePlay = async () => {
@@ -116,7 +116,7 @@ function VideoRow({ file, rootPath, onStatusChange }: {
   const handleProbe = async () => {
     setProbing(true);
     try {
-      const info = await media.probeDetail(fullPath);
+      const info = await media.probeAndCache(tmdbId, file);
       setProbeInfo(info);
     } catch (e) { onStatusChange({ ok: false, msg: `获取媒体信息失败: ${e}` }); }
     finally { setProbing(false); }
@@ -155,7 +155,7 @@ function VideoRow({ file, rootPath, onStatusChange }: {
   );
 }
 
-function ProbeDetail({ info }: { info: MediaInfo }) {
+function ProbeDetail({ info }: { info: FileMediaInfo }) {
   return (
     <div style={{ padding: "0.5rem 0.75rem 0.25rem 1.5rem", fontSize: "0.75rem", color: "var(--color-label-secondary)" }}>
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "0.3rem" }}>
@@ -348,7 +348,7 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
       ) : (
         <div style={{ marginBottom: "1rem" }}>
           {videoFiles.map((f) => (
-            <VideoRow key={f} file={f} rootPath={rootPath} onStatusChange={setStatus} />
+            <VideoRow key={f} file={f} rootPath={rootPath} tmdbId={entry.tmdb_id} cachedInfo={entry.media_info?.[f]} onStatusChange={setStatus} />
           ))}
         </div>
       )}

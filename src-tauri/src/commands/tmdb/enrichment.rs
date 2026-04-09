@@ -127,10 +127,10 @@ pub async fn enrich_index_entry(
     let result = index
         .update_entry_metadata(tmdb_id, meta)
         .ok_or_else(|| "更新后未找到索引条目".to_string());
-    if result.is_ok() {
-        if let Err(e) = app.emit("library:changed", ()) {
-            tracing::warn!(error = %e, "failed to emit library:changed");
-        }
+    if result.is_ok()
+        && let Err(e) = app.emit("library:changed", ())
+    {
+        tracing::warn!(error = %e, "failed to emit library:changed");
     }
     result
 }

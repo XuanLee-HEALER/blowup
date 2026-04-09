@@ -275,19 +275,19 @@ pub fn resolve_tool_paths(config: &mut Config) -> bool {
     let mut changed = false;
 
     // alass / alass-cli
-    if which::which(&config.tools.alass).is_err() {
-        if let Some(p) = find_tool("alass").or_else(|| find_tool("alass-cli")) {
-            config.tools.alass = p.to_string_lossy().into_owned();
-            changed = true;
-        }
+    if which::which(&config.tools.alass).is_err()
+        && let Some(p) = find_tool("alass").or_else(|| find_tool("alass-cli"))
+    {
+        config.tools.alass = p.to_string_lossy().into_owned();
+        changed = true;
     }
 
     // ffmpeg
-    if which::which(&config.tools.ffmpeg).is_err() {
-        if let Some(p) = find_tool("ffmpeg") {
-            config.tools.ffmpeg = p.to_string_lossy().into_owned();
-            changed = true;
-        }
+    if which::which(&config.tools.ffmpeg).is_err()
+        && let Some(p) = find_tool("ffmpeg")
+    {
+        config.tools.ffmpeg = p.to_string_lossy().into_owned();
+        changed = true;
     }
 
     if changed {

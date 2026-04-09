@@ -162,6 +162,28 @@ export interface StartDownloadRequest {
   onlyFiles?: number[];
 }
 
+export interface FileMediaInfo {
+  file_size: number | null;
+  duration_secs: number | null;
+  format_name: string | null;
+  bit_rate: number | null;
+  streams: FileStreamInfo[];
+}
+
+export interface FileStreamInfo {
+  index: number;
+  codec_type: string;
+  codec_name: string;
+  width: number | null;
+  height: number | null;
+  frame_rate: string | null;
+  bit_rate: number | null;
+  channels: number | null;
+  sample_rate: string | null;
+  language: string | null;
+  title: string | null;
+}
+
 export interface IndexEntry {
   tmdb_id: number;
   title: string;
@@ -178,6 +200,7 @@ export interface IndexEntry {
   rating?: number | null;
   credits?: Record<string, string[]>;
   original_title?: string | null;
+  media_info?: Record<string, FileMediaInfo>;
 }
 
 export interface MovieResult {
@@ -373,6 +396,8 @@ export const subtitle = {
 export const media = {
   probeDetail: (filePath: string) =>
     invoke<MediaInfo>("probe_media_detail", { filePath }),
+  probeAndCache: (tmdbId: number, filename: string) =>
+    invoke<FileMediaInfo>("probe_and_cache", { tmdbId, filename }),
   openInPlayer: (filePath: string) =>
     invoke<void>("cmd_open_player", { filePath }),
 };

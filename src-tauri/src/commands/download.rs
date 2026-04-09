@@ -236,10 +236,9 @@ fn spawn_download_monitor(p: MonitorParams) {
                 if let Some(idx) = p
                     .app_handle
                     .try_state::<crate::library_index::LibraryIndex>()
+                    && let Err(e) = idx.add_entry(entry)
                 {
-                    if let Err(e) = idx.add_entry(entry) {
-                        tracing::warn!(error = %e, "failed to add entry to library index");
-                    }
+                    tracing::warn!(error = %e, "failed to add entry to library index");
                 }
                 emit(&p.app_handle, "library:changed");
                 break;

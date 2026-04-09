@@ -171,6 +171,7 @@ pub fn run() {
             commands::subtitle::shift_subtitle_cmd,
             commands::media::probe_media,
             commands::media::probe_media_detail,
+            commands::media::probe_and_cache,
             // Config
             commands::config::get_config,
             commands::config::save_config_cmd,
