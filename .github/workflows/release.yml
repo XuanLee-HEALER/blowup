@@ -18,8 +18,6 @@ jobs:
             target: x86_64-pc-windows-msvc
           - platform: macos-latest
             target: aarch64-apple-darwin
-          - platform: macos-latest
-            target: x86_64-apple-darwin
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
 
@@ -55,11 +53,15 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $url = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/20250405/mpv-dev-x86_64-v3-20250405-git-13c3813.7z"
-          Invoke-WebRequest -Uri $url -OutFile mpv-dev.7z
+          # Fetch latest mpv-dev x86_64 URL from shinchiro builds
+          $release = Invoke-RestMethod "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
+          $asset = $release.assets | Where-Object { $_.name -match "^mpv-dev-x86_64-\d" } | Select-Object -First 1
+          if (-not $asset) { throw "mpv-dev asset not found" }
+          Write-Host "Downloading $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile mpv-dev.7z
           7z x mpv-dev.7z -ompv-dev
           New-Item -ItemType Directory -Force -Path src-tauri/lib | Out-Null
-          # Find and use .def file to generate import lib
+          # Generate import lib from .def file
           $defFile = (Get-ChildItem -Recurse mpv-dev/*.def | Select-Object -First 1).FullName
           Write-Host "Using def file: $defFile"
           lib /def:$defFile /out:src-tauri/lib/mpv.lib /machine:x64
@@ -87,7 +89,6 @@ jobs:
             | Windows (.msi) | `blowup_*_x64-setup.msi` |
             | Windows (.exe) | `blowup_*_x64-setup.nsis.exe` |
             | macOS (Apple Silicon) | `blowup_*_aarch64.dmg` |
-            | macOS (Intel) | `blowup_*_x64.dmg` |
             | Linux (.deb) | `blowup_*_amd64.deb` |
             | Linux (.AppImage) | `blowup_*_amd64.AppImage` |
           releaseDraft: true
