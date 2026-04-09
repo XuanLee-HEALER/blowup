@@ -49,7 +49,7 @@ export function Waveform() {
     ws.on("play", () => setPlaying(true));
     ws.on("pause", () => setPlaying(false));
     ws.on("finish", () => setPlaying(false));
-    ws.on("error", (err) => {
+    ws.on("error", (err: unknown) => {
       setError(String(err));
       setLoading(false);
     });

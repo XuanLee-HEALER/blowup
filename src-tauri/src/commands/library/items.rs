@@ -16,9 +16,7 @@ struct VideoProbe {
     resolution: Option<String>,
 }
 
-const VIDEO_EXTENSIONS: &[&str] = &[
-    "mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v",
-];
+use crate::library_index::VIDEO_EXTENSIONS;
 
 async fn probe_video_file(path: &str) -> Result<VideoProbe, String> {
     let args: Vec<String> = [
@@ -390,10 +388,8 @@ pub async fn delete_library_resource(
     }
 
     // Clean up overlay cache if an SRT was deleted
-    if is_srt {
-        if let Some(dir) = path.parent() {
-            crate::subtitle_parser::cleanup_stale_overlays(dir);
-        }
+    if is_srt && let Some(dir) = path.parent() {
+        crate::subtitle_parser::cleanup_stale_overlays(dir);
     }
 
     let item_id: Option<i64> =

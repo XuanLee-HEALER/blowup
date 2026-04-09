@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn weight_normalization() {
-        let counts = vec![2usize, 4, 1];
+        let counts = [2usize, 4, 1];
         let max = *counts.iter().max().unwrap() as f64;
         let weights: Vec<f64> = counts
             .iter()

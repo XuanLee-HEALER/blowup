@@ -13,7 +13,7 @@ pub struct SubCue {
 }
 
 static TIMESTAMP_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})")
+    Regex::new(r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})")
         .expect("valid SRT timestamp regex")
 });
 
@@ -33,22 +33,9 @@ pub fn parse_srt(content: &str) -> Vec<SubCue> {
     let mut cues = Vec::new();
     let mut lines = content.split('\n').peekable();
 
-    while lines.peek().is_some() {
-        // Skip blank lines and sequence numbers
-        while let Some(line) = lines.peek() {
-            if line.trim().is_empty() || line.trim().parse::<u32>().is_ok() {
-                lines.next();
-            } else {
-                break;
-            }
-        }
-
-        // Expect timestamp line
-        let ts_line = match lines.next() {
-            Some(l) => l,
-            None => break,
-        };
-        let caps = match TIMESTAMP_RE.captures(ts_line) {
+    while let Some(line) = lines.next() {
+        // Look for timestamp lines; skip everything else (blank lines, sequence numbers, garbage)
+        let caps = match TIMESTAMP_RE.captures(line) {
             Some(c) => c,
             None => continue,
         };
@@ -59,6 +46,7 @@ pub fn parse_srt(content: &str) -> Vec<SubCue> {
         let mut text_parts = Vec::new();
         while let Some(line) = lines.peek() {
             if line.trim().is_empty() {
+                lines.next();
                 break;
             }
             text_parts.push(lines.next().unwrap().to_string());

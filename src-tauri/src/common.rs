@@ -208,8 +208,8 @@ mod tests {
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            CommonError::IoError => assert!(true),
-            _ => panic!("Expected IoError"),
+            CommonError::IoError => {}
+            other => panic!("Expected IoError, got {other:?}"),
         }
     }
 
@@ -226,13 +226,10 @@ mod tests {
         let result = read_multiple_file_to_string(files).await;
 
         assert!(result.is_err());
-        if let Err(CommonError::IoError) = result {
-            // 不同的操作系统返回的错误类型可能不同
-            // Unix-like 系统通常返回 IsADirectory，Windows 可能会返回 PermissionDenied
-            assert!(true);
-        } else {
-            panic!("Expected an IoError");
-        }
+        assert!(
+            matches!(result, Err(CommonError::IoError)),
+            "Expected an IoError"
+        );
     }
 
     #[tokio::test]

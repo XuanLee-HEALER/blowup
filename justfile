@@ -56,7 +56,7 @@ lint-fix:
 
 # Rust clippy (warnings as errors)
 clippy:
-    cd src-tauri && cargo clippy -- -D warnings
+    cd src-tauri && cargo clippy --tests -- -D warnings
 
 # Rust format check
 fmt-check:

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
 
-const VIDEO_EXTENSIONS: &[&str] = &[
+pub const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v",
 ];
 

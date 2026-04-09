@@ -282,12 +282,6 @@ pub async fn list_relation_types(
 mod tests {
     use sqlx::SqlitePool;
 
-    async fn setup() -> SqlitePool {
-        let pool = SqlitePool::connect(":memory:").await.unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
-        pool
-    }
-
     #[sqlx::test]
     async fn create_and_list_entries(pool: SqlitePool) {
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
