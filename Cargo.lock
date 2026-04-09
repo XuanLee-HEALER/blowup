@@ -447,6 +447,7 @@ dependencies = [
  "tracing-subscriber",
  "unicode-normalization",
  "url",
+ "urlencoding",
  "walkdir",
  "which",
 ]

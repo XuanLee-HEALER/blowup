@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { library, subtitle, media, config } from "../lib/tauri";
+import { invoke } from "@tauri-apps/api/core";
+import { library, subtitle, media, audio, config } from "../lib/tauri";
 import type { IndexEntry, FileMediaInfo } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 import { formatSize, formatDuration, formatBitrate, formatFrameRate } from "../lib/format";
@@ -7,7 +8,13 @@ import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
 
 const VIDEO_EXTS = ["mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v"];
 const SUB_EXTS = ["srt", "ass", "sub", "idx", "vtt"];
+const AUDIO_EXTS = ["mp3", "aac", "flac", "opus", "m4a", "wav", "ogg", "ac3", "dts", "mka"];
 const getExt = (f: string) => f.split(".").pop()?.toLowerCase() ?? "";
+const getStem = (f: string) => f.replace(/\.[^.]+$/, "");
+
+function openWaveformWindow(filePath: string) {
+  invoke("open_waveform_window", { filePath }).catch(console.error);
+}
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -101,12 +108,24 @@ function MoreMenu({ items }: { items: { label: string; onClick: () => void; dang
 
 // ── Video resource row ──────────────────────────────────────────
 
-function VideoRow({ file, rootPath, tmdbId, cachedInfo, onStatusChange }: {
-  file: string; rootPath: string; tmdbId: number; cachedInfo?: FileMediaInfo; onStatusChange: (s: StatusMsg) => void;
+const AUDIO_FORMATS = [
+  { label: "MP3", value: "mp3" },
+  { label: "AAC", value: "aac" },
+  { label: "FLAC", value: "flac" },
+  { label: "Opus", value: "opus" },
+  { label: "原始", value: "copy" },
+];
+
+function VideoRow({ file, rootPath, tmdbId, cachedInfo, highlighted, onHover, onStatusChange, onRefresh }: {
+  file: string; rootPath: string; tmdbId: number; cachedInfo?: FileMediaInfo;
+  highlighted: boolean; onHover: (file: string | null) => void;
+  onStatusChange: (s: StatusMsg) => void; onRefresh: () => void;
 }) {
   const fullPath = `${rootPath}/${file}`;
   const [probeInfo, setProbeInfo] = useState<FileMediaInfo | null>(cachedInfo ?? null);
   const [probing, setProbing] = useState(false);
+  const [showExtractAudio, setShowExtractAudio] = useState(false);
+  const [extracting, setExtracting] = useState(false);
 
   const handlePlay = async () => {
     try { await media.openInPlayer(fullPath); }
@@ -131,15 +150,34 @@ function VideoRow({ file, rootPath, tmdbId, cachedInfo, onStatusChange }: {
       }
       await subtitle.extract(fullPath, streams[0].index);
       onStatusChange({ ok: true, msg: "字幕提取成功" });
+      onRefresh();
     } catch (e) { onStatusChange({ ok: false, msg: `提取失败: ${e}` }); }
   };
 
+  const handleExtractAudio = async (format: string) => {
+    setExtracting(true);
+    setShowExtractAudio(false);
+    try {
+      await audio.extract(fullPath, 0, format);
+      onStatusChange({ ok: true, msg: `音轨提取成功 (${format})` });
+      onRefresh();
+    } catch (e) { onStatusChange({ ok: false, msg: `音轨提取失败: ${e}` }); }
+    finally { setExtracting(false); }
+  };
+
   return (
-    <div style={{ marginBottom: "0.4rem" }}>
+    <div
+      style={{ marginBottom: "0.4rem" }}
+      onMouseEnter={() => onHover(file)}
+      onMouseLeave={() => onHover(null)}
+    >
       <div style={{
         display: "flex", alignItems: "center", gap: "0.4rem",
-        padding: "0.5rem 0.75rem", background: "var(--color-bg-secondary)",
+        padding: "0.5rem 0.75rem",
+        background: highlighted ? "var(--color-accent-soft)" : "var(--color-bg-secondary)",
         border: "1px solid var(--color-separator)", borderRadius: 6,
+        boxShadow: highlighted ? "inset 3px 0 0 var(--color-accent)" : undefined,
+        transition: "background 0.15s",
       }}>
         <span style={{ flex: 1, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {file}
@@ -148,8 +186,59 @@ function VideoRow({ file, rootPath, tmdbId, cachedInfo, onStatusChange }: {
         <ActionButton label={probing ? "获取中…" : "媒体信息"} onClick={handleProbe} disabled={probing} />
         <MoreMenu items={[
           { label: "提取字幕轨", onClick: handleExtractSubtitle },
+          { label: extracting ? "提取中…" : "提取音轨", onClick: () => setShowExtractAudio(true) },
         ]} />
       </div>
+      {showExtractAudio && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 100,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onClick={() => setShowExtractAudio(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--color-bg-elevated)", borderRadius: 10,
+              border: "1px solid var(--color-separator)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+              padding: "1.2rem 1.5rem", minWidth: 260,
+            }}
+          >
+            <div style={{ fontSize: "0.85rem", fontWeight: 600, marginBottom: "0.75rem" }}>
+              选择输出格式
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              {AUDIO_FORMATS.map((fmt) => (
+                <button
+                  key={fmt.value}
+                  onClick={() => handleExtractAudio(fmt.value)}
+                  style={{
+                    background: "var(--color-bg-control)",
+                    border: "1px solid var(--color-separator)", borderRadius: 6,
+                    padding: "0.45rem 0.75rem", fontSize: "0.82rem",
+                    color: "var(--color-label-primary)",
+                    cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-hover)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--color-bg-control)")}
+                >{fmt.label}</button>
+              ))}
+            </div>
+            <div style={{ marginTop: "0.75rem", textAlign: "right" }}>
+              <button
+                onClick={() => setShowExtractAudio(false)}
+                style={{
+                  background: "none", border: "none", fontSize: "0.78rem",
+                  color: "var(--color-label-tertiary)", cursor: "pointer", fontFamily: "inherit",
+                }}
+              >取消</button>
+            </div>
+          </div>
+        </div>
+      )}
       {probeInfo && <ProbeDetail info={probeInfo} />}
     </div>
   );
@@ -265,6 +354,56 @@ function SubtitleRow({ file, rootPath, videoFile, onStatusChange, onRefresh }: {
   );
 }
 
+// ── Audio resource row ─────────────────────────────────────────
+
+function AudioRow({ file, rootPath, highlighted, onHover, onStatusChange, onRefresh }: {
+  file: string; rootPath: string;
+  highlighted: boolean; onHover: (file: string | null) => void;
+  onStatusChange: (s: StatusMsg) => void; onRefresh: () => void;
+}) {
+  const fullPath = `${rootPath}/${file}`;
+
+  const handlePlay = () => openWaveformWindow(fullPath);
+
+  const handleDelete = async () => {
+    try {
+      await library.deleteLibraryResource(fullPath);
+      onStatusChange({ ok: true, msg: `已删除 ${file}` });
+      onRefresh();
+    } catch (e) { onStatusChange({ ok: false, msg: `删除失败: ${e}` }); }
+  };
+
+  return (
+    <div
+      style={{ marginBottom: "0.3rem" }}
+      onMouseEnter={() => onHover(file)}
+      onMouseLeave={() => onHover(null)}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", gap: "0.4rem",
+        padding: "0.4rem 0.75rem",
+        background: highlighted ? "var(--color-accent-soft)" : "var(--color-bg-secondary)",
+        border: "1px solid var(--color-separator)", borderRadius: 6,
+        boxShadow: highlighted ? "inset 3px 0 0 var(--color-accent)" : undefined,
+        transition: "background 0.15s",
+      }}>
+        <span style={{ flex: 1, fontSize: "0.82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {file}
+        </span>
+        <ActionButton label="▶ 播放" onClick={handlePlay} accent />
+        <button
+          onClick={handleDelete}
+          style={{
+            background: "none", border: "1px solid var(--color-separator)", borderRadius: 4,
+            padding: "0.2rem 0.5rem", cursor: "pointer", fontSize: "0.72rem",
+            color: "var(--color-danger)", fontFamily: "inherit",
+          }}
+        >删除</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Workspace panel (right side) ────────────────────────────────
 
 function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string }) {
@@ -273,6 +412,8 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
   const [files, setFiles] = useState(entry.files);
   const [fetchingLang, setFetchingLang] = useState("zh");
   const [fetchingSub, setFetchingSub] = useState(false);
+  const [hoveredVideo, setHoveredVideo] = useState<string | null>(null);
+  const [hoveredAudio, setHoveredAudio] = useState<string | null>(null);
 
   // Refresh file list from index
   const refreshFiles = useCallback(async () => {
@@ -284,8 +425,25 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
 
   const videoFiles = files.filter((f) => VIDEO_EXTS.includes(getExt(f)));
   const subtitleFiles = files.filter((f) => SUB_EXTS.includes(getExt(f)));
-  const otherFiles = files.filter((f) => !VIDEO_EXTS.includes(getExt(f)) && !SUB_EXTS.includes(getExt(f)));
+  const audioFiles = files.filter((f) => AUDIO_EXTS.includes(getExt(f)));
+  const otherFiles = files.filter((f) =>
+    !VIDEO_EXTS.includes(getExt(f)) && !SUB_EXTS.includes(getExt(f)) && !AUDIO_EXTS.includes(getExt(f))
+  );
   const primaryVideo = videoFiles[0] ?? null;
+
+  // Association: video stem matches audio filename prefix "{stem}_audio_"
+  const isAudioLinkedToVideo = (audioFile: string, videoFile: string) =>
+    audioFile.startsWith(`${getStem(videoFile)}_audio_`);
+
+  const isVideoHighlighted = (videoFile: string) => {
+    if (hoveredAudio && isAudioLinkedToVideo(hoveredAudio, videoFile)) return true;
+    return false;
+  };
+
+  const isAudioHighlighted = (audioFile: string) => {
+    if (hoveredVideo && isAudioLinkedToVideo(audioFile, hoveredVideo)) return true;
+    return false;
+  };
 
   const handleFetchSubtitle = async () => {
     if (!primaryVideo) {
@@ -348,7 +506,14 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
       ) : (
         <div style={{ marginBottom: "1rem" }}>
           {videoFiles.map((f) => (
-            <VideoRow key={f} file={f} rootPath={rootPath} tmdbId={entry.tmdb_id} cachedInfo={entry.media_info?.[f]} onStatusChange={setStatus} />
+            <VideoRow
+              key={f} file={f} rootPath={rootPath} tmdbId={entry.tmdb_id}
+              cachedInfo={entry.media_info?.[f]}
+              highlighted={isVideoHighlighted(f)}
+              onHover={setHoveredVideo}
+              onStatusChange={setStatus}
+              onRefresh={refreshFiles}
+            />
           ))}
         </div>
       )}
@@ -392,6 +557,24 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
         </select>
         <ActionButton label="+ 从视频提取" onClick={handleExtractAllSubs} disabled={!primaryVideo} />
       </div>
+
+      {/* Audio section */}
+      {audioFiles.length > 0 && (
+        <>
+          <SectionHeader>音频</SectionHeader>
+          <div style={{ marginBottom: "1rem" }}>
+            {audioFiles.map((f) => (
+              <AudioRow
+                key={f} file={f} rootPath={rootPath}
+                highlighted={isAudioHighlighted(f)}
+                onHover={setHoveredAudio}
+                onStatusChange={setStatus}
+                onRefresh={refreshFiles}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Other files */}
       {otherFiles.length > 0 && (

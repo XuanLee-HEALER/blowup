@@ -22,6 +22,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
         player: resolve(__dirname, "player.html"),
+        waveform: resolve(__dirname, "waveform.html"),
       },
     },
   },

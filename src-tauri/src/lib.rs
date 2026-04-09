@@ -163,6 +163,10 @@ pub fn run() {
             commands::tracker::get_tracker_status,
             commands::tracker::refresh_trackers,
             commands::tracker::add_user_trackers,
+            // Audio
+            commands::audio::list_audio_streams_cmd,
+            commands::audio::extract_audio_cmd,
+            commands::audio::open_waveform_window,
             // Subtitle & media
             commands::subtitle::fetch_subtitle_cmd,
             commands::subtitle::align_subtitle_cmd,

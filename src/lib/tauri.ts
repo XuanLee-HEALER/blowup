@@ -380,6 +380,23 @@ export const tracker = {
   addUserTrackers: (raw: string) => invoke<TrackerStatus>("add_user_trackers", { raw }),
 };
 
+export interface AudioStreamInfo {
+  index: number;
+  codec_name: string;
+  channels: number | null;
+  sample_rate: string | null;
+  bit_rate: string | null;
+  language: string | null;
+  title: string | null;
+}
+
+export const audio = {
+  listStreams: (video: string) =>
+    invoke<AudioStreamInfo[]>("list_audio_streams_cmd", { video }),
+  extract: (video: string, stream: number, format: string) =>
+    invoke<string>("extract_audio_cmd", { video, stream, format }),
+};
+
 export const subtitle = {
   fetch: (video: string, lang: string) =>
     invoke<void>("fetch_subtitle_cmd", { video, lang, apiKey: "" }),

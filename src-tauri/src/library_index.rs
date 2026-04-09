@@ -9,6 +9,10 @@ const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v",
 ];
 
+const AUDIO_EXTENSIONS: &[&str] = &[
+    "mp3", "aac", "flac", "opus", "m4a", "wav", "ogg", "ac3", "dts", "mka",
+];
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct IndexEntry {
     pub tmdb_id: u64,
@@ -376,6 +380,7 @@ pub fn scan_dir_files(dir: &Path) -> Vec<String> {
             }
             let ext = path.extension()?.to_str()?.to_lowercase();
             if VIDEO_EXTENSIONS.contains(&ext.as_str())
+                || AUDIO_EXTENSIONS.contains(&ext.as_str())
                 || ext == "srt"
                 || ext == "ass"
                 || ext == "sub"

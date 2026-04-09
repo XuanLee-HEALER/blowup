@@ -1,4 +1,5 @@
 // src-tauri/src/commands/mod.rs
+pub mod audio;
 pub mod config;
 pub mod download;
 pub mod export;

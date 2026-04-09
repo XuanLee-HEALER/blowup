@@ -24,7 +24,8 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7",
     "remark-gfm": "^4.0.1",
-    "vidstack": "^0.6.15"
+    "vidstack": "^0.6.15",
+    "wavesurfer.js": "^7.12.5"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",
