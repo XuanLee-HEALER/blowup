@@ -93,17 +93,93 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "blowup ${{ github.ref_name }}"
           releaseBody: |
-            See the [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
-
             ## Downloads
 
             | Platform | File |
             |----------|------|
+            | macOS (Apple Silicon) | `blowup_*_aarch64.dmg` |
             | Windows (.msi) | `blowup_*_x64-setup.msi` |
             | Windows (.exe) | `blowup_*_x64-setup.nsis.exe` |
-            | macOS (Apple Silicon) | `blowup_*_aarch64.dmg` |
             | Linux (.deb) | `blowup_*_amd64.deb` |
             | Linux (.AppImage) | `blowup_*_amd64.AppImage` |
+
+            **macOS Homebrew:**
+            ```
+            brew tap XuanLee-HEALER/tap
+            brew install --cask blowup
+            ```
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
+
+  # Update Homebrew cask after all builds complete
+  update-homebrew:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download DMG and compute SHA256
+        id: sha
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/blowup_${VERSION}_aarch64.dmg"
+          echo "Downloading $URL"
+          curl -fSL "$URL" -o blowup.dmg
+          SHA=$(sha256sum blowup.dmg | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "SHA256: $SHA"
+
+      - name: Update cask formula
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha.outputs.sha256 }}"
+
+          cat > blowup.rb << 'CASK_EOF'
+          cask "blowup" do
+            version "VERSION_PLACEHOLDER"
+            sha256 "SHA_PLACEHOLDER"
+
+            url "https://github.com/XuanLee-HEALER/blowup/releases/download/v#{version}/blowup_#{version}_aarch64.dmg"
+            name "blowup"
+            desc "Desktop app for film discovery, download, subtitle management, and knowledge base"
+            homepage "https://github.com/XuanLee-HEALER/blowup"
+
+            depends_on macos: ">= :ventura"
+
+            app "blowup.app"
+
+            zap trash: [
+              "~/Library/Application Support/io.github.xuanlee-healer.blowup",
+              "~/Library/Caches/io.github.xuanlee-healer.blowup",
+            ]
+          end
+          CASK_EOF
+
+          sed -i "s/VERSION_PLACEHOLDER/$VERSION/g" blowup.rb
+          sed -i "s/SHA_PLACEHOLDER/$SHA/g" blowup.rb
+
+          # Remove leading whitespace from heredoc
+          sed -i 's/^          //' blowup.rb
+
+          echo "--- Generated cask ---"
+          cat blowup.rb
+
+          # Push to tap repo
+          CONTENT=$(base64 -w0 blowup.rb)
+          EXISTING=$(gh api repos/XuanLee-HEALER/homebrew-tap/contents/Casks/blowup.rb --jq '.sha' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ]; then
+            gh api --method PUT repos/XuanLee-HEALER/homebrew-tap/contents/Casks/blowup.rb \
+              -f message="Update blowup to $VERSION" \
+              -f content="$CONTENT" \
+              -f sha="$EXISTING"
+          else
+            gh api --method PUT repos/XuanLee-HEALER/homebrew-tap/contents/Casks/blowup.rb \
+              -f message="Add blowup $VERSION" \
+              -f content="$CONTENT"
+          fi
