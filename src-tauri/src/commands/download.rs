@@ -65,6 +65,8 @@ pub struct DownloadRecord {
     pub error_message: Option<String>,
     pub started_at: String,
     pub completed_at: Option<String>,
+    pub year: Option<i64>,
+    pub genres: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,15 +103,18 @@ pub async fn start_download(
     let output_folder = index.compute_download_path(&req.director, req.tmdb_id);
 
     // Insert DB record
+    let genres_csv = req.genres.as_deref().map(|g| g.join(",")).unwrap_or_default();
     let download_id = sqlx::query_scalar::<_, i64>(
-        "INSERT INTO downloads (tmdb_id, title, director, quality, target, status) \
-         VALUES (?, ?, ?, ?, ?, 'downloading') RETURNING id",
+        "INSERT INTO downloads (tmdb_id, title, director, quality, target, status, year, genres) \
+         VALUES (?, ?, ?, ?, ?, 'downloading', ?, ?) RETURNING id",
     )
     .bind(req.tmdb_id as i64)
     .bind(&req.title)
     .bind(&req.director)
     .bind(&req.quality)
     .bind(&req.target)
+    .bind(req.year.map(|y| y as i64))
+    .bind(&genres_csv)
     .fetch_one(pool.inner())
     .await
     .map_err(|e| e.to_string())?;
@@ -345,8 +350,8 @@ pub async fn resume_download(
         director,
         title: record.title,
         tmdb_id,
-        year: None,
-        genres: Vec::new(),
+        year: record.year.map(|y| y as u32),
+        genres: record.genres.as_deref().unwrap_or("").split(',').filter(|s| !s.is_empty()).map(String::from).collect(),
     });
 
     Ok(())
@@ -498,8 +503,8 @@ pub async fn redownload(
         director,
         title: record.title,
         tmdb_id,
-        year: None,
-        genres: Vec::new(),
+        year: record.year.map(|y| y as u32),
+        genres: record.genres.as_deref().unwrap_or("").split(',').filter(|s| !s.is_empty()).map(String::from).collect(),
     });
 
     Ok(())

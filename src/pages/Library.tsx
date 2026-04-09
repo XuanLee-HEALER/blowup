@@ -172,7 +172,7 @@ export default function Library() {
               >
                 <div style={{ fontWeight: 500 }}>{e.title}</div>
                 <div style={{ fontSize: "0.7rem", color: "var(--color-label-tertiary)" }}>
-                  {e.director_display} · {e.year ?? "—"}
+                  {e.director_display}{e.year ? ` · ${e.year}` : ""}
                 </div>
               </div>
             ))
@@ -266,8 +266,9 @@ export default function Library() {
                   </div>
                 )}
                 <div style={{ fontSize: "0.82rem", color: "var(--color-label-secondary)", marginBottom: "0.6rem" }}>
-                  {selectedEntry.year ?? "—"}
-                  {selectedEntry.rating != null && <span> · ★ {selectedEntry.rating.toFixed(1)}</span>}
+                  {selectedEntry.year}
+                  {selectedEntry.year && selectedEntry.rating != null && " · "}
+                  {selectedEntry.rating != null && <span>★ {selectedEntry.rating.toFixed(1)}</span>}
                 </div>
                 {/* Credits: show each role that has data */}
                 {Object.keys(credits).length > 0 ? (
