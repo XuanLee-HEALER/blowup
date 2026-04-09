@@ -19,7 +19,7 @@ pub(crate) fn app_data_dir() -> PathBuf {
     })
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Config {
     #[serde(default)]
     pub tools: ToolsConfig,
@@ -45,27 +45,25 @@ pub struct Config {
     pub sync: SyncConfig,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ToolsConfig {
-    #[serde(default = "default_alass")]
-    pub alass: String,
     #[serde(default = "default_ffmpeg")]
     pub ffmpeg: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SearchConfig {
     #[serde(default = "default_rate_limit")]
     pub rate_limit_secs: u64,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SubtitleConfig {
     #[serde(default = "default_lang")]
     pub default_lang: String,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct OpenSubtitlesConfig {
     #[serde(default)]
     pub api_key: String,
@@ -75,19 +73,19 @@ pub struct OpenSubtitlesConfig {
     pub password: String,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct AssrtConfig {
     #[serde(default)]
     pub token: String,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct TmdbConfig {
     #[serde(default)]
     pub api_key: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LibraryConfig {
     #[serde(default = "default_root_dir")]
     pub root_dir: String,
@@ -109,7 +107,7 @@ pub struct MusicTrack {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CacheConfig {
     #[serde(default = "default_cache_max_entries")]
     pub max_entries: usize,
@@ -127,7 +125,7 @@ fn default_cache_max_entries() -> usize {
     200
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct DownloadConfig {
     #[serde(default = "default_max_concurrent")]
     pub max_concurrent: usize,
@@ -155,7 +153,7 @@ fn default_enable_dht() -> bool {
     true
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct SyncConfig {
     #[serde(default)]
     pub endpoint: String,
@@ -171,9 +169,6 @@ fn default_music_mode() -> String {
     "sequential".to_string()
 }
 
-fn default_alass() -> String {
-    "alass".to_string()
-}
 fn default_ffmpeg() -> String {
     "ffmpeg".to_string()
 }
@@ -194,7 +189,6 @@ fn default_root_dir() -> String {
 impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
-            alass: default_alass(),
             ffmpeg: default_ffmpeg(),
         }
     }
@@ -258,16 +252,14 @@ pub fn load_config() -> Config {
     toml::from_str(&content).unwrap_or_default()
 }
 
-/// Well-known directories where CLI tools are commonly installed.
-/// macOS GUI apps don't inherit the shell PATH, so we probe these manually.
-const WELL_KNOWN_DIRS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"];
-
-/// Try to find `name` via PATH first, then fall back to well-known directories.
+/// Try to find `name` via PATH first, then fall back to well-known directories (macOS only).
+/// macOS GUI apps don't inherit the shell PATH, so we probe Homebrew/usr paths manually.
 fn find_tool(name: &str) -> Option<PathBuf> {
     if let Ok(p) = which::which(name) {
         return Some(p);
     }
-    for dir in WELL_KNOWN_DIRS {
+    #[cfg(target_os = "macos")]
+    for dir in &["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"] {
         let candidate = PathBuf::from(dir).join(name);
         if candidate.is_file() {
             return Some(candidate);
@@ -281,16 +273,6 @@ fn find_tool(name: &str) -> Option<PathBuf> {
 /// Returns true if any path was changed.
 pub fn resolve_tool_paths(config: &mut Config) -> bool {
     let mut changed = false;
-
-    // alass / alass-cli — resolve to absolute path if not already
-    if !PathBuf::from(&config.tools.alass).is_absolute()
-        && let Some(p) = find_tool(&config.tools.alass)
-            .or_else(|| find_tool("alass"))
-            .or_else(|| find_tool("alass-cli"))
-    {
-        config.tools.alass = p.to_string_lossy().into_owned();
-        changed = true;
-    }
 
     // ffmpeg — resolve to absolute path if not already
     if !PathBuf::from(&config.tools.ffmpeg).is_absolute()
@@ -323,7 +305,6 @@ mod tests {
     #[test]
     fn default_config_has_sane_values() {
         let cfg = Config::default();
-        assert_eq!(cfg.tools.alass, "alass");
         assert_eq!(cfg.tools.ffmpeg, "ffmpeg");
         assert_eq!(cfg.search.rate_limit_secs, 5);
         assert_eq!(cfg.subtitle.default_lang, "zh");
@@ -337,12 +318,12 @@ mod tests {
 
     #[test]
     fn parse_partial_toml() {
+        // Old config with alass field should still parse (backward compat)
         let toml = r#"
 [tools]
 alass = "/usr/local/bin/alass"
 "#;
         let cfg: Config = toml::from_str(toml).unwrap();
-        assert_eq!(cfg.tools.alass, "/usr/local/bin/alass");
         assert_eq!(cfg.tools.ffmpeg, "ffmpeg");
         assert_eq!(cfg.search.rate_limit_secs, 5);
     }

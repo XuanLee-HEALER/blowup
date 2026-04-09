@@ -148,15 +148,13 @@ export default function Settings() {
       </Section>
 
       <Section title="工具路径">
-        {(["alass", "ffmpeg"] as const).map((tool) => (
-          <Field key={tool} label={tool}>
-            <TextInput
-              defaultValue={cfg.tools[tool]}
-              placeholder={tool}
-              onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.tools[tool] = v; }); }}
-            />
-          </Field>
-        ))}
+        <Field label="ffmpeg">
+          <TextInput
+            defaultValue={cfg.tools.ffmpeg}
+            placeholder="ffmpeg"
+            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.tools.ffmpeg = v; }); }}
+          />
+        </Field>
       </Section>
 
       <Section title="下载">

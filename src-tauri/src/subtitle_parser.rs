@@ -114,6 +114,16 @@ fn format_ass_ts(ms: i64) -> String {
     format!("{h}:{m:02}:{s:02}.{cs:02}")
 }
 
+/// Format milliseconds as SRT timestamp: `HH:MM:SS,mmm`
+pub fn format_srt_ts(ms: i64) -> String {
+    let ms = ms.max(0);
+    let h = ms / 3_600_000;
+    let m = (ms % 3_600_000) / 60_000;
+    let s = (ms % 60_000) / 1_000;
+    let millis = ms % 1_000;
+    format!("{h:02}:{m:02}:{s:02},{millis:03}")
+}
+
 pub fn merge_to_ass(configs: &[SubtitleOverlayConfig]) -> Result<String, String> {
     let mut styles = String::new();
     let mut events = String::new();

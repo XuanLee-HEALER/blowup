@@ -1,3 +1,4 @@
+pub mod alass;
 pub mod cache;
 pub mod commands;
 pub mod common;
@@ -21,11 +22,17 @@ fn init_tracing() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let app_start = std::time::Instant::now();
     init_tracing();
+    tracing::debug!(
+        "[timing] tracing init done: {}ms",
+        app_start.elapsed().as_millis()
+    );
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(|app| {
+        .setup(move |app| {
+            tracing::debug!("[timing] setup start: {}ms", app_start.elapsed().as_millis());
             let handle = app.handle().clone();
             let data_dir = app
                 .path()
@@ -34,17 +41,24 @@ pub fn run() {
             config::init_app_data_dir(data_dir);
             cache::init_cache();
 
-            let mut cfg = config::load_config();
-            config::resolve_tool_paths(&mut cfg);
+            let cfg = config::load_config();
+            tracing::debug!("[timing] config loaded: {}ms", app_start.elapsed().as_millis());
 
-            // Initialize library index
-            let t0 = std::time::Instant::now();
+            // Resolve tool paths in background — which() is slow on Windows
+            let mut cfg_bg = cfg.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                if config::resolve_tool_paths(&mut cfg_bg) {
+                    tracing::info!("tool paths resolved in background");
+                }
+            });
+
+            // Initialize library index (sync file read, no write-back on load)
             let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
             let library_root = std::path::PathBuf::from(&root_dir);
             std::fs::create_dir_all(&library_root).ok();
             let library_index = library_index::LibraryIndex::load(&library_root);
             handle.manage(library_index);
-            tracing::info!(elapsed_ms = t0.elapsed().as_millis(), "library index loaded");
+            tracing::debug!("[timing] library index loaded: {}ms", app_start.elapsed().as_millis());
 
             // Allow asset protocol to serve files from the library directory
             if let Err(e) = app.asset_protocol_scope().allow_directory(&library_root, true) {
@@ -54,13 +68,24 @@ pub fn run() {
             // Init tracker manager (loads trackers.json, migrates legacy format)
             let (tracker_mgr, trackers) = commands::tracker::TrackerManager::load();
             handle.manage(tracker_mgr);
-            tracing::info!(count = trackers.len(), "tracker manager loaded");
+            tracing::debug!("[timing] tracker manager loaded: {}ms", app_start.elapsed().as_millis());
 
-            // Init DB (must complete before window opens — commands depend on pool)
-            let t1 = std::time::Instant::now();
+            // Init DB + crash-recovery in a single block_on
+            tracing::debug!("[timing] db init start: {}ms", app_start.elapsed().as_millis());
             tauri::async_runtime::block_on(async {
                 match db::init_db(&handle).await {
                     Ok(pool) => {
+                        // Mark stale 'downloading' records as 'paused' (crash recovery)
+                        let res = sqlx::query(
+                            "UPDATE downloads SET status='paused' WHERE status='downloading'",
+                        )
+                        .execute(&pool)
+                        .await;
+                        if let Ok(r) = res
+                            && r.rows_affected() > 0
+                        {
+                            tracing::info!(count = r.rows_affected(), "paused stale downloads");
+                        }
                         handle.manage(pool);
                     }
                     Err(msg) => {
@@ -74,29 +99,18 @@ pub fn run() {
                     }
                 }
             });
-            tracing::info!(elapsed_ms = t1.elapsed().as_millis(), "database initialized");
 
-            // Mark stale 'downloading' records as 'paused' (crash recovery)
-            tauri::async_runtime::block_on(async {
-                let pool = handle.state::<sqlx::SqlitePool>();
-                let res = sqlx::query(
-                    "UPDATE downloads SET status='paused' WHERE status='downloading'",
-                )
-                .execute(pool.inner())
-                .await;
-                match res {
-                    Ok(r) if r.rows_affected() > 0 => {
-                        tracing::info!(count = r.rows_affected(), "paused stale downloads");
-                    }
-                    Err(e) => tracing::warn!(error = %e, "failed to pause stale downloads"),
-                    _ => {}
-                }
-            });
+            tracing::debug!("[timing] setup complete: {}ms", app_start.elapsed().as_millis());
 
-            // Init torrent manager in background — don't block window creation
+            #[cfg(debug_assertions)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
+            }
+
+            // Init torrent manager in background — don't block window
             let tm_handle = handle.clone();
-            let t2 = std::time::Instant::now();
             tauri::async_runtime::spawn(async move {
+                let t = std::time::Instant::now();
                 match torrent::TorrentManager::new(
                     library_root,
                     cfg.download.max_concurrent,
@@ -107,11 +121,11 @@ pub fn run() {
                 .await
                 {
                     Ok(tm) => {
-                        tracing::info!(elapsed_ms = t2.elapsed().as_millis(), "torrent manager ready");
+                        tracing::info!(elapsed_ms = t.elapsed().as_millis(), "torrent manager ready");
                         tm_handle.manage(tm);
                     }
                     Err(e) => {
-                        tracing::error!(error = %e, elapsed_ms = t2.elapsed().as_millis(), "failed to init torrent manager");
+                        tracing::error!(error = %e, elapsed_ms = t.elapsed().as_millis(), "failed to init torrent manager");
                     }
                 }
             });
@@ -133,13 +147,6 @@ pub fn run() {
                     }
                 }
             });
-
-            // Open devtools in debug builds
-            #[cfg(debug_assertions)]
-            {
-                let window = app.get_webview_window("main").expect("main window");
-                window.open_devtools();
-            }
 
             Ok(())
         })

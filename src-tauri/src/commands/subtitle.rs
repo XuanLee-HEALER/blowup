@@ -9,10 +9,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
-use which::which;
 
 // ── OpenSubtitles REST API ────────────────────────────────────────────────
 
@@ -353,41 +351,8 @@ fn clean_query(stem: &str) -> String {
     }
 }
 
-// ── align_subtitle (alass) ───────────────────────────────────────────────
+// ── align_subtitle (alass-core library) ──────────────────────────────────
 
-fn find_alass(alass_path: Option<&str>) -> Result<std::path::PathBuf, SubError> {
-    if let Some(p) = alass_path.filter(|s| !s.is_empty()) {
-        Ok(std::path::PathBuf::from(p))
-    } else {
-        which("alass")
-            .or_else(|_| which("alass-cli"))
-            .map_err(|_| SubError::AlassNotFound)
-    }
-}
-
-pub fn align_subtitle(video: &Path, srt: &Path, alass_path: Option<&str>) -> Result<(), SubError> {
-    let alass = find_alass(alass_path)?;
-    let backup = srt.with_extension("bak.srt");
-
-    let run_result = Command::new(&alass)
-        .arg(video)
-        .arg(srt)
-        .arg(&backup)
-        .output()
-        .map_err(|e| SubError::AlassFailed(e.to_string()))?;
-
-    if !run_result.status.success() {
-        let stderr = String::from_utf8_lossy(&run_result.stderr).to_string();
-        return Err(SubError::AlassFailed(stderr));
-    }
-
-    std::fs::copy(&backup, srt).map_err(SubError::Io)?;
-    Ok(())
-}
-
-/// Align subtitle to an audio file using alass.
-/// Outputs to `{srt_stem}.aligned.{ext}` without modifying the original.
-/// Returns (output_path, alass_log) for user preview.
 #[derive(Debug, Clone, Serialize)]
 pub struct AlignResult {
     pub output_path: String,
@@ -395,14 +360,32 @@ pub struct AlignResult {
     pub summary: String,
 }
 
-pub async fn align_subtitle_to_audio(
-    srt: &Path,
-    audio: &Path,
-    alass_path: Option<&str>,
-) -> Result<AlignResult, SubError> {
-    let alass = find_alass(alass_path)?;
+/// Align SRT subtitle to a video file. Overwrites the original SRT in place.
+pub async fn align_subtitle(video: &Path, srt: &Path) -> Result<(), SubError> {
+    let srt_content = fs::read_to_string(srt).map_err(SubError::Io)?;
+    let cues = crate::subtitle_parser::parse_srt(&srt_content);
+    if cues.is_empty() {
+        return Err(SubError::AlassFailed("字幕文件为空".into()));
+    }
 
-    // Build output filename: foo.zh.srt → foo.zh.aligned.srt
+    let output = crate::alass::align_to_media(&cues, video)
+        .await
+        .map_err(SubError::AlassFailed)?;
+
+    tracing::info!(summary = %output.summary, "align_subtitle done");
+    fs::write(srt, crate::alass::cues_to_srt(&output.cues)).map_err(SubError::Io)?;
+    Ok(())
+}
+
+/// Align SRT subtitle to an audio file.
+/// Outputs to `{srt_stem}.aligned.{ext}` without modifying the original.
+pub async fn align_subtitle_to_audio(srt: &Path, audio: &Path) -> Result<AlignResult, SubError> {
+    let srt_content = fs::read_to_string(srt).map_err(SubError::Io)?;
+    let cues = crate::subtitle_parser::parse_srt(&srt_content);
+    if cues.is_empty() {
+        return Err(SubError::AlassFailed("字幕文件为空".into()));
+    }
+
     let stem = srt.file_stem().unwrap_or_default().to_string_lossy();
     let ext = srt.extension().unwrap_or_default().to_string_lossy();
     let out_name = format!("{stem}.aligned.{ext}");
@@ -412,44 +395,19 @@ pub async fn align_subtitle_to_audio(
         srt = %srt.display(),
         audio = %audio.display(),
         output = %out_path.display(),
-        "aligning subtitle to audio"
+        "aligning subtitle to audio via alass-core"
     );
 
-    let run_result = tokio::process::Command::new(&alass)
-        .arg(audio)
-        .arg(srt)
-        .arg(&out_path)
-        .output()
+    let output = crate::alass::align_to_media(&cues, audio)
         .await
-        .map_err(|e| SubError::AlassFailed(e.to_string()))?;
+        .map_err(SubError::AlassFailed)?;
 
-    let stderr = String::from_utf8_lossy(&run_result.stderr).to_string();
-    let stdout = String::from_utf8_lossy(&run_result.stdout).to_string();
-    let raw_log = if stderr.is_empty() { stdout } else { stderr };
-
-    tracing::debug!(log = %raw_log, success = run_result.status.success(), "alass output");
-
-    if !run_result.status.success() {
-        return Err(SubError::AlassFailed(raw_log));
-    }
-
-    // Extract summary from alass output, e.g.:
-    //   "shifted block of 666 subtitles with length 1:13:25.200 by 0:00:14.180"
-    let summary = raw_log
-        .lines()
-        .filter(|l| l.contains("shifted block") || l.contains("no shift"))
-        .collect::<Vec<_>>()
-        .join("; ");
-    let summary = if summary.is_empty() {
-        "对齐完成".to_string()
-    } else {
-        summary
-    };
+    fs::write(&out_path, crate::alass::cues_to_srt(&output.cues)).map_err(SubError::Io)?;
 
     Ok(AlignResult {
         output_path: out_path.to_string_lossy().to_string(),
         output_filename: out_name,
-        summary,
+        summary: output.summary,
     })
 }
 
@@ -473,7 +431,11 @@ fn apply_offset(content: &str, offset_ms: i64) -> Result<String, SubError> {
     let result = re.replace_all(content, |caps: &regex::Captures| {
         let start = parse_ts(caps, 1) + offset_ms;
         let end = parse_ts(caps, 5) + offset_ms;
-        format!("{} --> {}", format_ts(start.max(0)), format_ts(end.max(0)))
+        format!(
+            "{} --> {}",
+            format_srt_ts(start.max(0)),
+            format_srt_ts(end.max(0))
+        )
     });
     Ok(result.into_owned())
 }
@@ -486,13 +448,7 @@ fn parse_ts(caps: &regex::Captures, offset: usize) -> i64 {
     h * 3_600_000 + m * 60_000 + s * 1_000 + ms
 }
 
-fn format_ts(total_ms: i64) -> String {
-    let h = total_ms / 3_600_000;
-    let m = (total_ms % 3_600_000) / 60_000;
-    let s = (total_ms % 60_000) / 1_000;
-    let ms = total_ms % 1_000;
-    format!("{:02}:{:02}:{:02},{:03}", h, m, s, ms)
-}
+use crate::subtitle_parser::format_srt_ts;
 
 // ── extract / list subtitle streams (ffmpeg) ─────────────────────────────
 
@@ -1265,27 +1221,19 @@ pub fn parse_subtitle_cmd(path: String) -> Result<Vec<SubEntry>, String> {
 
 #[tauri::command]
 pub fn open_subtitle_viewer(app: tauri::AppHandle, file_path: String) -> Result<(), String> {
-    let label = format!(
-        "subtitle-viewer-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
-    );
-
+    let label = crate::common::unique_window_label("subtitle-viewer");
     let url = format!(
         "subtitle-viewer.html?file={}",
         urlencoding::encode(&file_path)
     );
-
-    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
-        .title("字幕查看器")
-        .inner_size(720.0, 600.0)
-        .min_inner_size(400.0, 300.0)
-        .build()
-        .map_err(|e| format!("创建字幕查看器失败: {e}"))?;
-
-    Ok(())
+    crate::common::open_child_window(
+        &app,
+        &label,
+        &url,
+        "字幕查看器",
+        (720.0, 600.0),
+        Some((400.0, 300.0)),
+    )
 }
 
 #[tauri::command]
@@ -1302,14 +1250,10 @@ pub async fn fetch_subtitle_cmd(
 }
 
 #[tauri::command]
-pub fn align_subtitle_cmd(video: String, srt: String) -> std::result::Result<(), String> {
-    let cfg = crate::config::load_config();
-    align_subtitle(
-        std::path::Path::new(&video),
-        std::path::Path::new(&srt),
-        Some(&cfg.tools.alass),
-    )
-    .map_err(|e| e.to_string())
+pub async fn align_subtitle_cmd(video: String, srt: String) -> std::result::Result<(), String> {
+    align_subtitle(std::path::Path::new(&video), std::path::Path::new(&srt))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1338,8 +1282,7 @@ pub fn shift_subtitle_cmd(srt: String, offset_ms: i64) -> std::result::Result<()
 
 #[tauri::command]
 pub async fn align_to_audio_cmd(srt: String, audio: String) -> Result<AlignResult, String> {
-    let cfg = crate::config::load_config();
-    align_subtitle_to_audio(Path::new(&srt), Path::new(&audio), Some(&cfg.tools.alass))
+    align_subtitle_to_audio(Path::new(&srt), Path::new(&audio))
         .await
         .map_err(|e| e.to_string())
 }
@@ -1396,16 +1339,6 @@ mod tests {
     fn clean_query_persona() {
         let q = clean_query("Persona.1966.720p.BluRay.x264-[YTS.AM]");
         assert_eq!(q, "Persona");
-    }
-
-    #[test]
-    fn align_returns_error_when_alass_missing() {
-        let result = align_subtitle(
-            Path::new("video.mp4"),
-            Path::new("sub.srt"),
-            Some("nonexistent_alass_binary_xyz"),
-        );
-        assert!(matches!(result, Err(SubError::AlassFailed(_))));
     }
 
     #[test]

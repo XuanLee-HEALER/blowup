@@ -44,7 +44,7 @@ export interface TmdbMovieCredits {
 export interface MusicTrack { src: string; name: string; }
 
 export interface AppConfig {
-  tools: { alass: string; ffmpeg: string };
+  tools: { ffmpeg: string };
   download: { max_concurrent: number; enable_dht: boolean; persist_session: boolean };
   search: { rate_limit_secs: number };
   subtitle: { default_lang: string };

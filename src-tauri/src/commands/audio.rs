@@ -176,21 +176,7 @@ pub async fn extract_audio_cmd(
 
 #[tauri::command]
 pub fn open_waveform_window(app: tauri::AppHandle, file_path: String) -> Result<(), String> {
-    let label = format!(
-        "waveform-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0)
-    );
-
+    let label = crate::common::unique_window_label("waveform");
     let url = format!("waveform.html?file={}", urlencoding::encode(&file_path));
-
-    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(url.into()))
-        .title("音频波形")
-        .inner_size(800.0, 300.0)
-        .build()
-        .map_err(|e| format!("创建波形窗口失败: {e}"))?;
-
-    Ok(())
+    crate::common::open_child_window(&app, &label, &url, "音频波形", (800.0, 300.0), None)
 }

@@ -24,9 +24,7 @@ pub enum SubError {
     NoSubtitleFound,
     #[error("HTTP request failed: {0}")]
     HttpFailed(#[from] reqwest::Error),
-    #[error("alass not found in PATH")]
-    AlassNotFound,
-    #[error("alass failed: {0}")]
+    #[error("alass alignment failed: {0}")]
     AlassFailed(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),

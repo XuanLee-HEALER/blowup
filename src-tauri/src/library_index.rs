@@ -121,12 +121,10 @@ impl LibraryIndex {
             IndexFile::default()
         };
 
-        let idx = Self {
+        Self {
             root: root.to_path_buf(),
             data: RwLock::new(data),
-        };
-        idx.save();
-        idx
+        }
     }
 
     fn index_path(&self) -> PathBuf {

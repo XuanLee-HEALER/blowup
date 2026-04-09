@@ -7,6 +7,16 @@
   </head>
   <body style="margin:0;overflow:hidden;background:#1a1a1a;">
     <div id="root"></div>
+    <script>
+      window.addEventListener("error", function(e) {
+        document.getElementById("root").innerText = "JS Error: " + e.message + "\n" + (e.filename || "") + ":" + (e.lineno || "");
+        document.getElementById("root").style.cssText = "color:#e55;padding:20px;font-size:14px;white-space:pre-wrap;";
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        document.getElementById("root").innerText = "Promise Error: " + (e.reason?.message || e.reason);
+        document.getElementById("root").style.cssText = "color:#e55;padding:20px;font-size:14px;white-space:pre-wrap;";
+      });
+    </script>
     <script type="module" src="/src/waveform-main.tsx"></script>
   </body>
 </html>

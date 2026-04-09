@@ -18,6 +18,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "alass-core"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4ad56e53efbd3731dc4fb0db24953d399f9789caa706b4c5a1a715010170124"
+
+[[package]]
 name = "alloc-no-stdlib"
 version = "2.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -415,7 +421,9 @@ dependencies = [
 name = "blowup"
 version = "2.0.4"
 dependencies = [
+ "alass-core",
  "anyhow",
+ "byteorder",
  "cc",
  "chrono",
  "dirs 5.0.1",
@@ -449,6 +457,7 @@ dependencies = [
  "url",
  "urlencoding",
  "walkdir",
+ "webrtc-vad",
  "which",
 ]
 
@@ -6655,6 +6664,15 @@ dependencies = [
  "pkg-config",
  "soup3-sys",
  "system-deps",
+]
+
+[[package]]
+name = "webrtc-vad"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39a1e40fd6ca90be95459152a2537f2ba4286ee1b13073f7ebcaa74fc94e3008"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
