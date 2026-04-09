@@ -442,9 +442,18 @@ export const media = {
     invoke<void>("cmd_open_player", { filePath }),
 };
 
+export interface SubtitleOverlayConfig {
+  path: string;
+  y_position: number; // 0.0 (bottom) - 1.0 (top)
+  color: string;      // "#RRGGBB"
+  font_size: number;
+}
+
 export const player = {
   getCurrentFile: () =>
     invoke<string | null>("cmd_player_get_current_file"),
   subAdd: (path: string) =>
     invoke<void>("cmd_player_sub_add", { path }),
+  loadOverlaySubs: (configs: SubtitleOverlayConfig[]) =>
+    invoke<string>("cmd_player_load_overlay_subs", { configs }),
 };

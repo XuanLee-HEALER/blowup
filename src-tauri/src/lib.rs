@@ -7,6 +7,7 @@ pub mod error;
 pub mod ffmpeg;
 pub mod library_index;
 pub mod player;
+pub mod subtitle_parser;
 pub mod torrent;
 
 use tauri::Manager;
@@ -240,6 +241,7 @@ pub fn run() {
             player::commands::cmd_player_toggle_fullscreen,
             player::commands::cmd_player_get_current_file,
             player::commands::cmd_player_sub_add,
+            player::commands::cmd_player_load_overlay_subs,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

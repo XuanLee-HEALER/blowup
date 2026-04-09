@@ -516,6 +516,70 @@ pub async fn extract_sub_srt(
     Ok(())
 }
 
+/// Extract all embedded subtitle streams from a video file into individual .srt files.
+/// Returns the number of streams extracted.
+pub async fn auto_extract_all_subtitles(video: &Path) -> usize {
+    let streams = match list_all_subtitle_stream(video).await {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to list subtitle streams for auto-extraction");
+            return 0;
+        }
+    };
+    if streams.is_empty() {
+        return 0;
+    }
+
+    let stem = video
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let dir = video.parent().unwrap_or(Path::new("."));
+    let mut extracted = 0;
+
+    for (i, stream) in streams.iter().enumerate() {
+        let lang_tag = stream.language.as_deref().unwrap_or("und");
+        let out_name = if streams.len() == 1 {
+            format!("{stem}.{lang_tag}.srt")
+        } else {
+            format!("{stem}.{i}.{lang_tag}.srt")
+        };
+        let out_path = dir.join(&out_name);
+        if out_path.exists() {
+            extracted += 1;
+            continue; // Already extracted
+        }
+
+        let map_spec = format!("0:s:{i}");
+        let video_str = video.to_string_lossy().to_string();
+        let out_str = out_path.to_string_lossy().to_string();
+        let options = vec![
+            "-i".to_string(),
+            video_str,
+            "-map".to_string(),
+            map_spec,
+            "-c".to_string(),
+            "copy".to_string(),
+            out_str,
+        ];
+        match FfmpegTool::Ffmpeg
+            .exec_with_options(None::<&'static str>, Some(options))
+            .await
+        {
+            Ok(_) => {
+                tracing::info!(out_name, "extracted subtitle stream");
+                extracted += 1;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, out_name, "failed to extract subtitle stream");
+            }
+        }
+    }
+
+    extracted
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct FfprobeOutput {
     streams: Vec<FfprobeStream>,

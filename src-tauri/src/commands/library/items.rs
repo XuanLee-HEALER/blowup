@@ -374,13 +374,26 @@ pub fn rebuild_index(
 // ── Resource & Film directory deletion ─────────────────────────
 
 /// Delete a single media resource: removes disk file + DB records.
+/// If deleting an SRT file, also cleans up any cached overlay ASS files.
 #[tauri::command]
 pub async fn delete_library_resource(
     file_path: String,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<(), String> {
+    let path = std::path::Path::new(&file_path);
+    let is_srt = path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"));
+
     match std::fs::remove_file(&file_path) {
         Ok(()) | Err(_) => {} // NotFound is fine — file may already be gone
+    }
+
+    // Clean up overlay cache if an SRT was deleted
+    if is_srt {
+        if let Some(dir) = path.parent() {
+            crate::subtitle_parser::cleanup_stale_overlays(dir);
+        }
     }
 
     let item_id: Option<i64> =

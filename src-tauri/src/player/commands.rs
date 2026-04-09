@@ -1,6 +1,9 @@
 use super::{
     PlayerState, TrackInfo, close_player, get_current_file_path, open_player, with_player,
 };
+use crate::subtitle_parser::{
+    SubtitleOverlayConfig, cleanup_stale_overlays, merge_to_ass, overlay_cache_key,
+};
 use tauri::Manager;
 
 #[tauri::command]
@@ -105,4 +108,43 @@ pub fn cmd_player_get_current_file() -> Result<Option<String>, String> {
 pub fn cmd_player_sub_add(path: String) -> Result<(), String> {
     tracing::info!(path, "cmd_player_sub_add");
     with_player(|p| p.mpv.command(&["sub-add", &path]))
+}
+
+#[tauri::command]
+pub fn cmd_player_load_overlay_subs(configs: Vec<SubtitleOverlayConfig>) -> Result<String, String> {
+    if configs.is_empty() {
+        // Remove overlay subs — disable subtitle track
+        with_player(|p| p.mpv.set_property_string("sid", "0"))?;
+        return Ok(String::new());
+    }
+
+    // Determine film directory from first config path
+    let film_dir = std::path::Path::new(&configs[0].path)
+        .parent()
+        .ok_or("invalid subtitle path")?;
+    let cache_name = overlay_cache_key(&configs);
+    let ass_path = film_dir.join(&cache_name);
+
+    // Generate ASS if not cached
+    if !ass_path.exists() {
+        let ass_content = merge_to_ass(&configs)?;
+        std::fs::write(&ass_path, &ass_content).map_err(|e| format!("写入 ASS 文件失败: {}", e))?;
+        tracing::info!(?ass_path, "generated overlay ASS");
+    } else {
+        tracing::info!(?ass_path, "using cached overlay ASS");
+    }
+
+    let ass_str = ass_path.to_string_lossy().to_string();
+
+    with_player(|p| {
+        // Disable current subtitle track first
+        p.mpv.set_property_string("sid", "0")?;
+        // Ensure ASS styles are not overridden by mpv
+        p.mpv.set_property_string("sub-ass-override", "no")?;
+        // Add the merged ASS file
+        p.mpv.command(&["sub-add", &ass_str, "select"])?;
+        Ok(())
+    })?;
+
+    Ok(ass_str)
 }

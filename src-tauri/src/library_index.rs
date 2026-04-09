@@ -378,6 +378,11 @@ pub fn scan_dir_files(dir: &Path) -> Vec<String> {
             if !path.is_file() {
                 return None;
             }
+            let name = e.file_name().to_string_lossy().to_string();
+            // Skip generated overlay files
+            if name.starts_with(".blowup_") {
+                return None;
+            }
             let ext = path.extension()?.to_str()?.to_lowercase();
             if VIDEO_EXTENSIONS.contains(&ext.as_str())
                 || AUDIO_EXTENSIONS.contains(&ext.as_str())
@@ -386,7 +391,7 @@ pub fn scan_dir_files(dir: &Path) -> Vec<String> {
                 || ext == "sub"
                 || ext == "idx"
             {
-                Some(e.file_name().to_string_lossy().to_string())
+                Some(name)
             } else {
                 None
             }

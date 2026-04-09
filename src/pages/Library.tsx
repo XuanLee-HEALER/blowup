@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { library, media, config, player } from "../lib/tauri";
-import type { IndexEntry } from "../lib/tauri";
+import type { IndexEntry, SubtitleOverlayConfig } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
@@ -17,7 +17,8 @@ export default function Library() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<IndexEntry[] | null>(null);
   const [enriching, setEnriching] = useState(false);
-  const [checkedSubs, setCheckedSubs] = useState<Set<string>>(new Set());
+  interface SubConfig { enabled: boolean; y_position: number; color: string; font_size: number; }
+  const [subConfigs, setSubConfigs] = useState<Map<string, SubConfig>>(new Map());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry: IndexEntry } | null>(null);
   const rootDir = useRef("");
 
@@ -35,7 +36,7 @@ export default function Library() {
 
   const selectEntry = useCallback((entry: IndexEntry) => {
     setSelectedEntry(entry);
-    setCheckedSubs(new Set());
+    setSubConfigs(new Map());
     if (entry.poster_url) {
       const resolved = entry.poster_url.startsWith("http") ? entry.poster_url : convertFileSrc(entry.poster_url);
       console.log("[blowup] poster_url:", entry.poster_url, "→ resolved:", resolved);
@@ -62,12 +63,15 @@ export default function Library() {
     const root = rootDir.current;
     const fullPath = `${root}/${entry.path}/${file}`;
     await media.openInPlayer(fullPath);
-    if (checkedSubs.size > 0) {
-      setTimeout(async () => {
-        for (const sub of checkedSubs) {
-          try { await player.subAdd(`${root}/${entry.path}/${sub}`); } catch { /* ignore */ }
-        }
-      }, 500);
+    const enabledSubs = [...subConfigs.entries()].filter(([, c]) => c.enabled);
+    if (enabledSubs.length > 0) {
+      const configs: SubtitleOverlayConfig[] = enabledSubs.map(([name, c]) => ({
+        path: `${root}/${entry.path}/${name}`,
+        y_position: c.y_position,
+        color: c.color,
+        font_size: c.font_size,
+      }));
+      setTimeout(() => { player.loadOverlaySubs(configs).catch(console.error); }, 500);
     }
   };
 
@@ -113,10 +117,31 @@ export default function Library() {
     await refresh();
   };
 
+  const DEFAULT_SUB_COLORS = ["#FFFFFF", "#FFFF00", "#00FF00", "#00FFFF"];
   const toggleSub = (file: string) => {
-    setCheckedSubs((prev) => {
-      const next = new Set(prev);
-      if (next.has(file)) next.delete(file); else next.add(file);
+    setSubConfigs((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(file);
+      if (existing) {
+        next.set(file, { ...existing, enabled: !existing.enabled });
+      } else {
+        const idx = [...prev.values()].filter((c) => c.enabled).length;
+        next.set(file, {
+          enabled: true,
+          y_position: idx === 0 ? 0.05 : 0.95,
+          color: DEFAULT_SUB_COLORS[idx % DEFAULT_SUB_COLORS.length],
+          font_size: idx === 0 ? 48 : 36,
+        });
+      }
+      return next;
+    });
+  };
+
+  const updateSubConfig = (file: string, patch: Partial<SubConfig>) => {
+    setSubConfigs((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(file);
+      if (existing) next.set(file, { ...existing, ...patch });
       return next;
     });
   };
@@ -180,7 +205,7 @@ export default function Library() {
             directors.map((dir) => (
               <div key={dir}>
                 <div
-                  onClick={() => { setSelectedDirector(selectedDirector === dir ? null : dir); setSelectedEntry(null); setCheckedSubs(new Set()); }}
+                  onClick={() => { setSelectedDirector(selectedDirector === dir ? null : dir); setSelectedEntry(null); setSubConfigs(new Map()); }}
                   style={{
                     padding: "0.45rem 1rem", cursor: "pointer", fontSize: "0.82rem",
                     fontWeight: 600, display: "flex", justifyContent: "space-between",
@@ -332,31 +357,54 @@ export default function Library() {
             {subtitleFiles.length === 0 ? (
               <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.82rem" }}>目录中未发现字幕文件</p>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", marginBottom: "1.2rem" }}>
-                {subtitleFiles.map((file) => (
-                  <label
-                    key={file}
-                    style={{
-                      display: "flex", alignItems: "center", gap: "0.5rem",
-                      padding: "0.4rem 0.75rem", background: "var(--color-bg-secondary)",
-                      border: "1px solid var(--color-separator)", borderRadius: 6,
-                      cursor: "pointer", fontSize: "0.82rem",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checkedSubs.has(file)}
-                      onChange={() => toggleSub(file)}
-                      style={{ accentColor: "var(--color-accent)" }}
-                    />
-                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {file}
-                    </span>
-                  </label>
-                ))}
-                {checkedSubs.size > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "1.2rem" }}>
+                {subtitleFiles.map((file) => {
+                  const cfg = subConfigs.get(file);
+                  const enabled = cfg?.enabled ?? false;
+                  return (
+                    <div key={file} style={{
+                      padding: "0.5rem 0.75rem", background: "var(--color-bg-secondary)",
+                      border: `1px solid ${enabled ? "var(--color-accent)" : "var(--color-separator)"}`,
+                      borderRadius: 6, fontSize: "0.82rem",
+                    }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
+                        <input type="checkbox" checked={enabled} onChange={() => toggleSub(file)}
+                          style={{ accentColor: "var(--color-accent)" }} />
+                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {file}
+                        </span>
+                      </label>
+                      {enabled && cfg && (
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginTop: "0.4rem", paddingLeft: "1.5rem" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.72rem", color: "var(--color-label-tertiary)" }}>
+                            颜色
+                            <input type="color" value={cfg.color}
+                              onChange={(e) => updateSubConfig(file, { color: e.target.value })}
+                              style={{ width: 22, height: 22, border: "none", padding: 0, cursor: "pointer" }} />
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.72rem", color: "var(--color-label-tertiary)" }}>
+                            字号
+                            <input type="number" value={cfg.font_size} min={16} max={80} step={2}
+                              onChange={(e) => updateSubConfig(file, { font_size: parseInt(e.target.value) || 48 })}
+                              style={{ width: 44, fontSize: "0.72rem", background: "var(--color-bg-control)",
+                                border: "1px solid var(--color-separator)", borderRadius: 4, padding: "0.15rem 0.3rem",
+                                textAlign: "center", color: "inherit", fontFamily: "inherit" }} />
+                          </label>
+                          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.72rem", color: "var(--color-label-tertiary)", flex: 1 }}>
+                            位置
+                            <input type="range" min={0} max={100} value={Math.round(cfg.y_position * 100)}
+                              onChange={(e) => updateSubConfig(file, { y_position: parseInt(e.target.value) / 100 })}
+                              style={{ flex: 1, accentColor: "var(--color-accent)" }} />
+                            <span style={{ width: 28, textAlign: "right", fontSize: "0.68rem" }}>{Math.round(cfg.y_position * 100)}%</span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {[...subConfigs.values()].some((c) => c.enabled) && (
                   <div style={{ fontSize: "0.72rem", color: "var(--color-label-tertiary)", marginTop: "0.2rem" }}>
-                    已选 {checkedSubs.size} 条字幕，播放视频时将自动载入
+                    已选 {[...subConfigs.values()].filter((c) => c.enabled).length} 条字幕，播放视频时将自动叠加显示
                   </div>
                 )}
               </div>

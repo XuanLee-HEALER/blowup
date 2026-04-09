@@ -220,6 +220,7 @@ fn spawn_download_monitor(p: MonitorParams) {
                 .ok();
 
                 let files = crate::library_index::scan_dir_files(&p.output_folder);
+                let files_for_extract = files.clone();
                 let entry = IndexEntry {
                     tmdb_id: p.tmdb_id,
                     title: p.title,
@@ -236,10 +237,39 @@ fn spawn_download_monitor(p: MonitorParams) {
                 if let Some(idx) = p
                     .app_handle
                     .try_state::<crate::library_index::LibraryIndex>()
-                    && let Err(e) = idx.add_entry(entry)
                 {
-                    tracing::warn!(error = %e, "failed to add entry to library index");
+                    if let Err(e) = idx.add_entry(entry) {
+                        tracing::warn!(error = %e, "failed to add entry to library index");
+                    }
                 }
+
+                // Auto-extract embedded subtitles
+                let video_exts = [
+                    "mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v",
+                ];
+                for file in &files_for_extract {
+                    let ext = std::path::Path::new(file)
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if video_exts.contains(&ext.as_str()) {
+                        let video_path = p.output_folder.join(file);
+                        let count =
+                            crate::commands::subtitle::auto_extract_all_subtitles(&video_path)
+                                .await;
+                        if count > 0 {
+                            // Rescan files to pick up extracted SRTs
+                            if let Some(idx) = p
+                                .app_handle
+                                .try_state::<crate::library_index::LibraryIndex>()
+                            {
+                                idx.update_files(p.tmdb_id);
+                            }
+                        }
+                    }
+                }
+
                 emit(&p.app_handle, "library:changed");
                 break;
             }
