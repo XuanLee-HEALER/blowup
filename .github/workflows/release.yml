@@ -101,7 +101,6 @@ jobs:
             | Windows (.msi) | `blowup_*_x64-setup.msi` |
             | Windows (.exe) | `blowup_*_x64-setup.nsis.exe` |
             | Linux (.deb) | `blowup_*_amd64.deb` |
-            | Linux (.AppImage) | `blowup_*_amd64.AppImage` |
 
             **macOS Homebrew:**
             ```
