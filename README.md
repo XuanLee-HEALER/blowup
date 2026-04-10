@@ -2,7 +2,7 @@
 
 > [中文版本点此链接](./README_zh.md)
 
-![Version](https://img.shields.io/badge/Version-2.0.4-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.0.5-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
 
 > **Blow-Up [Michelangelo Antonioni, 1966]**: A fashion photographer unknowingly captures a death on film after following two lovers in a park.
 >
@@ -29,6 +29,20 @@ brew install --cask blowup
 
 **Other platforms:** Download from [GitHub Releases](https://github.com/XuanLee-HEALER/blowup/releases/latest).
 
+## Workflow: From Discovery to Playback
+
+A typical workflow in blowup, end to end:
+
+**1. Discover** — Open the **Search** page. Enter a film title or browse by genre/year/rating via TMDB. Click a result to see details, cast, and available torrents.
+
+**2. Download** — Pick a torrent quality and select which files to download. The **Download** page tracks progress in real-time. When complete, the film appears in your **Library** automatically.
+
+**3. Subtitles** — Go to the **Darkroom**. Search for subtitles via OpenSubtitles or ASSRT (Shooter). Embedded subtitle tracks are auto-extracted on download. Use the built-in aligner to sync subtitles against the audio.
+
+**4. Play** — Back in the **Library**, select your subtitle files — configure color, font size, and vertical position for each. Multiple subtitles display simultaneously (e.g. Chinese bottom + English top). Hit play to watch with the built-in mpv player.
+
+**5. Knowledge** — Record what you learn in the **Wiki**. Create entries for directors, films, genres — anything. Link them with custom relations. The **Graph** page visualizes your growing knowledge network.
+
 ### Pages
 
 | Page | Description |
@@ -36,7 +50,7 @@ brew install --cask blowup
 | **Search** | Search and discover films via TMDB with filters (year, genre, rating, sort) |
 | **Wiki** | Unified knowledge base — every concept is an entry with tags and relations |
 | **Graph** | D3 force-directed knowledge graph with directed edges and multi-link support |
-| **Library** | Film library — director tree view, TMDB enrichment, poster/credits/overview |
+| **Library** | Film library — director tree view, TMDB enrichment, poster/credits/overview, multi-subtitle overlay |
 | **Download** | Download manager — YTS torrent search, file selection, pause/resume |
 | **Darkroom** | Subtitle tools + media probe — extraction, alignment, time shift, audio waveform |
 | **Settings** | Configuration for API keys, tool paths, sync, music player |
@@ -67,9 +81,8 @@ just check  # Lint + typecheck + test
 | Tool | Required for | Install |
 |------|-------------|---------|
 | `ffmpeg` + `ffprobe` | Subtitle extraction, media probe, library scan | `brew install ffmpeg` / `choco install ffmpeg` |
-| `alass` / `alass-cli` | Subtitle alignment (optional) | `brew install alass` / [GitHub releases](https://github.com/kaegi/alass/releases) |
 
-Tool paths are auto-detected on startup from PATH and well-known directories.
+Subtitle alignment is built-in (no external `alass` binary needed). Tool paths are auto-detected on startup.
 
 ### Configuration
 
@@ -77,10 +90,10 @@ Settings are stored at `{APP_DATA_DIR}/config.toml`. Configure via the Settings 
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `tools.alass` | path | Path to alass binary |
 | `tools.ffmpeg` | path | Path to ffmpeg binary |
 | `tmdb.api_key` | string | TMDB API key (free at themoviedb.org) |
 | `opensubtitles.api_key` | string | OpenSubtitles API key (optional) |
+| `assrt.token` | string | ASSRT (Shooter) token (optional) |
 | `subtitle.default_lang` | string | Default subtitle language (default: zh) |
 | `library.root_dir` | path | Film library directory (default: ~/Movies/blowup) |
 | `download.max_concurrent` | number | Max concurrent downloads (default: 3) |
@@ -88,7 +101,7 @@ Settings are stored at `{APP_DATA_DIR}/config.toml`. Configure via the Settings 
 ## Legal
 
 - **Film resources** come from [YTS/YIFY](https://yts.mx), which indexes public-domain films whose copyrights have expired.
-- **All integrated tools** — ffmpeg, alass, mpv — are open-source projects under their own licenses.
+- **All integrated tools** — ffmpeg, mpv — are open-source projects under their own licenses.
 - **blowup does not store, host, or distribute** any copyrighted content. It is a client-side tool that helps users organize and view films they have legally obtained.
 - Users are responsible for complying with the laws and regulations of their own jurisdiction.
 

@@ -2,7 +2,7 @@
 
 > [Click here for English version](./README.md)
 
-![Version](https://img.shields.io/badge/Version-2.0.4-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.0.5-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
 
 > **《放大》[米开朗基罗·安东尼奥尼，1966]**：一位时装摄影师在公园里跟拍两名恋人时，无意间将一桩谋杀摄入镜头。
 >
@@ -29,6 +29,20 @@ brew install --cask blowup
 
 **其他平台：** 从 [GitHub Releases](https://github.com/XuanLee-HEALER/blowup/releases/latest) 下载。
 
+## 工作流：从发现到播放
+
+blowup 的典型使用流程：
+
+**1. 发现** — 打开**搜索**页面，输入片名或按类型/年份/评分浏览 TMDB。点击结果查看详情、主创和可用种子。
+
+**2. 下载** — 选择画质和要下载的文件。**下载**页面实时追踪进度。下载完成后影片自动出现在**电影库**中。
+
+**3. 字幕** — 进入**暗房**。通过 OpenSubtitles 或射手网（ASSRT）搜索字幕。内嵌字幕轨在下载完成后自动提取。使用内置对齐工具将字幕与音频同步。
+
+**4. 播放** — 回到**电影库**，选择字幕文件 — 为每条字幕分别设置颜色、字号和垂直位置。支持多字幕同时显示（如底部中文 + 顶部英文）。点击播放，内置 mpv 播放器即刻开始。
+
+**5. 知识** — 在 **Wiki** 中记录你的收获。为导演、影片、流派创建条目，用自定义关系连接它们。**知识图谱**页面将你日益丰富的知识网络可视化呈现。
+
 ### 功能页面
 
 | 页面 | 说明 |
@@ -36,7 +50,7 @@ brew install --cask blowup
 | **搜索** | 通过 TMDB 搜索和发现电影，支持年份、类型、评分、排序过滤 |
 | **Wiki** | 统一知识库 — 一切概念皆为条目，通过标签和关系自由组织 |
 | **知识图谱** | D3 力导向关系图，支持有向边和多条关系展示 |
-| **影片** | 电影库 — 按导演分组的树形视图，TMDB 数据自动充实，海报/主创/简介 |
+| **影片** | 电影库 — 按导演分组的树形视图，TMDB 数据自动充实，海报/主创/简介，多字幕叠加 |
 | **下载** | 下载管理 — YTS 种子搜索、文件选择、暂停/恢复 |
 | **暗房** | 字幕工具 + 媒体探测 — 提取、对齐、时间偏移、音频波形 |
 | **设置** | 配置 API 密钥、工具路径、同步、音乐播放器 |
@@ -67,9 +81,8 @@ just check  # 检查（lint + 类型检查 + 测试）
 | 工具 | 用途 | 安装方式 |
 |------|------|----------|
 | `ffmpeg` + `ffprobe` | 字幕提取、媒体探测、库扫描 | `brew install ffmpeg` / `choco install ffmpeg` |
-| `alass` / `alass-cli` | 字幕对齐（可选） | `brew install alass` / [GitHub releases](https://github.com/kaegi/alass/releases) |
 
-工具路径在启动时自动从 PATH 和常见目录中探测。
+字幕对齐已内置（无需外部 `alass` 程序）。工具路径在启动时自动探测。
 
 ### 配置
 
@@ -77,10 +90,10 @@ just check  # 检查（lint + 类型检查 + 测试）
 
 | 键 | 类型 | 说明 |
 |-----|------|------|
-| `tools.alass` | 路径 | alass 可执行文件路径 |
 | `tools.ffmpeg` | 路径 | ffmpeg 可执行文件路径 |
 | `tmdb.api_key` | 字符串 | TMDB API Key（在 [themoviedb.org](https://www.themoviedb.org/settings/api) 免费申请） |
 | `opensubtitles.api_key` | 字符串 | OpenSubtitles API Key（可选） |
+| `assrt.token` | 字符串 | 射手网 ASSRT Token（可选） |
 | `subtitle.default_lang` | 字符串 | 默认字幕语言（默认：zh） |
 | `library.root_dir` | 路径 | 电影库目录（默认：~/Movies/blowup） |
 | `download.max_concurrent` | 数字 | 最大并发下载数（默认：3） |
@@ -88,7 +101,7 @@ just check  # 检查（lint + 类型检查 + 测试）
 ## 合规声明
 
 - **影片资源**来自 [YTS/YIFY](https://yts.mx)，其收录的是版权已过期、进入公共领域的老电影。
-- **所有集成工具** — ffmpeg、alass、mpv — 均为开源项目，遵循各自的开源协议。
+- **所有集成工具** — ffmpeg、mpv — 均为开源项目，遵循各自的开源协议。
 - **blowup 不存储、托管或分发**任何受版权保护的内容，它是一个帮助用户组织和观看合法获取影片的客户端工具。
 - 用户应遵守所在地区的法律法规。
 
