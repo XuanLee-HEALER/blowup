@@ -369,6 +369,18 @@ pub fn rebuild_index(
     Ok(())
 }
 
+// ── Subtitle config persistence ─────────────────────────────────
+
+#[tauri::command]
+pub fn save_subtitle_configs(
+    tmdb_id: u64,
+    configs: std::collections::HashMap<String, crate::library_index::SubtitleDisplayConfig>,
+    index: tauri::State<'_, crate::library_index::LibraryIndex>,
+) -> Result<(), String> {
+    index.save_subtitle_configs(tmdb_id, configs);
+    Ok(())
+}
+
 // ── Resource & Film directory deletion ─────────────────────────
 
 /// Delete a single media resource: removes disk file + DB records.

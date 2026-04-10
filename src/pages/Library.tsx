@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { library, media, config, player } from "../lib/tauri";
-import type { IndexEntry, SubtitleOverlayConfig } from "../lib/tauri";
+import type { IndexEntry, SubtitleOverlayConfig, SubtitleDisplayConfig } from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
@@ -36,7 +36,13 @@ export default function Library() {
 
   const selectEntry = useCallback((entry: IndexEntry) => {
     setSelectedEntry(entry);
-    setSubConfigs(new Map());
+    // Restore saved subtitle display configs
+    const saved = entry.subtitle_configs ?? {};
+    const restored = new Map<string, SubConfig>();
+    for (const [name, cfg] of Object.entries(saved)) {
+      restored.set(name, { enabled: false, ...cfg });
+    }
+    setSubConfigs(restored);
     if (entry.poster_url) {
       const resolved = entry.poster_url.startsWith("http") ? entry.poster_url : convertFileSrc(entry.poster_url);
       console.log("[blowup] poster_url:", entry.poster_url, "→ resolved:", resolved);
@@ -133,8 +139,18 @@ export default function Library() {
           font_size: idx === 0 ? 48 : 36,
         });
       }
+      persistSubConfigs(next);
       return next;
     });
+  };
+
+  const persistSubConfigs = (configs: Map<string, SubConfig>) => {
+    if (!selectedEntry) return;
+    const toSave: Record<string, SubtitleDisplayConfig> = {};
+    for (const [name, cfg] of configs) {
+      toSave[name] = { y_position: cfg.y_position, color: cfg.color, font_size: cfg.font_size };
+    }
+    library.saveSubtitleConfigs(selectedEntry.tmdb_id, toSave).catch(console.error);
   };
 
   const updateSubConfig = (file: string, patch: Partial<SubConfig>) => {
@@ -142,6 +158,7 @@ export default function Library() {
       const next = new Map(prev);
       const existing = next.get(file);
       if (existing) next.set(file, { ...existing, ...patch });
+      persistSubConfigs(next);
       return next;
     });
   };

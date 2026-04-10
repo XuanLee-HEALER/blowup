@@ -202,6 +202,13 @@ export interface IndexEntry {
   credits?: Record<string, string[]>;
   original_title?: string | null;
   media_info?: Record<string, FileMediaInfo>;
+  subtitle_configs?: Record<string, SubtitleDisplayConfig>;
+}
+
+export interface SubtitleDisplayConfig {
+  y_position: number;
+  color: string;
+  font_size: number;
 }
 
 export interface MovieResult {
@@ -340,6 +347,8 @@ export const library = {
     invoke<void>("refresh_index_entry", { tmdbId }),
   deleteFilmDirectory: (tmdbId: number) =>
     invoke<void>("delete_film_directory", { tmdbId }),
+  saveSubtitleConfigs: (tmdbId: number, configs: Record<string, SubtitleDisplayConfig>) =>
+    invoke<void>("save_subtitle_configs", { tmdbId, configs }),
   enrichIndexEntry: (tmdbId: number, force?: boolean) =>
     invoke<IndexEntry>("enrich_index_entry", { tmdbId, force }),
 };

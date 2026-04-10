@@ -65,6 +65,64 @@ pub fn parse_srt(content: &str) -> Vec<SubCue> {
     cues
 }
 
+// ── ASS dialogue parsing ────────────────────────────────────────
+
+static ASS_DIALOGUE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    // Dialogue: layer,H:MM:SS.cs,H:MM:SS.cs,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+    Regex::new(r"^Dialogue:\s*\d+,(\d+):(\d{2}):(\d{2})\.(\d{2}),(\d+):(\d{2}):(\d{2})\.(\d{2}),([^,]*),([^,]*),\d+,\d+,\d+,([^,]*),(.*)")
+        .expect("valid ASS dialogue regex")
+});
+
+fn parse_ass_ts(h: &str, m: &str, s: &str, cs: &str) -> i64 {
+    let h: i64 = h.parse().unwrap_or(0);
+    let m: i64 = m.parse().unwrap_or(0);
+    let s: i64 = s.parse().unwrap_or(0);
+    let cs: i64 = cs.parse().unwrap_or(0);
+    h * 3_600_000 + m * 60_000 + s * 1_000 + cs * 10
+}
+
+/// Parse ASS/SSA file, extracting Dialogue lines into SubCue.
+/// Strips inline style overrides like {\fs28\1c&HB74422&}.
+pub fn parse_ass(content: &str) -> Vec<SubCue> {
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
+    let mut cues = Vec::new();
+
+    for line in content.lines() {
+        if let Some(caps) = ASS_DIALOGUE_RE.captures(line) {
+            let start = parse_ass_ts(&caps[1], &caps[2], &caps[3], &caps[4]);
+            let end = parse_ass_ts(&caps[5], &caps[6], &caps[7], &caps[8]);
+            // caps[12] is the text; strip ASS override tags {..}
+            let text = caps[12].to_string();
+            let text = Regex::new(r"\{[^}]*\}")
+                .unwrap()
+                .replace_all(&text, "")
+                .to_string();
+            let text = text.trim().to_string();
+            if !text.is_empty() {
+                cues.push(SubCue {
+                    start_ms: start,
+                    end_ms: end,
+                    text,
+                });
+            }
+        }
+    }
+
+    cues.sort_by_key(|c| c.start_ms);
+    cues
+}
+
+/// Parse a subtitle file (SRT or ASS) based on extension.
+pub fn parse_subtitle_file(path: &Path) -> Result<Vec<SubCue>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("读取字幕文件失败 {}: {}", path.display(), e))?;
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    match ext.to_lowercase().as_str() {
+        "ass" | "ssa" => Ok(parse_ass(&content)),
+        _ => Ok(parse_srt(&content)),
+    }
+}
+
 // ── ASS generation ──────────────────────────────────────────────
 
 const PLAY_RES_Y: f64 = 1080.0;
@@ -129,9 +187,7 @@ pub fn merge_to_ass(configs: &[SubtitleOverlayConfig]) -> Result<String, String>
     let mut events = String::new();
 
     for (i, cfg) in configs.iter().enumerate() {
-        let content = std::fs::read_to_string(&cfg.path)
-            .map_err(|e| format!("读取字幕文件失败 {}: {}", cfg.path, e))?;
-        let cues = parse_srt(&content);
+        let cues = parse_subtitle_file(Path::new(&cfg.path))?;
         let (alignment, margin_v) = y_to_alignment_margin(cfg.y_position);
         let ass_color = hex_to_ass_color(&cfg.color);
         let style_name = format!("sub{i}");
@@ -242,6 +298,25 @@ mod tests {
         let srt = "1\r\n00:00:01,000 --> 00:00:02,000\r\nCRLF\r\n\r\n";
         let cues = parse_srt(srt);
         assert_eq!(cues.len(), 1);
+    }
+
+    #[test]
+    fn parse_ass_dialogue() {
+        let ass = "[Events]\nDialogue: 0,0:06:10.66,0:06:12.58,Default,,0000,0000,0000,,{\\fs28\\1c&HB74422&}Hello world\n";
+        let cues = parse_ass(ass);
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].start_ms, 370660);
+        assert_eq!(cues[0].end_ms, 372580);
+        assert_eq!(cues[0].text, "Hello world");
+    }
+
+    #[test]
+    fn parse_ass_strips_overrides() {
+        let ass =
+            "Dialogue: 0,1:00:00.00,1:00:05.00,Default,,0000,0000,0000,,{\\b1}Bold{\\b0} normal\n";
+        let cues = parse_ass(ass);
+        assert_eq!(cues.len(), 1);
+        assert_eq!(cues[0].text, "Bold normal");
     }
 
     #[test]

@@ -39,6 +39,16 @@ pub struct IndexEntry {
     /// Cached media info per video file (keyed by filename).
     #[serde(default)]
     pub media_info: HashMap<String, FileMediaInfo>,
+    /// Saved subtitle display configs (keyed by subtitle filename).
+    #[serde(default)]
+    pub subtitle_configs: HashMap<String, SubtitleDisplayConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubtitleDisplayConfig {
+    pub y_position: f64,
+    pub color: String,
+    pub font_size: u32,
 }
 
 /// Cached media probe result for a single video file.
@@ -335,6 +345,20 @@ impl LibraryIndex {
         drop(data);
         self.save();
         result
+    }
+
+    /// Save subtitle display configs for an entry.
+    pub fn save_subtitle_configs(
+        &self,
+        tmdb_id: u64,
+        configs: HashMap<String, SubtitleDisplayConfig>,
+    ) {
+        let mut data = self.data.write().unwrap();
+        if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
+            entry.subtitle_configs = configs;
+        }
+        drop(data);
+        self.save();
     }
 
     /// Update TMDB metadata for an entry and persist. Returns the updated entry.

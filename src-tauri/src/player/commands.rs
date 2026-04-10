@@ -111,19 +111,26 @@ pub fn cmd_player_sub_add(path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn cmd_player_load_overlay_subs(configs: Vec<SubtitleOverlayConfig>) -> Result<String, String> {
     if configs.is_empty() {
-        // Remove overlay subs — disable subtitle track
         with_player(|p| p.mpv.set_property_string("sid", "0"))?;
         return Ok(String::new());
     }
 
-    // Determine film directory from first config path
+    // Expand ~ in paths
+    let configs: Vec<SubtitleOverlayConfig> = configs
+        .into_iter()
+        .map(|mut c| {
+            c.path = shellexpand::tilde(&c.path).into_owned();
+            c
+        })
+        .collect();
+
+    // Merge to ASS with per-source styles (even for single subtitle, for consistent styling)
     let film_dir = std::path::Path::new(&configs[0].path)
         .parent()
         .ok_or("invalid subtitle path")?;
     let cache_name = overlay_cache_key(&configs);
     let ass_path = film_dir.join(&cache_name);
 
-    // Generate ASS if not cached
     if !ass_path.exists() {
         let ass_content = merge_to_ass(&configs)?;
         std::fs::write(&ass_path, &ass_content).map_err(|e| format!("写入 ASS 文件失败: {}", e))?;
@@ -135,11 +142,7 @@ pub fn cmd_player_load_overlay_subs(configs: Vec<SubtitleOverlayConfig>) -> Resu
     let ass_str = ass_path.to_string_lossy().to_string();
 
     with_player(|p| {
-        // Disable current subtitle track first
-        p.mpv.set_property_string("sid", "0")?;
-        // Ensure ASS styles are not overridden by mpv
         p.mpv.set_property_string("sub-ass-override", "no")?;
-        // Add the merged ASS file
         p.mpv.command(&["sub-add", &ass_str, "select"])?;
         Ok(())
     })?;
