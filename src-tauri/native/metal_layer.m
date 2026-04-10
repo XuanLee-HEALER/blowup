@@ -166,7 +166,9 @@ int blowup_attach_to_window(void *ns_window_ptr, void *view_ptr) {
 
     window.backgroundColor = [NSColor clearColor];
     window.opaque = NO;
-    window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    if (@available(macOS 10.14, *)) {
+        window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    }
     contentView.wantsLayer = YES;
     contentView.layer.backgroundColor = CGColorGetConstantColor(kCGColorClear);
     contentView.layer.opaque = NO;

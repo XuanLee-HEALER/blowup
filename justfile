@@ -76,6 +76,23 @@ test:
 test-mod mod:
     cd src-tauri && cargo test --lib {{mod}} -- --nocapture
 
+# ── Install ───────────────────────────────────────────────────────
+
+# Build and install to /Applications (macOS)
+[macos]
+install: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    DMG=$(find target/release/bundle/dmg -name "*.dmg" -maxdepth 1 | head -1)
+    if [ -z "$DMG" ]; then echo "No .dmg found"; exit 1; fi
+    MOUNT=$(hdiutil attach "$DMG" -nobrowse | grep "/Volumes" | awk -F'\t' '{print $NF}')
+    APP=$(find "$MOUNT" -name "*.app" -maxdepth 1 | head -1)
+    rm -rf "/Applications/$(basename "$APP")"
+    cp -R "$APP" /Applications/
+    hdiutil detach "$MOUNT" -quiet
+    sudo xattr -rd com.apple.quarantine "/Applications/$(basename "$APP")"
+    echo "Installed $(basename "$APP") to /Applications"
+
 # ── Clean ─────────────────────────────────────────────────────────
 
 # Clean build artifacts
