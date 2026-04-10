@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**blowup** v2.0.3 — A Tauri v2 desktop app for the Chinese film-watching pipeline: TMDB discovery, torrent search & download, subtitle management, personal film knowledge base, and media playback.
+**blowup** v2.0.5 — A Tauri v2 desktop app for the Chinese film-watching pipeline: TMDB discovery, torrent search & download, subtitle management, personal film knowledge base, and media playback.
 
 Named after Michelangelo Antonioni's 1966 film *Blow-Up*.
 
@@ -23,6 +23,8 @@ src-tauri/                    # Rust backend (Tauri v2)
 │   ├── common.rs             # exec_command, find_command_path, normalize_director_name
 │   ├── cache.rs              # LRU cache (TMDB credits)
 │   ├── library_index.rs      # In-memory IndexEntry index, persisted to JSON
+│   ├── subtitle_parser.rs    # SRT/ASS parsing + multi-sub ASS merger + overlay cache
+│   ├── alass.rs              # Built-in subtitle alignment (alass-core, no external binary)
 │   ├── torrent.rs            # librqbit TorrentManager wrapper
 │   ├── player/               # Embedded mpv player (CAOpenGLLayer + WKWebView)
 │   │   ├── mod.rs            # MpvPlayer lifecycle, event loop (push model)
@@ -35,8 +37,9 @@ src-tauri/                    # Rust backend (Tauri v2)
 │       ├── download.rs       # Torrent download management (librqbit)
 │       ├── tmdb.rs           # TMDB search/discover/credits + index enrichment
 │       ├── tracker.rs        # BitTorrent tracker list update
-│       ├── subtitle.rs       # OpenSubtitles REST API + alass + ffmpeg extraction
-│       ├── media.rs          # probe_media_detail
+│       ├── subtitle.rs       # OpenSubtitles/ASSRT + ffmpeg extraction + auto-extract
+│       ├── audio.rs          # Audio stream extraction + waveform window
+│       ├── media.rs          # probe_media_detail, probe_and_cache
 │       ├── export.rs         # Knowledge base + config export/import (local + S3)
 │       └── library/          # Knowledge base + film library
 │           ├── mod.rs        # Shared types (EntrySummary, EntryDetail, LibraryItemSummary, etc.)
@@ -59,7 +62,8 @@ src/                          # React 19 frontend (TypeScript)
 ├── lib/
 │   ├── tauri.ts              # All Tauri invoke wrappers + TS types
 │   ├── useBackendEvent.ts    # Event hook + BackendEvent constants (notify+refetch)
-│   └── format.ts             # Shared formatters (size, duration, bitrate)
+│   ├── format.ts             # Shared formatters (size, duration, bitrate)
+│   └── styles.ts             # Shared style constants
 ├── pages/
 │   ├── Search.tsx            # TMDB search/discover with filters
 │   ├── Wiki.tsx              # Knowledge base: entry list + detail + tags + relations
@@ -70,6 +74,8 @@ src/                          # React 19 frontend (TypeScript)
 │   └── Settings.tsx          # Config editor
 ├── Player.tsx                # Embedded player controls (liquid glass UI)
 ├── player-main.tsx           # Player window React entry
+├── SubtitleViewer.tsx        # Subtitle viewer window
+├── Waveform.tsx              # Audio waveform visualizer (wavesurfer.js)
 └── components/
     ├── FilmDetailPanel.tsx   # TMDB film detail + YTS search modal
     ├── WikiDetailView.tsx    # Shared markdown editor + outline + preview
@@ -138,8 +144,10 @@ relations:   id, from_id, to_id, relation_type
 
 - Storage: `{library.root_dir}/{director}/{tmdb_id}/` directories on disk
 - Index: `library_index.json` — in-memory `IndexEntry` array, persisted to JSON
-- Each `IndexEntry` contains: `tmdb_id`, `title`, `director`, `year`, `genres`, `path`, `files[]`, and **enriched TMDB data** (poster, overview, cast) cached in the index
-- Enriched data is **lazy-loaded**: if fields are empty on first view, fetch from TMDB API and cache in the index
+- Each `IndexEntry` contains: `tmdb_id`, `title`, `director`, `year`, `genres`, `path`, `files[]`, plus cached data:
+  - **TMDB enrichment** (poster, overview, rating, credits) — lazy-loaded on first view
+  - **media_info** — cached ffprobe results per video file
+  - **subtitle_configs** — saved display settings (color, font_size, y_position) per subtitle file
 - Pages: Library.tsx (director tree + detail panel), Darkroom.tsx (subtitle/media tools)
 - **Film detail page data comes from the file index, NOT from SQLite**
 
@@ -174,6 +182,8 @@ Data flow follows **notify + refetch** pattern — backend emits domain events a
 | Background downloads | `commands/download.rs` | Torrent manager with librqbit |
 | File probing | `commands/media.rs` + `library/items.rs` | ffprobe JSON → structured MediaInfo |
 | TMDB lazy enrichment | `commands/tmdb.rs` | `enrich_index_entry` fetches TMDB data + poster → cached in index |
+| Multi-subtitle overlay | `subtitle_parser.rs` | Parse SRT/ASS → merge to single ASS with per-source style/position; hash-based cache |
+| Auto subtitle extraction | `commands/download.rs` | Download monitor extracts embedded subs to .srt after completion |
 | Export/Import | `commands/export.rs` | entries + entry_tags + relations → JSON |
 
 ## External Service Quirks
@@ -186,8 +196,9 @@ Data flow follows **notify + refetch** pattern — backend emits domain events a
 
 | Tool | Used by | Default config key |
 |------|---------|-------------------|
-| `alass` / `alass-cli` | Subtitle alignment | `tools.alass` |
 | `ffmpeg` + `ffprobe` | Subtitle extraction, media probe, library scan | `tools.ffmpeg` |
+
+Subtitle alignment uses built-in `alass-core` crate (no external binary needed).
 
 Tool paths are auto-detected on startup (`config::resolve_tool_paths`): if the configured path is invalid, searches PATH and well-known dirs (`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`) then writes back to config. This handles macOS GUI apps not inheriting shell PATH.
 
@@ -197,7 +208,6 @@ Path: `{APP_DATA_DIR}/config.toml` (migrated from `~/.config/blowup/config.toml`
 
 ```toml
 [tools]
-alass  = "alass"
 ffmpeg = "ffmpeg"
 
 [download]
@@ -210,6 +220,9 @@ api_key = ""
 
 [opensubtitles]
 api_key = ""
+
+[assrt]
+token = ""
 
 [subtitle]
 default_lang = "zh"
