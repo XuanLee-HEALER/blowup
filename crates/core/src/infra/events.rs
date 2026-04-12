@@ -24,6 +24,8 @@ pub enum DomainEvent {
     EntriesChanged,
     #[serde(rename = "config:changed")]
     ConfigChanged,
+    #[serde(rename = "tasks:changed")]
+    TasksChanged,
 }
 
 impl DomainEvent {
@@ -35,6 +37,7 @@ impl DomainEvent {
             DomainEvent::LibraryChanged => "library:changed",
             DomainEvent::EntriesChanged => "entries:changed",
             DomainEvent::ConfigChanged => "config:changed",
+            DomainEvent::TasksChanged => "tasks:changed",
         }
     }
 }
@@ -94,5 +97,6 @@ mod tests {
         assert_eq!(DomainEvent::LibraryChanged.as_str(), "library:changed");
         assert_eq!(DomainEvent::EntriesChanged.as_str(), "entries:changed");
         assert_eq!(DomainEvent::ConfigChanged.as_str(), "config:changed");
+        assert_eq!(DomainEvent::TasksChanged.as_str(), "tasks:changed");
     }
 }

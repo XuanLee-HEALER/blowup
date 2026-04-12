@@ -7,5 +7,6 @@ pub mod infra;
 pub mod library;
 pub mod media;
 pub mod subtitle;
+pub mod tasks;
 pub mod tmdb;
 pub mod torrent;
