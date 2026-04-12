@@ -6,10 +6,10 @@ pub use blowup_core::infra::ffmpeg;
 pub use blowup_core::library::index as library_index;
 pub use blowup_core::subtitle::alass;
 pub use blowup_core::subtitle::parser as subtitle_parser;
+pub use blowup_core::torrent::manager as torrent;
 pub mod commands;
 pub mod common;
 pub mod player;
-pub mod torrent;
 
 use tauri::Manager;
 

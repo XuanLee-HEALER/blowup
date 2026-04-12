@@ -27,6 +27,8 @@ hex                   = "0.4"
 alass-core            = "2.0"
 webrtc-vad            = "0.4"
 byteorder             = "1"
+librqbit              = "8.1"
+url                   = "2"
 
 [dev-dependencies]
 tempfile    = "3"
