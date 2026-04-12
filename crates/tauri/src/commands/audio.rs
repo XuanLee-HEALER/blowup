@@ -1,5 +1,6 @@
 use blowup_core::audio::service::{self, AudioStreamInfo};
 use std::path::Path;
+use tauri::ipc::Response;
 
 #[tauri::command]
 pub async fn list_audio_streams_cmd(video: String) -> Result<Vec<AudioStreamInfo>, String> {
@@ -13,6 +14,15 @@ pub async fn extract_audio_cmd(
     format: String,
 ) -> Result<String, String> {
     service::extract_audio(Path::new(&video), stream, &format).await
+}
+
+/// Return pre-computed waveform peaks for an audio file as a raw
+/// ArrayBuffer (Tauri v2 `Response` carries bytes, not a JSON number
+/// array, so a 2.8 MB payload stays small on the IPC channel).
+#[tauri::command]
+pub async fn get_audio_peaks(file: String) -> Result<Response, String> {
+    let bytes = service::extract_audio_peaks(Path::new(&file)).await?;
+    Ok(Response::new(bytes))
 }
 
 /// Must be `async` — sync Tauri commands run on the main thread in v2,

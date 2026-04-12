@@ -280,6 +280,7 @@ pub fn run() {
             // Audio
             commands::audio::list_audio_streams_cmd,
             commands::audio::extract_audio_cmd,
+            commands::audio::get_audio_peaks,
             commands::audio::open_waveform_window,
             // Subtitle & media
             commands::subtitle::fetch_subtitle_cmd,

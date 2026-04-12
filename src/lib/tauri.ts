@@ -405,7 +405,15 @@ export const audio = {
     invoke<AudioStreamInfo[]>("list_audio_streams_cmd", { video }),
   extract: (video: string, stream: number, format: string) =>
     invoke<string>("extract_audio_cmd", { video, stream, format }),
+  /** Pre-computed waveform peaks (mono f32le @ 100 Hz) as an
+   *  ArrayBuffer. Decode with `new Float32Array(buffer)` and feed
+   *  to WaveSurfer via its `peaks` option so it never runs
+   *  decodeAudioData on the full audio file. */
+  getPeaks: (file: string) =>
+    invoke<ArrayBuffer>("get_audio_peaks", { file }),
 };
+
+export const WAVEFORM_PEAKS_SAMPLE_RATE = 100;
 
 export interface SubtitleSearchResult {
   source: string;

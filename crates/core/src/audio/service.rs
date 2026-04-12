@@ -3,7 +3,12 @@
 
 use crate::infra::ffmpeg::FfmpegTool;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Sample rate for pre-computed waveform peaks (100 samples/sec is
+/// plenty for 800-2000 px wide visualizations and keeps the payload
+/// tiny — a 2-hour track is ~2.8 MB of f32le).
+pub const PEAKS_SAMPLE_RATE: u32 = 100;
 
 #[derive(Debug, Deserialize)]
 struct FfprobeOutput {
@@ -109,6 +114,69 @@ fn format_to_ext(format: &str) -> &str {
         "wav" => "wav",
         _ => "mka",
     }
+}
+
+/// Sidecar filename for cached waveform peaks.
+fn peaks_cache_path(audio: &Path) -> PathBuf {
+    let mut p = audio.to_path_buf();
+    let mut name = audio
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "audio".to_string());
+    name.push_str(".peaks.bin");
+    p.set_file_name(name);
+    p
+}
+
+/// Return pre-computed waveform peak samples for `file` as raw
+/// little-endian float32 bytes (100 samples/sec, mono, normalized
+/// to [-1, 1] by ffmpeg).
+///
+/// First call per audio file runs ffmpeg to decode + downsample +
+/// write a `{audio}.peaks.bin` sidecar (one-time cost, seconds).
+/// Subsequent calls read the sidecar from disk (milliseconds).
+///
+/// The frontend passes these bytes to `WaveSurfer` via its `peaks`
+/// option so WaveSurfer never invokes the browser's `decodeAudioData`
+/// on the full audio file — which was the source of the
+/// waveform-window-stuck-at-loading bug for 342 MB AAC 5.1 streams.
+pub async fn extract_audio_peaks(file: &Path) -> Result<Vec<u8>, String> {
+    if !file.exists() {
+        return Err(format!("文件不存在: {}", file.display()));
+    }
+
+    let cache = peaks_cache_path(file);
+    if cache.exists() {
+        return std::fs::read(&cache).map_err(|e| format!("读取峰值缓存失败: {e}"));
+    }
+
+    let file_str = file.to_string_lossy().to_string();
+    let sample_rate = PEAKS_SAMPLE_RATE.to_string();
+    let args: Vec<&str> = vec![
+        "-v",
+        "error",
+        "-i",
+        &file_str,
+        "-ac",
+        "1", // mono
+        "-ar",
+        &sample_rate, // downsample to 100 Hz
+        "-f",
+        "f32le", // raw float32 little-endian
+        "-",     // stdout
+    ];
+
+    let bytes = FfmpegTool::Ffmpeg
+        .exec_binary_output(&args)
+        .await
+        .map_err(|e| format!("生成波形峰值失败: {e}"))?;
+
+    // Persist cache; log and continue on write failure — we still have the bytes.
+    if let Err(e) = std::fs::write(&cache, &bytes) {
+        tracing::warn!(error = %e, path = %cache.display(), "failed to write peaks cache");
+    }
+
+    Ok(bytes)
 }
 
 /// Extract an audio stream from a video file.

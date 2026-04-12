@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import WaveSurfer from "wavesurfer.js";
+import { audio as audioApi, WAVEFORM_PEAKS_SAMPLE_RATE } from "./lib/tauri";
 
 function formatTime(secs: number): string {
   const m = Math.floor(secs / 60);
@@ -16,6 +17,7 @@ export function Waveform() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingStage, setLoadingStage] = useState("准备中...");
   const [error, setError] = useState<string | null>(null);
 
   const filePath = new URLSearchParams(window.location.search).get("file") ?? "";
@@ -26,38 +28,73 @@ export function Waveform() {
   useEffect(() => {
     if (!filePath || !containerRef.current || !audioRef.current) return;
 
-    const ws = WaveSurfer.create({
-      container: containerRef.current,
-      waveColor: "rgba(100, 149, 237, 0.5)",
-      progressColor: "rgba(100, 149, 237, 0.9)",
-      cursorColor: "#fff",
-      cursorWidth: 1,
-      height: 160,
-      barWidth: 2,
-      barGap: 1,
-      barRadius: 2,
-      normalize: true,
-      media: audioRef.current,
-    });
+    let cancelled = false;
+    let ws: WaveSurfer | null = null;
 
-    ws.on("ready", () => {
-      setDuration(ws.getDuration());
-      setLoading(false);
-    });
-    ws.on("audioprocess", () => setCurrentTime(ws.getCurrentTime()));
-    ws.on("seeking", () => setCurrentTime(ws.getCurrentTime()));
-    ws.on("play", () => setPlaying(true));
-    ws.on("pause", () => setPlaying(false));
-    ws.on("finish", () => setPlaying(false));
-    ws.on("error", (err: unknown) => {
-      setError(String(err));
-      setLoading(false);
-    });
+    async function init() {
+      try {
+        // Fetch pre-computed peaks from the Rust backend (ffmpeg
+        // downsamples the audio to mono f32le @ 100 Hz and caches the
+        // result next to the audio file). This replaces WaveSurfer's
+        // built-in `decodeAudioData` path which would otherwise decode
+        // the entire multi-hundred-MB AAC stream into PCM in RAM and
+        // hang the window for 60+ seconds on multi-channel tracks.
+        setLoadingStage("生成波形峰值…");
+        const buf = await audioApi.getPeaks(filePath);
+        if (cancelled) return;
+        const samples = new Float32Array(buf);
+        const totalSecs = samples.length / WAVEFORM_PEAKS_SAMPLE_RATE;
 
-    wsRef.current = ws;
+        setLoadingStage("渲染中…");
+        ws = WaveSurfer.create({
+          container: containerRef.current!,
+          waveColor: "rgba(100, 149, 237, 0.5)",
+          progressColor: "rgba(100, 149, 237, 0.9)",
+          cursorColor: "#fff",
+          cursorWidth: 1,
+          height: 160,
+          barWidth: 2,
+          barGap: 1,
+          barRadius: 2,
+          normalize: true,
+          media: audioRef.current!,
+          peaks: [samples],
+          duration: totalSecs,
+        });
+
+        ws.on("ready", () => {
+          setDuration(ws!.getDuration() || totalSecs);
+          setLoading(false);
+        });
+        ws.on("audioprocess", () => setCurrentTime(ws!.getCurrentTime()));
+        ws.on("seeking", () => setCurrentTime(ws!.getCurrentTime()));
+        ws.on("play", () => setPlaying(true));
+        ws.on("pause", () => setPlaying(false));
+        ws.on("finish", () => setPlaying(false));
+        ws.on("error", (err: unknown) => {
+          setError(String(err));
+          setLoading(false);
+        });
+
+        // WaveSurfer with pre-computed peaks + media element is
+        // "ready" synchronously after create() — some versions don't
+        // fire the 'ready' event in that path. Force-clear loading.
+        setDuration(totalSecs);
+        setLoading(false);
+
+        wsRef.current = ws;
+      } catch (e) {
+        if (!cancelled) {
+          setError(String(e));
+          setLoading(false);
+        }
+      }
+    }
+    init();
 
     return () => {
-      ws.destroy();
+      cancelled = true;
+      ws?.destroy();
       wsRef.current = null;
     };
   }, [filePath]);
@@ -96,7 +133,7 @@ export function Waveform() {
 
       {/* Waveform */}
       <div style={styles.waveformArea}>
-        {loading && <div style={styles.loading}>加载中...</div>}
+        {loading && <div style={styles.loading}>{loadingStage}</div>}
         {error && <div style={styles.error}>{error}</div>}
         <div ref={containerRef} style={{ width: "100%", opacity: loading ? 0 : 1 }} />
       </div>
