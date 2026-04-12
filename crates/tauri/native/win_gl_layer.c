@@ -605,7 +605,23 @@ void blowup_window_start_drag(void* hwnd_ptr)
     SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
 }
 
-void blowup_apply_round_corners(void* hwnd) { (void)hwnd; }
+void blowup_apply_round_corners(void* hwnd_ptr)
+{
+    if (!hwnd_ptr) return;
+    HWND hwnd = (HWND)hwnd_ptr;
+
+    // DWMWA_WINDOW_CORNER_PREFERENCE = 33 (Windows 11+)
+    // DWMWCP_ROUND = 2
+    enum { DWMWA_WINDOW_CORNER_PREFERENCE_LOCAL = 33 };
+    enum { DWMWCP_ROUND_LOCAL = 2 };
+
+    int pref = DWMWCP_ROUND_LOCAL;
+    // Silently ignore HRESULT on older Windows where the attribute is
+    // unsupported — DwmSetWindowAttribute just returns an error code,
+    // the window stays square-cornered.
+    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE_LOCAL,
+                          &pref, sizeof(pref));
+}
 
 // Weak default — Rust provides a strong override in
 // crate::player::windows (currently windows::mod.rs, Phase 2 moves
