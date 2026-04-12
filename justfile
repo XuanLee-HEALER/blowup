@@ -127,7 +127,12 @@ install: build
 
 # ── Clean ─────────────────────────────────────────────────────────
 
-# Clean build artifacts
+# Clean ALL build and dev caches: Vite dev cache, frontend dist, cargo target
 clean:
     rm -rf dist
+    rm -rf node_modules/.vite
     cargo clean
+
+# Clean only Vite's dev cache (fixes stale HMR / multi-entry module graph)
+clean-vite:
+    rm -rf node_modules/.vite
