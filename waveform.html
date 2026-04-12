@@ -5,17 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>音频波形</title>
   </head>
-  <body style="margin:0;overflow:hidden;background:#1a1a1a;">
+  <body style="margin:0;overflow:hidden;background:#1a1a1a;color:#e0e0e0;">
     <div id="root"></div>
     <script>
+      // Diagnostic overlay — catches three kinds of failure that can
+      // leave the window blank when no devtools is open:
+      //   1. sync JS errors (window.error)
+      //   2. unhandled promise rejections
+      //   3. silent module load failures (nothing rendered after 3s)
+      function showError(title, detail) {
+        var root = document.getElementById("root");
+        if (!root) return;
+        root.innerText = title + "\n\n" + (detail || "");
+        root.style.cssText = "color:#e55;padding:20px;font-size:13px;white-space:pre-wrap;font-family:monospace;";
+      }
       window.addEventListener("error", function(e) {
-        document.getElementById("root").innerText = "JS Error: " + e.message + "\n" + (e.filename || "") + ":" + (e.lineno || "");
-        document.getElementById("root").style.cssText = "color:#e55;padding:20px;font-size:14px;white-space:pre-wrap;";
+        showError("JS Error: " + e.message, (e.filename || "") + ":" + (e.lineno || ""));
       });
       window.addEventListener("unhandledrejection", function(e) {
-        document.getElementById("root").innerText = "Promise Error: " + (e.reason?.message || e.reason);
-        document.getElementById("root").style.cssText = "color:#e55;padding:20px;font-size:14px;white-space:pre-wrap;";
+        showError("Promise rejected", e.reason && e.reason.message ? e.reason.message : String(e.reason));
       });
+      // If React hasn't rendered anything into #root after 3s, the
+      // module most likely failed to load silently (import chain
+      // broken). Surface a hint pointing at the devtools console.
+      setTimeout(function() {
+        var root = document.getElementById("root");
+        if (root && root.childElementCount === 0 && !root.innerText) {
+          showError(
+            "音频波形模块未在 3 秒内加载",
+            "可能原因：\n  - Vite dev server 未运行或端口异常\n  - /src/waveform-main.tsx 导入链被破坏\n  - wavesurfer.js 加载失败\n\n打开 devtools (F12) 看 Console 的红色错误。"
+          );
+        }
+      }, 3000);
     </script>
     <script type="module" src="/src/waveform-main.tsx"></script>
   </body>

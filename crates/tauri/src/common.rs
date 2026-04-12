@@ -17,6 +17,9 @@ pub fn unique_window_label(prefix: &str) -> String {
 }
 
 /// Open a new WebviewWindow. On Windows, runs on main thread to avoid WebView2 deadlock.
+/// In debug builds, opens devtools on the new window automatically so that
+/// module-load failures in child HTMLs (waveform, subtitle-viewer, player)
+/// can be inspected without extra wiring.
 #[cfg(target_os = "windows")]
 pub fn open_child_window(
     app: &tauri::AppHandle,
@@ -38,8 +41,16 @@ pub fn open_child_window(
         if let Some((w, h)) = min_size {
             builder = builder.min_inner_size(w, h);
         }
-        if let Err(e) = builder.build() {
-            tracing::error!(error = %e, label, "创建子窗口失败");
+        match builder.build() {
+            Ok(window) => {
+                #[cfg(debug_assertions)]
+                window.open_devtools();
+                #[cfg(not(debug_assertions))]
+                let _ = window;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, label, "创建子窗口失败");
+            }
         }
     })
     .map_err(|e| e.to_string())
@@ -61,8 +72,12 @@ pub fn open_child_window(
     if let Some((w, h)) = min_size {
         builder = builder.min_inner_size(w, h);
     }
-    builder
+    let window = builder
         .build()
         .map_err(|e| format!("创建子窗口失败: {e}"))?;
+    #[cfg(debug_assertions)]
+    window.open_devtools();
+    #[cfg(not(debug_assertions))]
+    let _ = window;
     Ok(())
 }
