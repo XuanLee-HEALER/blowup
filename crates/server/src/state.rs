@@ -8,6 +8,7 @@
 
 use blowup_core::infra::events::EventBus;
 use blowup_core::library::index::LibraryIndex;
+use blowup_core::tasks::TaskRegistry;
 use blowup_core::torrent::manager::TorrentManager;
 use blowup_core::torrent::tracker::TrackerManager;
 use sqlx::SqlitePool;
@@ -22,6 +23,7 @@ pub struct AppState {
     pub torrent: Arc<OnceCell<TorrentManager>>,
     pub http: reqwest::Client,
     pub events: EventBus,
+    pub tasks: TaskRegistry,
 }
 
 impl AppState {
@@ -31,6 +33,7 @@ impl AppState {
         tracker: Arc<TrackerManager>,
         torrent: Arc<OnceCell<TorrentManager>>,
         events: EventBus,
+        tasks: TaskRegistry,
     ) -> Self {
         Self {
             db,
@@ -39,6 +42,7 @@ impl AppState {
             torrent,
             http: reqwest::Client::new(),
             events,
+            tasks,
         }
     }
 

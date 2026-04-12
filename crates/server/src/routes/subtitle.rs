@@ -1,12 +1,13 @@
-use axum::extract::Query;
+use axum::extract::{Query, State};
 use axum::{Json, Router, routing::get, routing::post};
 use blowup_core::subtitle::service::{
-    self, AlignResult, SubEntry, SubtitleSearchResult, SubtitleStreamInfo,
+    self, SubEntry, SubtitleSearchResult, SubtitleStreamInfo,
 };
+use blowup_core::tasks::service as tasks_svc;
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::error::ApiResult;
+use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -101,11 +102,21 @@ pub struct AlignRequest {
     pub srt: String,
 }
 
-async fn align_subtitle(Json(req): Json<AlignRequest>) -> ApiResult<()> {
-    service::align_subtitle(Path::new(&req.video), Path::new(&req.srt))
-        .await
-        .map_err(|e| crate::error::ApiError::Internal(e.to_string()))?;
-    Ok(())
+/// Start a subtitle-to-video alignment. Returns the task id immediately;
+/// poll /api/v1/tasks or subscribe to /api/v1/events for completion.
+async fn align_subtitle(
+    State(state): State<AppState>,
+    Json(req): Json<AlignRequest>,
+) -> ApiResult<Json<String>> {
+    let id = tasks_svc::run_subtitle_align_to_video(
+        state.tasks.clone(),
+        state.events.clone(),
+        PathBuf::from(req.srt),
+        PathBuf::from(req.video),
+    )
+    .await
+    .map_err(ApiError::from)?;
+    Ok(Json(id))
 }
 
 #[derive(Deserialize)]
@@ -114,11 +125,21 @@ pub struct AlignToAudioRequest {
     pub audio: String,
 }
 
-async fn align_to_audio(Json(req): Json<AlignToAudioRequest>) -> ApiResult<Json<AlignResult>> {
-    let result = service::align_subtitle_to_audio(Path::new(&req.srt), Path::new(&req.audio))
-        .await
-        .map_err(|e| crate::error::ApiError::Internal(e.to_string()))?;
-    Ok(Json(result))
+/// Start a subtitle-to-audio alignment. Returns the task id immediately;
+/// the aligned SRT is written to disk when the background task finishes.
+async fn align_to_audio(
+    State(state): State<AppState>,
+    Json(req): Json<AlignToAudioRequest>,
+) -> ApiResult<Json<String>> {
+    let id = tasks_svc::run_subtitle_align_to_audio(
+        state.tasks.clone(),
+        state.events.clone(),
+        PathBuf::from(req.srt),
+        PathBuf::from(req.audio),
+    )
+    .await
+    .map_err(ApiError::from)?;
+    Ok(Json(id))
 }
 
 #[derive(Deserialize)]

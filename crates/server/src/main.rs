@@ -12,6 +12,7 @@ use blowup_core::config;
 use blowup_core::infra::db;
 use blowup_core::infra::events::EventBus;
 use blowup_core::library::index::LibraryIndex;
+use blowup_core::tasks::TaskRegistry;
 use blowup_core::torrent::manager::TorrentManager;
 use blowup_core::torrent::tracker::TrackerManager;
 use blowup_server::{AppState, build_router};
@@ -94,7 +95,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let events = EventBus::new();
-    let state = AppState::new(pool, library_index, tracker, torrent_cell, events);
+    let tasks = TaskRegistry::new();
+    let state = AppState::new(pool, library_index, tracker, torrent_cell, events, tasks);
     let app = build_router(state);
 
     let bind = resolve_bind();

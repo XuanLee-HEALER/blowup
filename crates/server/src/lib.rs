@@ -42,6 +42,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::downloads::router())
         .merge(routes::export::router())
         .merge(routes::events::router())
+        .merge(routes::tasks::router())
         .with_state(state);
 
     Router::new()

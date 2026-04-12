@@ -6,6 +6,7 @@ use blowup_core::config;
 use blowup_core::infra::events::EventBus;
 use blowup_core::infra::{cache, db};
 use blowup_core::library::index::LibraryIndex;
+use blowup_core::tasks::TaskRegistry;
 use blowup_core::torrent::manager::TorrentManager;
 use blowup_core::torrent::tracker::TrackerManager;
 use std::sync::Arc;
@@ -97,6 +98,12 @@ pub fn run() {
             // clients see the exact same notifications.
             let events = EventBus::new();
             handle.manage(events.clone());
+
+            // Long-running task registry (subtitle alignment etc.) — see
+            // core::tasks. Tauri command wrappers + embedded server share
+            // this single instance so state is consistent across clients.
+            let tasks = TaskRegistry::new();
+            handle.manage(tasks.clone());
             {
                 let app_for_events = handle.clone();
                 let mut rx = events.subscribe();
@@ -170,6 +177,7 @@ pub fn run() {
             let server_index = library_index.clone();
             let server_tracker = tracker_arc.clone();
             let server_events = events.clone();
+            let server_tasks = tasks.clone();
             tauri::async_runtime::spawn(async move {
                 let t = std::time::Instant::now();
                 match TorrentManager::new(
@@ -213,6 +221,7 @@ pub fn run() {
                     server_tracker,
                     server_cell,
                     server_events,
+                    server_tasks,
                 );
                 tracing::info!(
                     bind = EMBEDDED_SERVER_BIND,
