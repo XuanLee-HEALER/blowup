@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <commctrl.h>
+#include <dwmapi.h>
+#include <shellscalingapi.h>
 #include <gl/gl.h>
 #include <stdio.h>
 #include <string.h>
@@ -34,6 +36,25 @@ static ATOM           wnd_class_atom = 0;
 // time (enforced by the PLAYER mutex on the Rust side), so a single slot
 // suffices and side-steps any CRT heap interop with Rust's allocator.
 static GlView g_static_view;
+
+// ---------------------------------------------------------------------------
+// Video window state (single-instance, mirrors Rust PLAYER mutex)
+// ---------------------------------------------------------------------------
+typedef struct {
+    HWND    hwnd;
+    int     is_fullscreen;
+    // Saved state for exiting fullscreen
+    WINDOWPLACEMENT saved_placement;
+    LONG    saved_style;
+    LONG    saved_exstyle;
+    int     saved_was_maximized;
+    // Mouse move throttling
+    DWORD   last_mousemove_tick;
+} VideoWindow;
+
+static VideoWindow g_video_window;
+static const wchar_t* VIDEO_WND_CLASS_NAME = L"BlowupVideoWindow";
+static ATOM video_wnd_class_atom = 0;
 
 // ---------------------------------------------------------------------------
 // Parent-window subclass — keeps the GL child sized to the video area
@@ -107,6 +128,70 @@ static LRESULT CALLBACK gl_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     default:
         return DefWindowProcW(hwnd, msg, wp, lp);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Video window proc — top-level HWND hosting the GL child + mpv
+// ---------------------------------------------------------------------------
+static LRESULT CALLBACK video_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
+{
+    switch (msg) {
+    case WM_ERASEBKGND:
+        return 1;  // GL child paints the client area; no flicker
+
+    case WM_MOVE: {
+        RECT rc;
+        GetWindowRect(hwnd, &rc);
+        blowup_on_video_window_event(
+            0,
+            (int)(short)LOWORD(lp),
+            (int)(short)HIWORD(lp),
+            rc.right - rc.left,
+            rc.bottom - rc.top);
+        return 0;
+    }
+
+    case WM_SIZE: {
+        int w = LOWORD(lp);
+        int h = HIWORD(lp);
+        // Resize the GL child (if attached) to fill the client area.
+        if (g_static_view.hwnd) {
+            MoveWindow(g_static_view.hwnd, 0, 0, w, h, TRUE);
+        }
+        RECT rc;
+        GetWindowRect(hwnd, &rc);
+        blowup_on_video_window_event(1, rc.left, rc.top, w, h);
+        return 0;
+    }
+
+    case WM_CLOSE:
+        blowup_on_video_window_event(4, 0, 0, 0, 0);
+        // Don't call DestroyWindow here — Rust calls blowup_destroy_video_window
+        // from cleanup_player_resources, which ensures mpv is torn down first.
+        return 0;
+
+    case WM_DESTROY:
+        return 0;
+
+    default:
+        return DefWindowProcW(hwnd, msg, wp, lp);
+    }
+}
+
+static void ensure_video_wnd_class(void)
+{
+    if (video_wnd_class_atom) return;
+
+    WNDCLASSEXW wc = {0};
+    wc.cbSize        = sizeof(wc);
+    wc.style         = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc   = video_wnd_proc;
+    wc.hInstance     = GetModuleHandleW(NULL);
+    wc.lpszClassName = VIDEO_WND_CLASS_NAME;
+    wc.hCursor       = LoadCursorW(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+
+    video_wnd_class_atom = RegisterClassExW(&wc);
 }
 
 // ---------------------------------------------------------------------------
@@ -290,3 +375,107 @@ void blowup_remove_view(void* view_ptr)
     // Do NOT free(view) — view points at the static g_static_view slot.
     memset(view, 0, sizeof(GlView));
 }
+
+// ---------------------------------------------------------------------------
+// Top-level video window (used on Windows instead of a Tauri WebviewWindow)
+// ---------------------------------------------------------------------------
+
+void* blowup_create_video_window(double width, double height)
+{
+    // Enable per-monitor DPI so future SetWindowPos calls use physical
+    // pixels. Ignore failures (older Windows).
+    typedef BOOL (WINAPI *SetProcessDpiAwarenessContext_t)(DPI_AWARENESS_CONTEXT);
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32) {
+        SetProcessDpiAwarenessContext_t fn =
+            (SetProcessDpiAwarenessContext_t)GetProcAddress(
+                user32, "SetProcessDpiAwarenessContext");
+        if (fn) {
+            fn(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        }
+    }
+
+    ensure_video_wnd_class();
+
+    memset(&g_video_window, 0, sizeof(VideoWindow));
+
+    // Centered on primary monitor
+    int sx = GetSystemMetrics(SM_CXSCREEN);
+    int sy = GetSystemMetrics(SM_CYSCREEN);
+    int w  = (int)width;
+    int h  = (int)height;
+    int x  = (sx - w) / 2;
+    int y  = (sy - h) / 2;
+
+    HWND hwnd = CreateWindowExW(
+        0,
+        VIDEO_WND_CLASS_NAME,
+        L"blowup player",
+        WS_POPUP | WS_THICKFRAME | WS_VISIBLE | WS_CLIPCHILDREN,
+        x, y, w, h,
+        NULL, NULL,
+        GetModuleHandleW(NULL),
+        NULL);
+
+    if (!hwnd) return NULL;
+
+    g_video_window.hwnd = hwnd;
+    ShowWindow(hwnd, SW_SHOW);
+    UpdateWindow(hwnd);
+    return (void*)hwnd;
+}
+
+void blowup_destroy_video_window(void* hwnd_ptr)
+{
+    if (!hwnd_ptr) return;
+    HWND hwnd = (HWND)hwnd_ptr;
+    if (g_video_window.hwnd == hwnd) {
+        memset(&g_video_window, 0, sizeof(VideoWindow));
+    }
+    DestroyWindow(hwnd);
+}
+
+void blowup_get_video_window_rect(void* hwnd_ptr, int* x, int* y, int* w, int* h)
+{
+    if (!hwnd_ptr) return;
+    HWND hwnd = (HWND)hwnd_ptr;
+    RECT rc;
+    GetWindowRect(hwnd, &rc);
+    if (x) *x = rc.left;
+    if (y) *y = rc.top;
+    if (w) *w = rc.right - rc.left;
+    if (h) *h = rc.bottom - rc.top;
+}
+
+void blowup_set_video_window_rect(void* hwnd_ptr, int x, int y, int w, int h)
+{
+    if (!hwnd_ptr) return;
+    SetWindowPos((HWND)hwnd_ptr, NULL, x, y, w, h,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+
+// ---------------------------------------------------------------------------
+// Stubs for fullscreen / window control / round corners (Phase 6, 8, 11)
+// ---------------------------------------------------------------------------
+
+int  blowup_enter_fullscreen(void* hwnd) { (void)hwnd; return -1; }
+int  blowup_leave_fullscreen(void* hwnd) { (void)hwnd; return -1; }
+int  blowup_is_fullscreen(void* hwnd)    { (void)hwnd; return 0; }
+void blowup_window_minimize(void* hwnd)  { (void)hwnd; }
+void blowup_window_toggle_maximize(void* hwnd) { (void)hwnd; }
+void blowup_window_start_drag(void* hwnd) { (void)hwnd; }
+void blowup_apply_round_corners(void* hwnd) { (void)hwnd; }
+
+// Weak default — Rust provides a strong override in
+// crate::player::windows (currently windows::mod.rs, Phase 2 moves
+// it to crate::player::windows::video_window). This weak symbol
+// prevents link errors under GCC/Clang. Under MSVC this is a no-op
+// because `__attribute__((weak))` isn't supported; Rust's strong
+// definition (added as a temporary stub in Phase 1, real in Phase 2)
+// provides the symbol instead.
+#if defined(__GNUC__)
+__attribute__((weak))
+void blowup_on_video_window_event(int event_type, int x, int y, int w, int h) {
+    (void)event_type; (void)x; (void)y; (void)w; (void)h;
+}
+#endif

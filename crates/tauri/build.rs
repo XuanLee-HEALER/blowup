@@ -32,6 +32,8 @@ fn compile_native() {
         println!("cargo:rustc-link-lib=user32");
         println!("cargo:rustc-link-lib=gdi32");
         println!("cargo:rustc-link-lib=comctl32");
+        println!("cargo:rustc-link-lib=dwmapi");
+        println!("cargo:rustc-link-lib=shcore");
     }
 }
 
