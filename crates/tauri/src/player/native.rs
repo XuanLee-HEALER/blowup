@@ -98,6 +98,40 @@ pub fn create_and_attach_gl_view(window: &tauri::WebviewWindow) -> Result<*mut c
     }
 }
 
+/// Create an OpenGL child view and attach it to a raw Win32 HWND.
+///
+/// # Safety
+///
+/// `parent_hwnd` must be a valid, live top-level HWND owned by the
+/// current process (e.g. one returned from `blowup_create_video_window`).
+/// The caller must ensure the HWND outlives the GL view until
+/// `remove_gl_view` / `blowup_destroy_video_window` tears it down.
+#[cfg(target_os = "windows")]
+pub unsafe fn create_and_attach_gl_view_win_hwnd(
+    parent_hwnd: *mut c_void,
+    width: f64,
+    height: f64,
+) -> Result<*mut c_void, String> {
+    remove_gl_view();
+
+    unsafe {
+        let view = blowup_create_gl_view(width, height);
+        if view.is_null() {
+            return Err("failed to create GL view".into());
+        }
+
+        let ret = blowup_attach_to_window(parent_hwnd, view);
+        if ret != 0 {
+            blowup_remove_view(view);
+            return Err("failed to attach GL view".into());
+        }
+
+        *GL_VIEW_PTR.lock().unwrap() = Some(ViewPtr(view));
+        tracing::info!("GL view attached to video HWND");
+        Ok(view)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Shared implementations (macOS + Windows)
 // ---------------------------------------------------------------------------

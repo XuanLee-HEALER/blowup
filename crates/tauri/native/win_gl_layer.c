@@ -289,10 +289,18 @@ int blowup_attach_to_window(void* parent_hwnd_ptr, void* view_ptr)
     int w = rc.right  > 0 ? rc.right  : (int)view->init_width;
     int h = rc.bottom > 0 ? rc.bottom : (int)view->init_height;
 
-    // Reserve CONTROLS_HEIGHT pixels at the bottom for the WebView2
-    // controls bar — the GL view only covers the video area above it.
-    int video_h = h - CONTROLS_HEIGHT;
-    if (video_h < 0) video_h = 0;
+    int video_h;
+    if (parent == g_video_window.hwnd) {
+        // New architecture: GL child fills the entire client area of
+        // the native video window. The controls live in a separate
+        // top-level Tauri window (label "player-controls").
+        video_h = h;
+    } else {
+        // Legacy path (not reachable on Windows anymore, but kept for
+        // robustness during transition).
+        video_h = h - CONTROLS_HEIGHT;
+        if (video_h < 0) video_h = 0;
+    }
 
     view->hwnd = CreateWindowExW(
         0,
@@ -323,8 +331,12 @@ int blowup_attach_to_window(void* parent_hwnd_ptr, void* view_ptr)
     SetWindowPos(view->hwnd, HWND_TOP, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
-    // Subclass parent to auto-resize GL child on WM_SIZE
-    SetWindowSubclass(parent, parent_subclass_proc, 1, (DWORD_PTR)view);
+    // If the parent is our own video window, its WndProc already handles
+    // WM_SIZE by resizing the GL child; no subclass needed. Only subclass
+    // when the parent is a foreign window (legacy Tauri path).
+    if (parent != g_video_window.hwnd) {
+        SetWindowSubclass(parent, parent_subclass_proc, 1, (DWORD_PTR)view);
+    }
 
     return 0;
 }
@@ -357,7 +369,7 @@ void blowup_remove_view(void* view_ptr)
     if (!view_ptr) return;
     GlView* view = (GlView*)view_ptr;
 
-    if (view->parent_hwnd) {
+    if (view->parent_hwnd && view->parent_hwnd != g_video_window.hwnd) {
         RemoveWindowSubclass(view->parent_hwnd, parent_subclass_proc, 1);
     }
 

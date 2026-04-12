@@ -29,21 +29,22 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
 
     super::EVENT_LOOP_SHUTDOWN.store(false, std::sync::atomic::Ordering::SeqCst);
     *super::CURRENT_FILE_PATH.lock().unwrap() = Some(file_path.to_string());
-
     let _ = PLAYER_APP_HANDLE.set(app.clone());
 
-    // Phase 2: only create the bare video window. No GL, no mpv, no
-    // controls. Subsequent phases add the rest.
-    //
-    // Phase 2: synchronous main-thread dispatch via std::sync::mpsc.
-    // NOTE: must NOT be called from the main thread itself — the
-    // blocking rx.recv() would deadlock because the queued closure
-    // would never be pumped. Currently safe because Tauri commands
-    // run on the async runtime worker pool, never on the main thread.
-    // Phase 3 replaces this with tokio::sync::oneshot + async spawn
-    // which sidesteps the deadlock entirely.
-    let (tx, rx) = std::sync::mpsc::channel();
-    let _ = app.run_on_main_thread(move || {
+    let file_path_owned = file_path.to_string();
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = run_open_phases(app_clone, file_path_owned).await {
+            tracing::error!(error = %e, "windows open_player failed");
+        }
+    });
+    Ok(())
+}
+
+async fn run_open_phases(app: AppHandle, file_path: String) -> Result<(), String> {
+    // Phase 1: create HWND (main thread)
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || {
         let hwnd = unsafe { video_window::blowup_create_video_window(1280.0, 720.0) };
         if hwnd.is_null() {
             let _ = tx.send(Err("blowup_create_video_window returned NULL".to_string()));
@@ -52,10 +53,98 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
         unsafe { video_window::blowup_apply_round_corners(hwnd) };
         *PLAYER_HWND.lock().unwrap() = Some(HwndPtr(hwnd));
         let _ = tx.send(Ok(()));
-    });
-    rx.recv().map_err(|e| format!("phase 1 channel: {e}"))??;
+    })
+    .map_err(|e| format!("dispatch phase 1: {e}"))?;
+    rx.await.map_err(|e| format!("phase 1 channel: {e}"))??;
 
-    tracing::info!(file_path, "[phase 2] video window created (mpv not yet wired)");
+    // Phase 2: attach GL + mpv (main thread)
+    let (tx2, rx2) = tokio::sync::oneshot::channel();
+    let file_path_for_setup = file_path.clone();
+    let app_for_setup = app.clone();
+    app.run_on_main_thread(move || {
+        let result = setup_gl_and_mpv_on_video_window(&app_for_setup, &file_path_for_setup);
+        let _ = tx2.send(result);
+    })
+    .map_err(|e| format!("dispatch phase 2: {e}"))?;
+    rx2.await.map_err(|e| format!("phase 2 channel: {e}"))??;
+
+    // Phase 3 (controls window) is added in Phase 4 of the plan.
+
+    Ok(())
+}
+
+fn setup_gl_and_mpv_on_video_window(app: &AppHandle, file_path: &str) -> Result<(), String> {
+    use crate::player::ffi::{self, MPV_FORMAT_DOUBLE, Mpv, MpvRenderCtx};
+    use crate::player::{
+        EVENT_LOOP_RUNNING, MPV_HANDLE, MpvHandlePtr, MpvPlayer, PLAYER, RENDER_CTX, RenderCtxPtr,
+    };
+    use std::sync::atomic::Ordering;
+
+    let hwnd = PLAYER_HWND
+        .lock()
+        .unwrap()
+        .map(|HwndPtr(p)| p)
+        .ok_or_else(|| "video window missing".to_string())?;
+
+    // Grab the actual client size from the HWND (in case DPI stretched it)
+    let (mut w, mut h) = (1280i32, 720i32);
+    unsafe {
+        video_window::blowup_get_video_window_rect(
+            hwnd,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut w,
+            &mut h,
+        );
+    }
+
+    let view = unsafe {
+        super::native::create_and_attach_gl_view_win_hwnd(hwnd, w as f64, h as f64)?
+    };
+    let _ = view;
+
+    let mpv = Mpv::new()?;
+    mpv.set_option("vo", "libmpv")?;
+    mpv.set_option("hwdec", "auto")?;
+    mpv.set_option("keep-open", "yes")?;
+    mpv.initialize()?;
+
+    super::native::make_gl_context_current();
+    let get_proc_addr = super::native::get_gl_proc_address_fn();
+    let render_ctx_raw = mpv.create_render_context(get_proc_addr)?;
+    let render_ctx = MpvRenderCtx {
+        ctx: render_ctx_raw,
+    };
+
+    *RENDER_CTX.lock().unwrap() = Some(RenderCtxPtr(render_ctx_raw));
+    *MPV_HANDLE.lock().unwrap() = Some(MpvHandlePtr(mpv.raw_handle()));
+
+    unsafe {
+        render_ctx.set_update_callback(Some(super::on_mpv_render_update), std::ptr::null_mut())
+    };
+
+    mpv.observe_property("time-pos", MPV_FORMAT_DOUBLE, 1)?;
+    mpv.observe_property("duration", MPV_FORMAT_DOUBLE, 2)?;
+    mpv.observe_property("pause", ffi::MPV_FORMAT_FLAG, 3)?;
+    mpv.observe_property("volume", MPV_FORMAT_DOUBLE, 4)?;
+
+    mpv.command(&["loadfile", file_path])?;
+    tracing::info!(file_path, "windows player: video + mpv ready");
+
+    let player = MpvPlayer {
+        _render_ctx: render_ctx,
+        mpv,
+    };
+    *PLAYER.lock().unwrap() = Some(player);
+
+    let app_handle = app.clone();
+    std::thread::spawn(move || {
+        EVENT_LOOP_RUNNING.store(true, Ordering::SeqCst);
+        super::event_loop(&app_handle);
+        EVENT_LOOP_RUNNING.store(false, Ordering::SeqCst);
+        tracing::info!("event loop thread exited");
+    });
+
     Ok(())
 }
 
