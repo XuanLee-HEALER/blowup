@@ -3,6 +3,7 @@ use axum::{Json, Router, routing::delete, routing::get, routing::post, routing::
 use blowup_core::entries::graph;
 use blowup_core::entries::model::{EntryDetail, EntrySummary, GraphData};
 use blowup_core::entries::service;
+use blowup_core::infra::events::DomainEvent;
 use serde::Deserialize;
 
 use crate::error::ApiResult;
@@ -63,6 +64,7 @@ async fn create_entry(
     let id = service::create_entry(&state.db, &req.name)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(Json(id))
 }
 
@@ -74,6 +76,7 @@ async fn update_name(
     service::update_entry_name(&state.db, id, &req.name)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(())
 }
 
@@ -90,6 +93,7 @@ async fn update_wiki(
     service::update_entry_wiki(&state.db, id, &req.wiki)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(())
 }
 
@@ -97,6 +101,7 @@ async fn delete_entry(State(state): State<AppState>, Path(id): Path<i64>) -> Api
     service::delete_entry(&state.db, id)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(())
 }
 
@@ -113,6 +118,7 @@ async fn add_tag(
     service::add_entry_tag(&state.db, entry_id, &req.tag)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(())
 }
 
@@ -125,6 +131,7 @@ async fn remove_tag_query(
     service::remove_entry_tag(&state.db, entry_id, &q.tag)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(())
 }
 
@@ -149,6 +156,7 @@ async fn add_relation(
     let id = service::add_relation(&state.db, req.from_id, req.to_id, &req.relation_type)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(Json(id))
 }
 
@@ -156,6 +164,7 @@ async fn remove_relation(State(state): State<AppState>, Path(id): Path<i64>) -> 
     service::remove_relation(&state.db, id)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(())
 }
 

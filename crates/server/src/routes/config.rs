@@ -1,5 +1,7 @@
+use axum::extract::State;
 use axum::{Json, Router, routing::get};
 use blowup_core::config::{self, Config};
+use blowup_core::infra::events::DomainEvent;
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -14,8 +16,12 @@ async fn get_config() -> ApiResult<Json<Config>> {
     Ok(Json(config::load_config()))
 }
 
-async fn save_config(Json(new_config): Json<Config>) -> ApiResult<()> {
+async fn save_config(
+    State(state): State<AppState>,
+    Json(new_config): Json<Config>,
+) -> ApiResult<()> {
     config::save_config(&new_config)?;
+    state.events.publish(DomainEvent::ConfigChanged);
     Ok(())
 }
 

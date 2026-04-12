@@ -6,6 +6,7 @@
 //! asynchronously after startup). Cloneable so axum's `with_state`
 //! can hand it to each request.
 
+use blowup_core::infra::events::EventBus;
 use blowup_core::library::index::LibraryIndex;
 use blowup_core::torrent::manager::TorrentManager;
 use blowup_core::torrent::tracker::TrackerManager;
@@ -20,6 +21,7 @@ pub struct AppState {
     pub tracker: Arc<TrackerManager>,
     pub torrent: Arc<OnceCell<TorrentManager>>,
     pub http: reqwest::Client,
+    pub events: EventBus,
 }
 
 impl AppState {
@@ -28,6 +30,7 @@ impl AppState {
         library_index: Arc<LibraryIndex>,
         tracker: Arc<TrackerManager>,
         torrent: Arc<OnceCell<TorrentManager>>,
+        events: EventBus,
     ) -> Self {
         Self {
             db,
@@ -35,6 +38,7 @@ impl AppState {
             tracker,
             torrent,
             http: reqwest::Client::new(),
+            events,
         }
     }
 

@@ -2,6 +2,7 @@ pub mod audio;
 pub mod config;
 pub mod downloads;
 pub mod entries;
+pub mod events;
 pub mod export;
 pub mod health;
 pub mod library;

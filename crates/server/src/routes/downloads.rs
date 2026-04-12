@@ -1,5 +1,6 @@
 use axum::extract::{Path, State};
 use axum::{Json, Router, routing::get, routing::post};
+use blowup_core::infra::events::DomainEvent;
 use blowup_core::torrent::download::{self as svc, DownloadRecord, StartDownloadRequest};
 use blowup_core::torrent::manager::TorrentFileInfo;
 use serde::Deserialize;
@@ -74,6 +75,7 @@ async fn start_download(
     };
 
     svc::set_torrent_id(&state.db, download_id, torrent_id as i64).await?;
+    state.events.publish(DomainEvent::DownloadsChanged);
     // Note: standalone server mode does not spawn a progress monitor task yet —
     // iOS/LAN clients poll list_downloads for updates. Embedded-mode Tauri
     // continues to run its own monitor that writes back to the same DB.
@@ -89,6 +91,7 @@ async fn pause(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<
         tm.pause(tid as usize).await.ok();
     }
     svc::mark_paused(&state.db, id).await?;
+    state.events.publish(DomainEvent::DownloadsChanged);
     Ok(())
 }
 
@@ -103,6 +106,7 @@ async fn resume(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult
     };
     if resumed {
         svc::mark_resumed(&state.db, id).await?;
+        state.events.publish(DomainEvent::DownloadsChanged);
         return Ok(());
     }
 
@@ -116,6 +120,7 @@ async fn resume(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult
         .await
         .map_err(ApiError::Internal)?;
     svc::mark_resumed_with_new_torrent(&state.db, id, torrent_id as i64).await?;
+    state.events.publish(DomainEvent::DownloadsChanged);
     Ok(())
 }
 
@@ -142,6 +147,10 @@ async fn delete_download(State(state): State<AppState>, Path(id): Path<i64>) -> 
     }
 
     svc::delete_download_record(&state.db, id).await?;
+    state.events.publish(DomainEvent::DownloadsChanged);
+    if is_active {
+        state.events.publish(DomainEvent::LibraryChanged);
+    }
     Ok(())
 }
 
@@ -171,6 +180,7 @@ async fn redownload(
         .map_err(ApiError::Internal)?;
 
     svc::reset_for_redownload(&state.db, id, torrent_id as i64).await?;
+    state.events.publish(DomainEvent::DownloadsChanged);
     Ok(())
 }
 

@@ -1,6 +1,7 @@
 use axum::extract::State;
 use axum::{Json, Router, routing::get, routing::post};
 use blowup_core::export::service;
+use blowup_core::infra::events::DomainEvent;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -39,6 +40,7 @@ async fn import_kb(
     let result = service::import_knowledge_base_from_file(&state.db, Path::new(&req.path))
         .await
         .map_err(ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(Json(result))
 }
 
@@ -48,9 +50,13 @@ async fn export_config(Json(req): Json<PathBody>) -> ApiResult<()> {
     Ok(())
 }
 
-async fn import_config(Json(req): Json<PathBody>) -> ApiResult<()> {
+async fn import_config(
+    State(state): State<AppState>,
+    Json(req): Json<PathBody>,
+) -> ApiResult<()> {
     let dst = blowup_core::config::config_path();
     service::import_config_from_file(Path::new(&req.path), &dst).map_err(ApiError::Internal)?;
+    state.events.publish(DomainEvent::ConfigChanged);
     Ok(())
 }
 
@@ -67,6 +73,7 @@ async fn import_kb_s3(State(state): State<AppState>) -> ApiResult<Json<String>> 
     let result = service::import_knowledge_base_s3(&state.db, &cfg.sync)
         .await
         .map_err(ApiError::Internal)?;
+    state.events.publish(DomainEvent::EntriesChanged);
     Ok(Json(result))
 }
 
@@ -79,12 +86,13 @@ async fn export_config_s3() -> ApiResult<()> {
     Ok(())
 }
 
-async fn import_config_s3() -> ApiResult<()> {
+async fn import_config_s3(State(state): State<AppState>) -> ApiResult<()> {
     let cfg = blowup_core::config::load_config();
     let dst = blowup_core::config::config_path();
     service::import_config_s3(&cfg.sync, &dst)
         .await
         .map_err(ApiError::Internal)?;
+    state.events.publish(DomainEvent::ConfigChanged);
     Ok(())
 }
 

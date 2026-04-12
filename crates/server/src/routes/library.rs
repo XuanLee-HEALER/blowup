@@ -1,5 +1,6 @@
 use axum::extract::{Path, State};
 use axum::{Json, Router, routing::delete, routing::get, routing::post};
+use blowup_core::infra::events::DomainEvent;
 use blowup_core::library::index::{IndexEntry, SubtitleDisplayConfig};
 use blowup_core::library::items::{
     self as svc, LibraryItemDetail, LibraryItemSummary, LibraryStats, ScanResult,
@@ -43,6 +44,7 @@ async fn add_item(
     let id = svc::add_library_item(&state.db, &req.file_path)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::LibraryChanged);
     Ok(Json(id))
 }
 
@@ -67,6 +69,7 @@ async fn remove_item(State(state): State<AppState>, Path(id): Path<i64>) -> ApiR
     svc::remove_library_item(&state.db, id)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::LibraryChanged);
     Ok(())
 }
 
@@ -82,6 +85,7 @@ async fn scan(
     let result = svc::scan_library_directory(&state.db, &req.dir_path)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::LibraryChanged);
     Ok(Json(result))
 }
 
@@ -106,6 +110,7 @@ async fn add_asset(
     )
     .await
     .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::LibraryChanged);
     Ok(Json(id))
 }
 
@@ -113,6 +118,7 @@ async fn remove_asset(State(state): State<AppState>, Path(id): Path<i64>) -> Api
     svc::remove_library_asset(&state.db, id)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::LibraryChanged);
     Ok(())
 }
 
@@ -157,6 +163,7 @@ async fn search_index(
 
 async fn rebuild(State(state): State<AppState>) -> Json<()> {
     state.library_index.rebuild_from_disk();
+    state.events.publish(DomainEvent::LibraryChanged);
     Json(())
 }
 
@@ -167,11 +174,13 @@ async fn delete_resource(
     svc::delete_library_resource(&state.db, &req.file_path)
         .await
         .map_err(crate::error::ApiError::Internal)?;
+    state.events.publish(DomainEvent::LibraryChanged);
     Ok(())
 }
 
 async fn refresh_entry(State(state): State<AppState>, Path(tmdb_id): Path<u64>) -> Json<()> {
     state.library_index.update_files(tmdb_id);
+    state.events.publish(DomainEvent::LibraryChanged);
     Json(())
 }
 
@@ -193,6 +202,7 @@ async fn delete_film_directory(
         Ok(()) | Err(_) => {}
     }
     state.library_index.remove_entry(tmdb_id);
+    state.events.publish(DomainEvent::LibraryChanged);
     Ok(())
 }
 
