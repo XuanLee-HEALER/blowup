@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { library, subtitle, media, audio, config } from "../lib/tauri";
-import type { IndexEntry, FileMediaInfo, SubtitleSearchResult } from "../lib/tauri";
+import { library, subtitle, media, audio, config, tasks } from "../lib/tauri";
+import type {
+  IndexEntry,
+  FileMediaInfo,
+  SubtitleSearchResult,
+  TaskRecord,
+} from "../lib/tauri";
 import { TextInput } from "../components/ui/TextInput";
 import { formatSize, formatDuration, formatBitrate, formatFrameRate } from "../lib/format";
 import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
@@ -270,9 +275,12 @@ function ProbeDetail({ info }: { info: FileMediaInfo }) {
 
 // ── Subtitle resource row ───────────────────────────────────────
 
-function SubtitleRow({ file, rootPath, audioFiles, alignedFiles, onStatusChange, onRefresh }: {
+function SubtitleRow({ file, rootPath, audioFiles, alignedFiles, task, onStatusChange, onRefresh }: {
   file: string; rootPath: string; audioFiles: string[];
   alignedFiles: string[];
+  /** Task record for this subtitle (keyed by full srt path), undefined if no task
+   *  has ever been started or the user dismissed the last one. */
+  task: TaskRecord | undefined;
   onStatusChange: (s: StatusMsg) => void; onRefresh: () => void;
 }) {
   const fullPath = `${rootPath}/${file}`;
@@ -280,12 +288,42 @@ function SubtitleRow({ file, rootPath, audioFiles, alignedFiles, onStatusChange,
   const [offsetMs, setOffsetMs] = useState(0);
   const [showShift, setShowShift] = useState(false);
   const [showAlignModal, setShowAlignModal] = useState(false);
-  // align states: "idle" | "loading" | "success" | "error"
+  // Align state is derived from the task prop so it survives across
+  // Darkroom unmounts. Optimistic "loading" is set immediately on
+  // click; the tasks:changed event then rehydrates from the registry.
   const [alignState, setAlignState] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [alignMsg, setAlignMsg] = useState("");
   const [showAlignBubble, setShowAlignBubble] = useState(false);
   const [bubbleExpanded, setBubbleExpanded] = useState(false);
+  const lastCompletedRef = useRef<string | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
+
+  // Sync align state from the TaskRegistry-backed task prop. This fires
+  // whenever Darkroom re-fetches tasks.list() after a tasks:changed event
+  // AND when the component first mounts (page was navigated back).
+  useEffect(() => {
+    if (!task) {
+      // No entry in the registry — don't clobber a fresh "loading"
+      // that was just set optimistically in handleAlignConfirm.
+      return;
+    }
+    if (task.status.state === "running") {
+      setAlignState("loading");
+      setAlignMsg("");
+    } else if (task.status.state === "completed") {
+      setAlignState("success");
+      setAlignMsg(task.status.summary);
+      // Refresh the file list once per completion so the newly
+      // written .aligned.srt shows up in the row.
+      if (lastCompletedRef.current !== task.updated_at) {
+        lastCompletedRef.current = task.updated_at;
+        onRefresh();
+      }
+    } else if (task.status.state === "failed") {
+      setAlignState("error");
+      setAlignMsg(task.status.error);
+    }
+  }, [task, onRefresh]);
 
   const handleAlignConfirm = (audioFile: string) => {
     setShowAlignModal(false);
@@ -293,12 +331,10 @@ function SubtitleRow({ file, rootPath, audioFiles, alignedFiles, onStatusChange,
     setAlignMsg("");
     setShowAlignBubble(false);
     subtitle.alignToAudio(fullPath, `${rootPath}/${audioFile}`)
-      .then((result) => {
-        setAlignState("success");
-        setAlignMsg(result.summary);
-        onRefresh();
-      })
       .catch((e) => {
+        // Starting the task failed (e.g. "already running") — surface
+        // the error immediately. Real alignment failures come in via
+        // the task prop update.
         setAlignState("error");
         setAlignMsg(`${e}`);
       });
@@ -373,7 +409,14 @@ function SubtitleRow({ file, rootPath, audioFiles, alignedFiles, onStatusChange,
             <>
               {/* Invisible overlay to catch outside clicks */}
               <div
-                onClick={() => { setShowAlignBubble(false); setBubbleExpanded(false); setAlignState("idle"); }}
+                onClick={() => {
+                  setShowAlignBubble(false);
+                  setBubbleExpanded(false);
+                  setAlignState("idle");
+                  // Remove the terminal task entry from the registry so a
+                  // re-align can start cleanly and other subscribers refresh.
+                  tasks.dismiss(fullPath).catch(() => { /* best-effort */ });
+                }}
                 style={{ position: "fixed", inset: 0, zIndex: 49 }}
               />
               <div
@@ -582,6 +625,10 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
   const [downloadingSub, setDownloadingSub] = useState<string | null>(null);
   const [hoveredVideo, setHoveredVideo] = useState<string | null>(null);
   const [hoveredAudio, setHoveredAudio] = useState<string | null>(null);
+  // Task registry snapshot, keyed by task.id (= full srt path for alignment).
+  // Refetched on mount + on every tasks:changed event so the page survives
+  // navigation while long-running alignments are in flight.
+  const [taskMap, setTaskMap] = useState<Map<string, TaskRecord>>(() => new Map());
 
   // Refresh file list from index
   const refreshFiles = useCallback(async () => {
@@ -590,6 +637,15 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
     const updated = entries.find((e) => e.tmdb_id === entry.tmdb_id);
     if (updated) setFiles(updated.files);
   }, [entry.tmdb_id]);
+
+  const refreshTasks = useCallback(async () => {
+    try {
+      const list = await tasks.list();
+      setTaskMap(new Map(list.map((t) => [t.id, t])));
+    } catch { /* best-effort */ }
+  }, []);
+  useEffect(() => { refreshTasks(); }, [refreshTasks]);
+  useBackendEvent(BackendEvent.TASKS_CHANGED, refreshTasks);
 
   const videoFiles = files.filter((f) => VIDEO_EXTS.includes(getExt(f)));
   const allSubtitleFiles = files.filter((f) => SUB_EXTS.includes(getExt(f)));
@@ -726,6 +782,7 @@ function WorkspacePanel({ entry, rootDir }: { entry: IndexEntry; rootDir: string
               rootPath={rootPath}
               audioFiles={audioFiles}
               alignedFiles={getAlignedFiles(f)}
+              task={taskMap.get(`${rootPath}/${f}`)}
               onStatusChange={setStatus}
               onRefresh={refreshFiles}
             />

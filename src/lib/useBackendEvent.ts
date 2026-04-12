@@ -6,6 +6,7 @@ export const BackendEvent = {
   LIBRARY_CHANGED: "library:changed",
   ENTRIES_CHANGED: "entries:changed",
   CONFIG_CHANGED: "config:changed",
+  TASKS_CHANGED: "tasks:changed",
 } as const;
 
 export type BackendEventName = (typeof BackendEvent)[keyof typeof BackendEvent];

@@ -422,8 +422,10 @@ export const subtitle = {
     invoke<SubtitleSearchResult[]>("search_subtitles_cmd", { video, lang, title, year, tmdbId }),
   download: (video: string, lang: string, downloadId: string) =>
     invoke<void>("download_subtitle_cmd", { video, lang, downloadId }),
+  /** Start a subtitle-to-video alignment. Returns the task id; watch
+   *  `tasks:changed` + `tasks.list()` for completion. */
   align: (video: string, srt: string) =>
-    invoke<void>("align_subtitle_cmd", { video, srt }),
+    invoke<string>("align_subtitle_cmd", { video, srt }),
   extract: (video: string, stream?: number) =>
     invoke<void>("extract_subtitle_cmd", { video, stream }),
   listStreams: (video: string) =>
@@ -432,15 +434,35 @@ export const subtitle = {
     invoke<void>("shift_subtitle_cmd", { srt, offsetMs }),
   openViewer: (filePath: string) =>
     invoke<void>("open_subtitle_viewer", { filePath }),
+  /** Start a subtitle-to-audio alignment. Returns the task id; watch
+   *  `tasks:changed` + `tasks.list()` for completion. */
   alignToAudio: (srt: string, audio: string) =>
-    invoke<AlignResult>("align_to_audio_cmd", { srt, audio }),
+    invoke<string>("align_to_audio_cmd", { srt, audio }),
 };
 
-export interface AlignResult {
-  output_path: string;
-  output_filename: string;
-  summary: string;
+// ── Tasks ─────────────────────────────────────────────────────────
+
+export type TaskKind =
+  | { kind: "subtitle_align_to_audio"; srt_path: string; audio_path: string }
+  | { kind: "subtitle_align_to_video"; srt_path: string; video_path: string };
+
+export type TaskStatus =
+  | { state: "running" }
+  | { state: "completed"; summary: string; output_path?: string }
+  | { state: "failed"; error: string };
+
+export interface TaskRecord {
+  id: string;
+  kind: TaskKind;
+  status: TaskStatus;
+  started_at: string;
+  updated_at: string;
 }
+
+export const tasks = {
+  list: () => invoke<TaskRecord[]>("list_tasks"),
+  dismiss: (id: string) => invoke<void>("dismiss_task", { id }),
+};
 
 export const media = {
   probeDetail: (filePath: string) =>
