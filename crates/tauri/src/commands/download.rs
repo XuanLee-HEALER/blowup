@@ -230,7 +230,7 @@ fn spawn_download_monitor(p: MonitorParams) {
                         .to_lowercase();
                     if crate::library_index::VIDEO_EXTENSIONS.contains(&ext.as_str()) {
                         let video_path = p.output_folder.join(file);
-                        crate::commands::subtitle::auto_extract_all_subtitles(&video_path).await;
+                        blowup_core::subtitle::service::auto_extract_all_subtitles(&video_path).await;
                     }
                 }
 

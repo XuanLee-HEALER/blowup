@@ -29,6 +29,7 @@ webrtc-vad            = "0.4"
 byteorder             = "1"
 librqbit              = "8.1"
 url                   = "2"
+anyhow                = "1"
 
 [dev-dependencies]
 tempfile    = "3"

@@ -422,6 +422,7 @@ name = "blowup-core"
 version = "0.1.0"
 dependencies = [
  "alass-core",
+ "anyhow",
  "byteorder",
  "chrono",
  "dirs 5.0.1",
