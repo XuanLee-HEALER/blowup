@@ -1,4 +1,4 @@
-// src-tauri/src/commands/media.rs
+// crates/tauri/src/commands/media.rs
 use crate::ffmpeg::FfmpegTool;
 use crate::library_index::{FileMediaInfo, FileStreamInfo, LibraryIndex};
 use serde::Serialize;

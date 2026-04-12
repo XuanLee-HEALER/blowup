@@ -73,6 +73,9 @@ static ASS_DIALOGUE_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("valid ASS dialogue regex")
 });
 
+static ASS_OVERRIDE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{[^}]*\}").expect("valid ASS override regex"));
+
 fn parse_ass_ts(h: &str, m: &str, s: &str, cs: &str) -> i64 {
     let h: i64 = h.parse().unwrap_or(0);
     let m: i64 = m.parse().unwrap_or(0);
@@ -92,12 +95,7 @@ pub fn parse_ass(content: &str) -> Vec<SubCue> {
             let start = parse_ass_ts(&caps[1], &caps[2], &caps[3], &caps[4]);
             let end = parse_ass_ts(&caps[5], &caps[6], &caps[7], &caps[8]);
             // caps[12] is the text; strip ASS override tags {..}
-            let text = caps[12].to_string();
-            let text = Regex::new(r"\{[^}]*\}")
-                .unwrap()
-                .replace_all(&text, "")
-                .to_string();
-            let text = text.trim().to_string();
+            let text = ASS_OVERRIDE_RE.replace_all(&caps[12], "").trim().to_string();
             if !text.is_empty() {
                 cues.push(SubCue {
                     start_ms: start,

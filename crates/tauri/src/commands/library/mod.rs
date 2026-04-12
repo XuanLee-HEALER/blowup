@@ -1,4 +1,4 @@
-// src-tauri/src/commands/library/mod.rs
+// crates/tauri/src/commands/library/mod.rs
 
 pub mod entries;
 pub mod graph;

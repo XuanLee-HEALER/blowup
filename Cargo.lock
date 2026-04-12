@@ -418,7 +418,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "blowup"
+name = "blowup-core"
+version = "0.1.0"
+
+[[package]]
+name = "blowup-server"
+version = "0.1.0"
+
+[[package]]
+name = "blowup-tauri"
 version = "2.0.7"
 dependencies = [
  "alass-core",

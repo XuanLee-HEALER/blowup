@@ -61,12 +61,12 @@ jobs:
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile mpv-dev.7z
           7z x mpv-dev.7z -ompv-dev
           Write-Host "Archive contents:" ; Get-ChildItem -Recurse mpv-dev | ForEach-Object { Write-Host $_.FullName }
-          New-Item -ItemType Directory -Force -Path src-tauri/lib | Out-Null
+          New-Item -ItemType Directory -Force -Path crates/tauri/lib | Out-Null
           # Find .lib or .dll.a file (pre-built import lib)
           $libFile = Get-ChildItem -Recurse mpv-dev -Include *.lib,*.dll.a | Select-Object -First 1
           if ($libFile) {
             Write-Host "Found import lib: $($libFile.FullName)"
-            Copy-Item $libFile.FullName src-tauri/lib/mpv.lib
+            Copy-Item $libFile.FullName crates/tauri/lib/mpv.lib
           } else {
             # Generate import lib from .def using MSVC lib.exe
             $defFile = Get-ChildItem -Recurse mpv-dev -Include *.def | Select-Object -First 1
@@ -75,12 +75,12 @@ jobs:
             $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
             $vsPath = & $vsWhere -latest -property installationPath
             $libExe = Get-ChildItem "$vsPath\VC\Tools\MSVC\*\bin\Hostx64\x64\lib.exe" | Select-Object -First 1
-            & $libExe.FullName /def:$($defFile.FullName) /out:src-tauri/lib/mpv.lib /machine:x64
+            & $libExe.FullName /def:$($defFile.FullName) /out:crates/tauri/lib/mpv.lib /machine:x64
           }
           # Copy DLLs for runtime bundling
-          Get-ChildItem -Recurse mpv-dev -Include *.dll | Copy-Item -Destination src-tauri/
-          Write-Host "Final lib dir:" ; Get-ChildItem src-tauri/lib/ | ForEach-Object { Write-Host $_.FullName }
-          Write-Host "DLLs:" ; Get-ChildItem src-tauri/*.dll | ForEach-Object { Write-Host $_.FullName }
+          Get-ChildItem -Recurse mpv-dev -Include *.dll | Copy-Item -Destination crates/tauri/
+          Write-Host "Final lib dir:" ; Get-ChildItem crates/tauri/lib/ | ForEach-Object { Write-Host $_.FullName }
+          Write-Host "DLLs:" ; Get-ChildItem crates/tauri/*.dll | ForEach-Object { Write-Host $_.FullName }
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
@@ -90,6 +90,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          projectPath: crates/tauri
           tagName: ${{ github.ref_name }}
           releaseName: "blowup ${{ github.ref_name }}"
           releaseBody: |

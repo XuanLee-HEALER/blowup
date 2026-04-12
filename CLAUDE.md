@@ -13,7 +13,7 @@ GitHub: https://github.com/XuanLee-HEALER/blowup
 Dual codebase: Rust backend (Tauri commands + SQLite) and React 19 frontend (TypeScript + Vite).
 
 ```
-src-tauri/                    # Rust backend (Tauri v2)
+crates/tauri/                 # Rust backend (Tauri v2) — was src-tauri/ before workspace split
 ├── src/
 │   ├── lib.rs               # Tauri app builder, command registration
 │   ├── config.rs             # Config struct, TOML ser/de, load_config(), save_config()
@@ -103,7 +103,7 @@ Frontend uses **bun** as package manager and script runner (`bun install`, `bun 
 
 ## Code Style & Conventions
 
-### Rust (src-tauri/)
+### Rust (crates/tauri/)
 - Tauri v2 pool access: `pool.inner()` — NOT `&**pool`
 - Runtime queries: `sqlx::query_as::<_, T>("SQL")` — no compile-time DATABASE_URL
 - `#[derive(sqlx::FromRow)]` only on flat structs matching DB column names

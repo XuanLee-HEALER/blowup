@@ -11,7 +11,7 @@ default:
 # Ensure runtime DLLs are in target/debug for dev mode
 [windows]
 _ensure-dev-dlls:
-    if (-not (Test-Path "target\debug\libmpv-2.dll")) { Copy-Item "src-tauri\lib\libmpv-2.dll" "target\debug\libmpv-2.dll" }
+    if (-not (Test-Path "target\debug\libmpv-2.dll")) { Copy-Item "crates\tauri\lib\libmpv-2.dll" "target\debug\libmpv-2.dll" }
 
 [macos]
 _ensure-dev-dlls:
@@ -56,25 +56,25 @@ lint-fix:
 
 # Rust clippy (warnings as errors)
 clippy:
-    cd src-tauri && cargo clippy --tests -- -D warnings
+    cargo clippy --workspace --tests -- -D warnings
 
 # Rust format check
 fmt-check:
-    cd src-tauri && cargo fmt -- --check
+    cargo fmt --all -- --check
 
 # Rust format
 fmt:
-    cd src-tauri && cargo fmt
+    cargo fmt --all
 
 # ── Test ──────────────────────────────────────────────────────────
 
 # Run Rust tests
 test:
-    cd src-tauri && cargo test
+    cargo test --workspace
 
 # Run a specific Rust test module
 test-mod mod:
-    cd src-tauri && cargo test --lib {{mod}} -- --nocapture
+    cargo test -p blowup-tauri --lib {{mod}} -- --nocapture
 
 # ── Install ───────────────────────────────────────────────────────
 
@@ -98,4 +98,4 @@ install: build
 # Clean build artifacts
 clean:
     rm -rf dist
-    cd src-tauri && cargo clean
+    cargo clean

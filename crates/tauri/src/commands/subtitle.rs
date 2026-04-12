@@ -1,4 +1,4 @@
-// src-tauri/src/commands/subtitle.rs
+// crates/tauri/src/commands/subtitle.rs
 //
 // OpenSubtitles.com REST API + alass alignment + SRT shift + ffmpeg extraction
 

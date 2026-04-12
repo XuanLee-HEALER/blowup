@@ -1,4 +1,4 @@
--- src-tauri/migrations/001_initial.sql
+-- crates/tauri/migrations/001_initial.sql
 
 CREATE TABLE IF NOT EXISTS people (
   id            INTEGER PRIMARY KEY,

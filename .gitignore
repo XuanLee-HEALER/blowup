@@ -3,8 +3,8 @@
 dist/
 
 # Tauri generated
-src-tauri/gen/
-src-tauri/target/
+crates/tauri/gen/
+crates/tauri/target/
 
 # Dependencies
 node_modules/
@@ -33,7 +33,7 @@ Thumbs.db
 __pycache__/
 
 # libmpv runtime binaries (download separately per platform)
-src-tauri/lib/
+crates/tauri/lib/
 
 # Misc
 *.srt

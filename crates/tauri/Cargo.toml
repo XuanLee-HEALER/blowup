@@ -1,5 +1,5 @@
 [package]
-name = "blowup"
+name = "blowup-tauri"
 version = "2.0.7"
 edition = "2024"
 
