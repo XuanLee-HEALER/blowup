@@ -1,5 +1,6 @@
 pub mod audio;
 pub mod config;
+pub mod entries;
 pub mod error;
 pub mod export;
 pub mod infra;
