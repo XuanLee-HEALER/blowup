@@ -68,7 +68,31 @@ async fn run_open_phases(app: AppHandle, file_path: String) -> Result<(), String
     .map_err(|e| format!("dispatch phase 2: {e}"))?;
     rx2.await.map_err(|e| format!("phase 2 channel: {e}"))??;
 
-    // Phase 3 (controls window) is added in Phase 4 of the plan.
+    // Phase 3: create the controls overlay window
+    let (tx3, rx3) = tokio::sync::oneshot::channel();
+    let app_for_ctrl = app.clone();
+    app.run_on_main_thread(move || {
+        let hwnd_opt = PLAYER_HWND.lock().unwrap().map(|HwndPtr(p)| p);
+        let Some(hwnd) = hwnd_opt else {
+            let _ = tx3.send(Err("video HWND missing at phase 3".to_string()));
+            return;
+        };
+        let mut vx = 0i32;
+        let mut vy = 0i32;
+        let mut vw = 0i32;
+        let mut vh = 0i32;
+        unsafe {
+            video_window::blowup_get_video_window_rect(hwnd, &mut vx, &mut vy, &mut vw, &mut vh);
+        }
+        let result = controls::create(&app_for_ctrl, (vx, vy, vw, vh));
+        let _ = tx3.send(result);
+    })
+    .map_err(|e| format!("dispatch phase 3: {e}"))?;
+    // Non-fatal: if controls creation fails we still let the video play.
+    match rx3.await.map_err(|e| format!("phase 3 channel: {e}"))? {
+        Ok(()) => {}
+        Err(e) => tracing::warn!(error = %e, "controls window failed; video runs headless"),
+    }
 
     Ok(())
 }
