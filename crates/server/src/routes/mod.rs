@@ -1,7 +1,12 @@
 pub mod audio;
 pub mod config;
+pub mod downloads;
+pub mod entries;
+pub mod export;
 pub mod health;
+pub mod library;
 pub mod media;
 pub mod search;
+pub mod subtitle;
 pub mod tmdb;
 pub mod tracker;

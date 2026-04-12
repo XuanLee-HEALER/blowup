@@ -24,6 +24,11 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::media::router())
         .merge(routes::audio::router())
         .merge(routes::tracker::router())
+        .merge(routes::subtitle::router())
+        .merge(routes::entries::router())
+        .merge(routes::library::router())
+        .merge(routes::downloads::router())
+        .merge(routes::export::router())
         .with_state(state);
 
     Router::new()
