@@ -12,8 +12,8 @@ use blowup_core::infra::events::DomainEvent;
 use futures_util::stream::{self, Stream};
 use std::convert::Infallible;
 use std::time::Duration;
-use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::state::AppState;
 

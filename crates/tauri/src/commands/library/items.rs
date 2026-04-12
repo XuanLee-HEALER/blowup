@@ -1,10 +1,11 @@
+use blowup_core::infra::events::{DomainEvent, EventBus};
 use blowup_core::library::index::{IndexEntry, LibraryIndex, SubtitleDisplayConfig};
 use blowup_core::library::items::{
     self as svc, LibraryItemDetail, LibraryItemSummary, LibraryStats, ScanResult,
 };
 use sqlx::SqlitePool;
 use std::collections::{BTreeMap, HashMap};
-use tauri::Emitter;
+use std::sync::Arc;
 
 // ── Library item commands ───────────────────────────────────────
 
@@ -82,21 +83,21 @@ pub async fn get_library_stats(pool: tauri::State<'_, SqlitePool>) -> Result<Lib
 
 #[tauri::command]
 pub fn list_index_entries(
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
 ) -> Result<Vec<IndexEntry>, String> {
     Ok(index.list_entries())
 }
 
 #[tauri::command]
 pub fn list_index_by_director(
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
 ) -> Result<BTreeMap<String, Vec<IndexEntry>>, String> {
     Ok(index.list_by_director())
 }
 
 #[tauri::command]
 pub fn search_index(
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
     query: Option<String>,
     year_from: Option<u32>,
     year_to: Option<u32>,
@@ -107,13 +108,11 @@ pub fn search_index(
 
 #[tauri::command]
 pub fn rebuild_index(
-    app: tauri::AppHandle,
-    index: tauri::State<'_, LibraryIndex>,
+    events: tauri::State<'_, EventBus>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
 ) -> Result<(), String> {
     index.rebuild_from_disk();
-    if let Err(e) = app.emit("library:changed", ()) {
-        tracing::warn!(error = %e, "failed to emit library:changed");
-    }
+    events.publish(DomainEvent::LibraryChanged);
     Ok(())
 }
 
@@ -121,7 +120,7 @@ pub fn rebuild_index(
 pub fn save_subtitle_configs(
     tmdb_id: u64,
     configs: HashMap<String, SubtitleDisplayConfig>,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
 ) -> Result<(), String> {
     index.save_subtitle_configs(tmdb_id, configs);
     Ok(())
@@ -137,14 +136,12 @@ pub async fn delete_library_resource(
 
 #[tauri::command]
 pub fn refresh_index_entry(
-    app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     tmdb_id: u64,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
 ) -> Result<(), String> {
     index.update_files(tmdb_id);
-    if let Err(e) = app.emit("library:changed", ()) {
-        tracing::warn!(error = %e, "failed to emit library:changed");
-    }
+    events.publish(DomainEvent::LibraryChanged);
     Ok(())
 }
 
@@ -152,9 +149,9 @@ pub fn refresh_index_entry(
 /// Guards against deleting files currently open in the player (Tauri only).
 #[tauri::command]
 pub async fn delete_film_directory(
-    app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     tmdb_id: u64,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
 ) -> Result<(), String> {
     let entry = index
         .get_entry(tmdb_id)
@@ -175,8 +172,6 @@ pub async fn delete_film_directory(
     }
 
     index.remove_entry(tmdb_id);
-    if let Err(e) = app.emit("library:changed", ()) {
-        tracing::warn!(error = %e, "failed to emit library:changed");
-    }
+    events.publish(DomainEvent::LibraryChanged);
     Ok(())
 }

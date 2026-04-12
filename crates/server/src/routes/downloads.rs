@@ -19,9 +19,7 @@ pub fn router() -> Router<AppState> {
         .route("/downloads/{id}/existing-files", get(list_existing_files))
 }
 
-async fn list_downloads(
-    State(state): State<AppState>,
-) -> ApiResult<Json<Vec<DownloadRecord>>> {
+async fn list_downloads(State(state): State<AppState>) -> ApiResult<Json<Vec<DownloadRecord>>> {
     let records = svc::list_downloads(&state.db)
         .await
         .map_err(ApiError::Internal)?;
@@ -112,7 +110,9 @@ async fn resume(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult
 
     let tmdb_id = record.tmdb_id.unwrap_or(0) as u64;
     let director = record.director.unwrap_or_else(|| "Unknown".to_string());
-    let output_folder = state.library_index.compute_download_path(&director, tmdb_id);
+    let output_folder = state
+        .library_index
+        .compute_download_path(&director, tmdb_id);
 
     let trackers = state.tracker.hot_trackers().await;
     let (torrent_id, _handle) = tm
@@ -170,12 +170,19 @@ async fn redownload(
     let tmdb_id = record.tmdb_id.unwrap_or(0) as u64;
     svc::validate_library_root(&state.library_index).map_err(ApiError::Internal)?;
     let director = record.director.unwrap_or_else(|| "Unknown".to_string());
-    let output_folder = state.library_index.compute_download_path(&director, tmdb_id);
+    let output_folder = state
+        .library_index
+        .compute_download_path(&director, tmdb_id);
 
     let tm = state.torrent().map_err(ApiError::Internal)?;
     let trackers = state.tracker.hot_trackers().await;
     let (torrent_id, _handle) = tm
-        .start_download(&record.target, output_folder, req.only_files, Some(trackers))
+        .start_download(
+            &record.target,
+            output_folder,
+            req.only_files,
+            Some(trackers),
+        )
         .await
         .map_err(ApiError::Internal)?;
 
@@ -209,4 +216,3 @@ async fn list_existing_files(
 
     Ok(Json(files))
 }
-

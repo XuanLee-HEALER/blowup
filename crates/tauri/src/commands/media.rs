@@ -1,5 +1,6 @@
 use blowup_core::library::index::{FileMediaInfo, LibraryIndex};
 use blowup_core::media::service::{self, MediaInfo};
+use std::sync::Arc;
 
 #[tauri::command]
 pub async fn probe_media(file: String) -> Result<String, String> {
@@ -13,7 +14,7 @@ pub async fn probe_media_detail(file_path: String) -> Result<MediaInfo, String> 
 
 #[tauri::command]
 pub async fn probe_and_cache(
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
     tmdb_id: u64,
     filename: String,
 ) -> Result<FileMediaInfo, String> {

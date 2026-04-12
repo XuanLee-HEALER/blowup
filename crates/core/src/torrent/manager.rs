@@ -11,6 +11,7 @@ use tokio::sync::Semaphore;
 pub type TorrentId = usize;
 pub type TorrentHandle = Arc<ManagedTorrent>;
 
+#[derive(Clone)]
 pub struct TorrentManager {
     session: Arc<Session>,
     semaphore: Arc<Semaphore>,

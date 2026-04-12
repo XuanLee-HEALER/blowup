@@ -529,6 +529,7 @@ dependencies = [
  "alass-core",
  "anyhow",
  "blowup-core",
+ "blowup-server",
  "byteorder",
  "cc",
  "chrono",

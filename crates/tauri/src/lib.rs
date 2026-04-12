@@ -3,11 +3,20 @@ pub mod common;
 pub mod player;
 
 use blowup_core::config;
+use blowup_core::infra::events::EventBus;
 use blowup_core::infra::{cache, db};
 use blowup_core::library::index::LibraryIndex;
 use blowup_core::torrent::manager::TorrentManager;
 use blowup_core::torrent::tracker::TrackerManager;
-use tauri::Manager;
+use std::sync::Arc;
+use tauri::{Emitter, Manager};
+use tokio::sync::OnceCell;
+
+/// Local bind address for the in-process HTTP server. Both the frontend
+/// (via the Tauri IPC bridge) and LAN-side iOS/iPad clients reach the
+/// same `blowup-core` through this router — see docs/REFACTOR.md
+/// step 5. The port can later be surfaced as a user setting.
+const EMBEDDED_SERVER_BIND: &str = "127.0.0.1:17690";
 
 fn init_tracing() {
     use tracing_subscriber::{EnvFilter, fmt};
@@ -28,7 +37,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
-            tracing::debug!("[timing] setup start: {}ms", app_start.elapsed().as_millis());
+            tracing::debug!(
+                "[timing] setup start: {}ms",
+                app_start.elapsed().as_millis()
+            );
             let handle = app.handle().clone();
             let data_dir = app
                 .path()
@@ -38,7 +50,10 @@ pub fn run() {
             cache::init_cache();
 
             let cfg = config::load_config();
-            tracing::debug!("[timing] config loaded: {}ms", app_start.elapsed().as_millis());
+            tracing::debug!(
+                "[timing] config loaded: {}ms",
+                app_start.elapsed().as_millis()
+            );
 
             // Resolve tool paths in background — which() is slow on Windows
             let mut cfg_bg = cfg.clone();
@@ -52,22 +67,60 @@ pub fn run() {
             let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
             let library_root = std::path::PathBuf::from(&root_dir);
             std::fs::create_dir_all(&library_root).ok();
-            let library_index = LibraryIndex::load(&library_root);
-            handle.manage(library_index);
-            tracing::debug!("[timing] library index loaded: {}ms", app_start.elapsed().as_millis());
+            let library_index = Arc::new(LibraryIndex::load(&library_root));
+            handle.manage(library_index.clone());
+            tracing::debug!(
+                "[timing] library index loaded: {}ms",
+                app_start.elapsed().as_millis()
+            );
 
             // Allow asset protocol to serve files from the library directory
-            if let Err(e) = app.asset_protocol_scope().allow_directory(&library_root, true) {
+            if let Err(e) = app
+                .asset_protocol_scope()
+                .allow_directory(&library_root, true)
+            {
                 tracing::warn!(error = %e, "failed to register library root in asset scope");
             }
 
             // Init tracker manager (loads trackers.json, migrates legacy format)
             let (tracker_mgr, trackers) = TrackerManager::load();
+            let tracker_arc = Arc::new(tracker_mgr.clone());
             handle.manage(tracker_mgr);
-            tracing::debug!("[timing] tracker manager loaded: {}ms", app_start.elapsed().as_millis());
+            tracing::debug!(
+                "[timing] tracker manager loaded: {}ms",
+                app_start.elapsed().as_millis()
+            );
+
+            // Shared EventBus — Tauri wrappers publish domain events here and a
+            // listener task re-emits them via app.emit for the frontend; the
+            // embedded server's SSE endpoint subscribes to the same bus so LAN
+            // clients see the exact same notifications.
+            let events = EventBus::new();
+            handle.manage(events.clone());
+            {
+                let app_for_events = handle.clone();
+                let mut rx = events.subscribe();
+                tauri::async_runtime::spawn(async move {
+                    while let Ok(event) = rx.recv().await {
+                        if let Err(e) = app_for_events.emit(event.as_str(), ()) {
+                            tracing::warn!(error = %e, event = event.as_str(),
+                                "failed to forward event bus → app.emit");
+                        }
+                    }
+                });
+            }
+
+            // OnceCell that holds the async-initialized TorrentManager.
+            // Both Tauri wrappers (via State<Arc<OnceCell<…>>>) and the
+            // embedded server's AppState read from it.
+            let torrent_cell: Arc<OnceCell<TorrentManager>> = Arc::new(OnceCell::new());
+            handle.manage(torrent_cell.clone());
 
             // Init DB + crash-recovery in a single block_on
-            tracing::debug!("[timing] db init start: {}ms", app_start.elapsed().as_millis());
+            tracing::debug!(
+                "[timing] db init start: {}ms",
+                app_start.elapsed().as_millis()
+            );
             let db_data_dir = app
                 .path()
                 .app_data_dir()
@@ -100,15 +153,23 @@ pub fn run() {
                 }
             });
 
-            tracing::debug!("[timing] setup complete: {}ms", app_start.elapsed().as_millis());
+            tracing::debug!(
+                "[timing] setup complete: {}ms",
+                app_start.elapsed().as_millis()
+            );
 
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
                 window.open_devtools();
             }
 
-            // Init torrent manager in background — don't block window
+            // Init torrent manager in background — don't block window.
+            // On success, also start the embedded HTTP server for LAN clients.
             let tm_handle = handle.clone();
+            let server_cell = torrent_cell.clone();
+            let server_index = library_index.clone();
+            let server_tracker = tracker_arc.clone();
+            let server_events = events.clone();
             tauri::async_runtime::spawn(async move {
                 let t = std::time::Instant::now();
                 match TorrentManager::new(
@@ -121,12 +182,48 @@ pub fn run() {
                 .await
                 {
                     Ok(tm) => {
-                        tracing::info!(elapsed_ms = t.elapsed().as_millis(), "torrent manager ready");
+                        tracing::info!(
+                            elapsed_ms = t.elapsed().as_millis(),
+                            "torrent manager ready"
+                        );
+                        let _ = server_cell.set(tm.clone());
                         tm_handle.manage(tm);
                     }
                     Err(e) => {
-                        tracing::error!(error = %e, elapsed_ms = t.elapsed().as_millis(), "failed to init torrent manager");
+                        tracing::error!(
+                            error = %e,
+                            elapsed_ms = t.elapsed().as_millis(),
+                            "failed to init torrent manager"
+                        );
                     }
+                }
+
+                // Start the embedded blowup-server axum router bound to
+                // 127.0.0.1. Shares the same state as the Tauri wrappers.
+                let Some(pool) = tm_handle
+                    .try_state::<sqlx::SqlitePool>()
+                    .map(|s| s.inner().clone())
+                else {
+                    tracing::error!("embedded server: SqlitePool state missing");
+                    return;
+                };
+                let app_state = blowup_server::AppState::new(
+                    pool,
+                    server_index,
+                    server_tracker,
+                    server_cell,
+                    server_events,
+                );
+                tracing::info!(
+                    bind = EMBEDDED_SERVER_BIND,
+                    "embedded blowup-server listening"
+                );
+                if let Err(e) = blowup_server::serve(EMBEDDED_SERVER_BIND, app_state).await {
+                    tracing::warn!(
+                        error = %e,
+                        bind = EMBEDDED_SERVER_BIND,
+                        "embedded server exited"
+                    );
                 }
             });
 
@@ -256,7 +353,7 @@ pub fn run() {
         .run(|handle, event| {
             if let tauri::RunEvent::Exit = event {
                 cache::flush_cache();
-                if let Some(idx) = handle.try_state::<LibraryIndex>() {
+                if let Some(idx) = handle.try_state::<Arc<LibraryIndex>>() {
                     idx.flush();
                 }
                 // Pause active downloads before shutting down torrent session

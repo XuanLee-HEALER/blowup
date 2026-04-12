@@ -1,7 +1,11 @@
 //! Tauri wrappers around `blowup_core::torrent::download::*`. The
-//! background monitor task stays here because it emits Tauri events
-//! and uses the Tauri state-manager to look up the LibraryIndex.
+//! background monitor task stays here because it uses the Tauri
+//! state-manager to look up the LibraryIndex; it publishes to the
+//! shared EventBus so both the desktop frontend (via the event
+//! forwarder in lib.rs) and LAN-side iOS clients (via SSE) see the
+//! same notifications.
 
+use blowup_core::infra::events::{DomainEvent, EventBus};
 use blowup_core::library::index::{IndexEntry, LibraryIndex};
 use blowup_core::torrent::download::{
     self as svc, DownloadRecord, StartDownloadRequest, parse_genres_csv, validate_library_root,
@@ -9,13 +13,8 @@ use blowup_core::torrent::download::{
 use blowup_core::torrent::manager::{TorrentFileInfo, TorrentHandle, TorrentManager};
 use blowup_core::torrent::tracker::TrackerManager;
 use sqlx::SqlitePool;
-use tauri::{Emitter, Manager};
-
-fn emit(app: &tauri::AppHandle, event: &str) {
-    if let Err(e) = app.emit(event, ()) {
-        tracing::warn!(error = %e, event, "failed to emit event");
-    }
-}
+use std::sync::Arc;
+use tauri::Manager;
 
 #[tauri::command]
 pub async fn get_torrent_files(
@@ -28,10 +27,11 @@ pub async fn get_torrent_files(
 #[tauri::command]
 pub async fn start_download(
     app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     tracker_mgr: tauri::State<'_, TrackerManager>,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
     req: StartDownloadRequest,
 ) -> Result<i64, String> {
     validate_library_root(index.inner())?;
@@ -60,6 +60,7 @@ pub async fn start_download(
 
     spawn_download_monitor(MonitorParams {
         app_handle: app,
+        events: events.inner().clone(),
         pool: pool.inner().clone(),
         handle,
         download_id,
@@ -71,11 +72,13 @@ pub async fn start_download(
         genres: req.genres.unwrap_or_default(),
     });
 
+    events.publish(DomainEvent::DownloadsChanged);
     Ok(download_id)
 }
 
 struct MonitorParams {
     app_handle: tauri::AppHandle,
+    events: EventBus,
     pool: SqlitePool,
     handle: TorrentHandle,
     download_id: i64,
@@ -104,7 +107,7 @@ fn spawn_download_monitor(p: MonitorParams) {
             )
             .await;
 
-            emit(&p.app_handle, "downloads:changed");
+            p.events.publish(DomainEvent::DownloadsChanged);
 
             if stats.finished {
                 tracing::info!(p.download_id, "download completed");
@@ -140,13 +143,13 @@ fn spawn_download_monitor(p: MonitorParams) {
                     added_at: chrono::Utc::now().to_rfc3339(),
                     ..Default::default()
                 };
-                if let Some(idx) = p.app_handle.try_state::<LibraryIndex>()
+                if let Some(idx) = p.app_handle.try_state::<Arc<LibraryIndex>>()
                     && let Err(e) = idx.add_entry(entry)
                 {
                     tracing::warn!(error = %e, "failed to add entry to library index");
                 }
 
-                emit(&p.app_handle, "library:changed");
+                p.events.publish(DomainEvent::LibraryChanged);
                 break;
             }
 
@@ -168,7 +171,7 @@ pub async fn list_downloads(
 
 #[tauri::command]
 pub async fn pause_download(
-    app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     id: i64,
@@ -180,17 +183,18 @@ pub async fn pause_download(
     }
 
     svc::mark_paused(pool.inner(), id).await?;
-    emit(&app, "downloads:changed");
+    events.publish(DomainEvent::DownloadsChanged);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn resume_download(
     app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     tracker_mgr: tauri::State<'_, TrackerManager>,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
     id: i64,
 ) -> Result<(), String> {
     let record = svc::get_active_download(pool.inner(), id, "paused").await?;
@@ -202,6 +206,7 @@ pub async fn resume_download(
 
     if resumed {
         svc::mark_resumed(pool.inner(), id).await?;
+        events.publish(DomainEvent::DownloadsChanged);
         return Ok(());
     }
 
@@ -219,6 +224,7 @@ pub async fn resume_download(
 
     spawn_download_monitor(MonitorParams {
         app_handle: app,
+        events: events.inner().clone(),
         pool: pool.inner().clone(),
         handle,
         download_id: id,
@@ -230,15 +236,16 @@ pub async fn resume_download(
         genres: parse_genres_csv(record.genres.as_deref()),
     });
 
+    events.publish(DomainEvent::DownloadsChanged);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn delete_download(
-    app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
     id: i64,
 ) -> Result<(), String> {
     let record = svc::get_download_record(pool.inner(), id).await?;
@@ -267,9 +274,9 @@ pub async fn delete_download(
     }
 
     svc::delete_download_record(pool.inner(), id).await?;
-    emit(&app, "downloads:changed");
+    events.publish(DomainEvent::DownloadsChanged);
     if is_active {
-        emit(&app, "library:changed");
+        events.publish(DomainEvent::LibraryChanged);
     }
     Ok(())
 }
@@ -277,7 +284,7 @@ pub async fn delete_download(
 #[tauri::command]
 pub async fn list_download_existing_files(
     pool: tauri::State<'_, SqlitePool>,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
     id: i64,
 ) -> Result<Vec<String>, String> {
     let record = svc::get_download_record(pool.inner(), id).await?;
@@ -300,13 +307,15 @@ pub async fn list_download_existing_files(
     Ok(files)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn redownload(
     app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
     tracker_mgr: tauri::State<'_, TrackerManager>,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
     id: i64,
     only_files: Option<Vec<usize>>,
 ) -> Result<(), String> {
@@ -331,6 +340,7 @@ pub async fn redownload(
 
     spawn_download_monitor(MonitorParams {
         app_handle: app,
+        events: events.inner().clone(),
         pool: pool.inner().clone(),
         handle,
         download_id: id,
@@ -342,5 +352,6 @@ pub async fn redownload(
         genres: parse_genres_csv(record.genres.as_deref()),
     });
 
+    events.publish(DomainEvent::DownloadsChanged);
     Ok(())
 }

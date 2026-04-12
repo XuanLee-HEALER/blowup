@@ -20,10 +20,7 @@ pub fn router() -> Router<AppState> {
         .route("/entries/{id}", get(get_entry).delete(delete_entry))
         .route("/entries/{id}/name", put(update_name))
         .route("/entries/{id}/wiki", put(update_wiki))
-        .route(
-            "/entries/{id}/tags",
-            post(add_tag).delete(remove_tag_query),
-        )
+        .route("/entries/{id}/tags", post(add_tag).delete(remove_tag_query))
 }
 
 #[derive(Deserialize)]

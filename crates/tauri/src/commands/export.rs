@@ -1,8 +1,8 @@
 use blowup_core::config::{Config, config_path, load_config};
 use blowup_core::export::service;
+use blowup_core::infra::events::{DomainEvent, EventBus};
 use sqlx::SqlitePool;
 use std::path::Path;
-use tauri::Emitter;
 
 // Re-export for lib.rs generate_handler (types used by Tauri IPC).
 pub use blowup_core::export::service::{EntryRow, EntryTagRow, KnowledgeBaseExport, RelationRow};
@@ -17,14 +17,12 @@ pub async fn export_knowledge_base(
 
 #[tauri::command]
 pub async fn import_knowledge_base(
-    app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     path: String,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let result = service::import_knowledge_base_from_file(pool.inner(), Path::new(&path)).await?;
-    if let Err(e) = app.emit("entries:changed", ()) {
-        tracing::warn!(error = %e, "failed to emit entries:changed");
-    }
+    events.publish(DomainEvent::EntriesChanged);
     Ok(result)
 }
 
@@ -35,11 +33,9 @@ pub fn export_config(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn import_config(app: tauri::AppHandle, path: String) -> Result<(), String> {
+pub fn import_config(events: tauri::State<'_, EventBus>, path: String) -> Result<(), String> {
     service::import_config_from_file(Path::new(&path), &config_path())?;
-    if let Err(e) = app.emit("config:changed", ()) {
-        tracing::warn!(error = %e, "failed to emit config:changed");
-    }
+    events.publish(DomainEvent::ConfigChanged);
     Ok(())
 }
 
@@ -51,14 +47,12 @@ pub async fn export_knowledge_base_s3(pool: tauri::State<'_, SqlitePool>) -> Res
 
 #[tauri::command]
 pub async fn import_knowledge_base_s3(
-    app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
 ) -> Result<String, String> {
     let cfg = load_config();
     let result = service::import_knowledge_base_s3(pool.inner(), &cfg.sync).await?;
-    if let Err(e) = app.emit("entries:changed", ()) {
-        tracing::warn!(error = %e, "failed to emit entries:changed");
-    }
+    events.publish(DomainEvent::EntriesChanged);
     Ok(result)
 }
 
@@ -70,12 +64,10 @@ pub async fn export_config_s3() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn import_config_s3(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn import_config_s3(events: tauri::State<'_, EventBus>) -> Result<(), String> {
     let cfg = load_config();
     service::import_config_s3(&cfg.sync, &config_path()).await?;
-    if let Err(e) = app.emit("config:changed", ()) {
-        tracing::warn!(error = %e, "failed to emit config:changed");
-    }
+    events.publish(DomainEvent::ConfigChanged);
     Ok(())
 }
 

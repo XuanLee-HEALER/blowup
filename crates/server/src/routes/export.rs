@@ -50,10 +50,7 @@ async fn export_config(Json(req): Json<PathBody>) -> ApiResult<()> {
     Ok(())
 }
 
-async fn import_config(
-    State(state): State<AppState>,
-    Json(req): Json<PathBody>,
-) -> ApiResult<()> {
+async fn import_config(State(state): State<AppState>, Json(req): Json<PathBody>) -> ApiResult<()> {
     let dst = blowup_core::config::config_path();
     service::import_config_from_file(Path::new(&req.path), &dst).map_err(ApiError::Internal)?;
     state.events.publish(DomainEvent::ConfigChanged);

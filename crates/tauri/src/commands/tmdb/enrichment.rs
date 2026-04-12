@@ -1,13 +1,14 @@
+use blowup_core::infra::events::{DomainEvent, EventBus};
 use blowup_core::library::index::{IndexEntry, LibraryIndex};
 use blowup_core::tmdb::service;
-use tauri::Emitter;
+use std::sync::Arc;
 
 #[tauri::command]
 pub async fn enrich_index_entry(
-    app: tauri::AppHandle,
+    events: tauri::State<'_, EventBus>,
     tmdb_id: u64,
     force: Option<bool>,
-    index: tauri::State<'_, LibraryIndex>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
 ) -> Result<IndexEntry, String> {
     let cfg = blowup_core::config::load_config();
     let library_root = std::path::PathBuf::from(shellexpand::tilde(&cfg.library.root_dir).as_ref());
@@ -23,10 +24,8 @@ pub async fn enrich_index_entry(
     )
     .await;
 
-    if result.is_ok()
-        && let Err(e) = app.emit("library:changed", ())
-    {
-        tracing::warn!(error = %e, "failed to emit library:changed");
+    if result.is_ok() {
+        events.publish(DomainEvent::LibraryChanged);
     }
     result
 }
