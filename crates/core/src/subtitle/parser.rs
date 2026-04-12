@@ -95,7 +95,10 @@ pub fn parse_ass(content: &str) -> Vec<SubCue> {
             let start = parse_ass_ts(&caps[1], &caps[2], &caps[3], &caps[4]);
             let end = parse_ass_ts(&caps[5], &caps[6], &caps[7], &caps[8]);
             // caps[12] is the text; strip ASS override tags {..}
-            let text = ASS_OVERRIDE_RE.replace_all(&caps[12], "").trim().to_string();
+            let text = ASS_OVERRIDE_RE
+                .replace_all(&caps[12], "")
+                .trim()
+                .to_string();
             if !text.is_empty() {
                 cues.push(SubCue {
                     start_ms: start,
