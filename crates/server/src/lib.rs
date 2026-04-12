@@ -19,6 +19,11 @@ pub fn build_router(state: AppState) -> Router {
     let api = Router::new()
         .merge(routes::health::router())
         .merge(routes::config::router())
+        .merge(routes::search::router())
+        .merge(routes::tmdb::router())
+        .merge(routes::media::router())
+        .merge(routes::audio::router())
+        .merge(routes::tracker::router())
         .with_state(state);
 
     Router::new()
