@@ -2,6 +2,7 @@ use super::{
     PlayerState, TrackInfo, close_player, get_current_file_path, open_player, with_player,
 };
 use blowup_core::subtitle::parser::{SubtitleOverlayConfig, merge_to_ass, overlay_cache_key};
+#[cfg(target_os = "macos")]
 use tauri::Manager;
 
 #[tauri::command]
@@ -88,13 +89,22 @@ pub fn cmd_player_get_tracks() -> Result<Vec<TrackInfo>, String> {
 #[tauri::command]
 pub fn cmd_player_toggle_fullscreen(app: tauri::AppHandle) -> Result<(), String> {
     tracing::info!("cmd_player_toggle_fullscreen");
-    if let Some(window) = app.get_webview_window("player") {
-        let is_fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
-        window
-            .set_fullscreen(!is_fullscreen)
-            .map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    {
+        let _ = &app;
+        super::windows::fullscreen::toggle();
+        Ok(())
     }
-    Ok(())
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(window) = app.get_webview_window("player") {
+            let is_fullscreen = window.is_fullscreen().map_err(|e| e.to_string())?;
+            window
+                .set_fullscreen(!is_fullscreen)
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -148,4 +158,78 @@ pub fn cmd_player_load_overlay_subs(configs: Vec<SubtitleOverlayConfig>) -> Resu
     })?;
 
     Ok(ass_str)
+}
+
+// ---------------------------------------------------------------------------
+// Window management (Windows-only bodies; macOS falls back to Tauri window API)
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn cmd_player_window_minimize(app: tauri::AppHandle) -> Result<(), String> {
+    tracing::info!("cmd_player_window_minimize");
+    #[cfg(target_os = "windows")]
+    {
+        let _ = &app;
+        if let Some(super::windows::video_window::HwndPtr(hwnd)) =
+            *super::windows::video_window::PLAYER_HWND.lock().unwrap()
+        {
+            unsafe { super::windows::video_window::blowup_window_minimize(hwnd) };
+        }
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(w) = app.get_webview_window("player") {
+            w.minimize().map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn cmd_player_window_toggle_maximize(app: tauri::AppHandle) -> Result<(), String> {
+    tracing::info!("cmd_player_window_toggle_maximize");
+    #[cfg(target_os = "windows")]
+    {
+        let _ = &app;
+        if let Some(super::windows::video_window::HwndPtr(hwnd)) =
+            *super::windows::video_window::PLAYER_HWND.lock().unwrap()
+        {
+            unsafe { super::windows::video_window::blowup_window_toggle_maximize(hwnd) };
+        }
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(w) = app.get_webview_window("player") {
+            let is_max = w.is_maximized().map_err(|e| e.to_string())?;
+            if is_max {
+                w.unmaximize().map_err(|e| e.to_string())?;
+            } else {
+                w.maximize().map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub fn cmd_player_window_start_drag(app: tauri::AppHandle) -> Result<(), String> {
+    tracing::info!("cmd_player_window_start_drag");
+    #[cfg(target_os = "windows")]
+    {
+        let _ = &app;
+        if let Some(super::windows::video_window::HwndPtr(hwnd)) =
+            *super::windows::video_window::PLAYER_HWND.lock().unwrap()
+        {
+            unsafe { super::windows::video_window::blowup_window_start_drag(hwnd) };
+        }
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // macOS has native title bar / drag region; no-op.
+        let _ = app;
+        Ok(())
+    }
 }

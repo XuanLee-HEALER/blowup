@@ -473,9 +473,48 @@ void blowup_set_video_window_rect(void* hwnd_ptr, int x, int y, int w, int h)
 int  blowup_enter_fullscreen(void* hwnd) { (void)hwnd; return -1; }
 int  blowup_leave_fullscreen(void* hwnd) { (void)hwnd; return -1; }
 int  blowup_is_fullscreen(void* hwnd)    { (void)hwnd; return 0; }
-void blowup_window_minimize(void* hwnd)  { (void)hwnd; }
-void blowup_window_toggle_maximize(void* hwnd) { (void)hwnd; }
-void blowup_window_start_drag(void* hwnd) { (void)hwnd; }
+
+void blowup_window_minimize(void* hwnd_ptr)
+{
+    if (!hwnd_ptr) return;
+    HWND hwnd = (HWND)hwnd_ptr;
+    // Edge case (spec §9 #4): minimizing from fullscreen would leave
+    // stale WS_POPUP style on restore. Leave fullscreen first.
+    if (g_video_window.is_fullscreen) {
+        blowup_leave_fullscreen(hwnd);
+    }
+    ShowWindow(hwnd, SW_MINIMIZE);
+}
+
+void blowup_window_toggle_maximize(void* hwnd_ptr)
+{
+    if (!hwnd_ptr) return;
+    HWND hwnd = (HWND)hwnd_ptr;
+    // If we're fullscreen, max button should just return to Normal.
+    if (g_video_window.is_fullscreen) {
+        blowup_leave_fullscreen(hwnd);
+        return;
+    }
+    if (IsZoomed(hwnd)) {
+        ShowWindow(hwnd, SW_RESTORE);
+    } else {
+        ShowWindow(hwnd, SW_MAXIMIZE);
+    }
+    // Broadcast state change back to Rust
+    int state = IsZoomed(hwnd) ? 1 : 0;
+    blowup_on_video_window_event(6, state, 0, 0, 0);
+}
+
+void blowup_window_start_drag(void* hwnd_ptr)
+{
+    if (!hwnd_ptr) return;
+    HWND hwnd = (HWND)hwnd_ptr;
+    // Release any captured mouse, then tell Windows to start its modal
+    // move loop as if the user had grabbed a non-client caption area.
+    ReleaseCapture();
+    SendMessageW(hwnd, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+}
+
 void blowup_apply_round_corners(void* hwnd) { (void)hwnd; }
 
 // Weak default — Rust provides a strong override in

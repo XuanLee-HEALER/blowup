@@ -360,6 +360,9 @@ pub fn run() {
             player::commands::cmd_player_get_current_file,
             player::commands::cmd_player_sub_add,
             player::commands::cmd_player_load_overlay_subs,
+            player::commands::cmd_player_window_minimize,
+            player::commands::cmd_player_window_toggle_maximize,
+            player::commands::cmd_player_window_start_drag,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
