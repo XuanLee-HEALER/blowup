@@ -11,7 +11,7 @@ pub fn init_app_data_dir(dir: PathBuf) {
     APP_DATA_DIR.set(dir).ok();
 }
 
-pub(crate) fn app_data_dir() -> PathBuf {
+pub fn app_data_dir() -> PathBuf {
     APP_DATA_DIR.get().cloned().unwrap_or_else(|| {
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
