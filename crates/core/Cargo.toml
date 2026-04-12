@@ -7,6 +7,13 @@ edition = "2024"
 name = "blowup_core"
 
 [dependencies]
-thiserror = "2"
-reqwest   = { version = "0.12", features = ["json"] }
-toml      = "0.8"
+thiserror             = "2"
+reqwest               = { version = "0.12", features = ["json"] }
+toml                  = "0.8"
+tokio                 = { version = "1", features = ["full"] }
+walkdir               = "2"
+which                 = "8"
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
