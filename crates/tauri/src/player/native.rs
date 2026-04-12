@@ -93,7 +93,7 @@ pub fn create_and_attach_gl_view(window: &tauri::WebviewWindow) -> Result<*mut c
         }
 
         *GL_VIEW_PTR.lock().unwrap() = Some(ViewPtr(view));
-        tracing::info!("GL view attached below webview");
+        tracing::info!("GL view attached");
         Ok(view)
     }
 }

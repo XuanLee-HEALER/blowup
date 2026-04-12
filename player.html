@@ -7,6 +7,34 @@
   </head>
   <body style="margin:0;overflow:hidden;background:rgba(0,0,0,0.01);">
     <div id="root"></div>
+    <script>
+      // Diagnostic overlay — catches three kinds of failure that can
+      // leave the window blank when no devtools is open:
+      //   1. sync JS errors (window.error)
+      //   2. unhandled promise rejections
+      //   3. silent module load failures (nothing rendered after 3s)
+      function showError(title, detail) {
+        var root = document.getElementById("root");
+        if (!root) return;
+        root.innerText = title + "\n\n" + (detail || "");
+        root.style.cssText = "color:#e55;padding:20px;font-size:13px;white-space:pre-wrap;font-family:monospace;background:#1a1a1a;min-height:100vh;";
+      }
+      window.addEventListener("error", function(e) {
+        showError("JS Error: " + e.message, (e.filename || "") + ":" + (e.lineno || ""));
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        showError("Promise rejected", e.reason && e.reason.message ? e.reason.message : String(e.reason));
+      });
+      setTimeout(function() {
+        var root = document.getElementById("root");
+        if (root && root.childElementCount === 0 && !root.innerText) {
+          showError(
+            "播放器模块未在 3 秒内加载",
+            "可能原因：\n  - Vite dev server 未运行或端口异常\n  - /src/player-main.tsx 导入链被破坏\n\n打开 devtools (F12) 看 Console 的红色错误。"
+          );
+        }
+      }, 3000);
+    </script>
     <script type="module" src="/src/player-main.tsx"></script>
   </body>
 </html>

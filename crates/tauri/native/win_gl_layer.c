@@ -3,16 +3,18 @@
 #include <commctrl.h>
 #include <gl/gl.h>
 #include <stdio.h>
+#include <string.h>
 #include "win_gl_layer.h"
 
-// ---------------------------------------------------------------------------
-// Custom message for render requests (thread-safe via PostMessage)
-// ---------------------------------------------------------------------------
+// Height in pixels of the WebView2 controls bar at the bottom of the player
+// window. The GL video view is sized to (client_width, client_height -
+// CONTROLS_HEIGHT) so the bottom strip remains uncovered and the controls
+// rendered by WebView2 stay visible and interactive. Player.tsx on Windows
+// mirrors this value via a matching CSS rule for its bottom bar.
+#define CONTROLS_HEIGHT 100
+
 #define WM_BLOWUP_RENDER (WM_USER + 1)
 
-// ---------------------------------------------------------------------------
-// GlView — holds the child HWND + WGL context
-// ---------------------------------------------------------------------------
 typedef struct {
     HWND   hwnd;          // child GL window
     HWND   parent_hwnd;   // Tauri top-level window
@@ -28,8 +30,14 @@ extern void blowup_render_mpv_frame(int fbo, int width, int height);
 static const wchar_t* WND_CLASS_NAME = L"BlowupGLView";
 static ATOM           wnd_class_atom = 0;
 
+// Static storage for the single GL view. Only one player is active at a
+// time (enforced by the PLAYER mutex on the Rust side), so a single slot
+// suffices and side-steps any CRT heap interop with Rust's allocator.
+static GlView g_static_view;
+
 // ---------------------------------------------------------------------------
-// Parent-window subclass — resizes GL child to match parent client area
+// Parent-window subclass — keeps the GL child sized to the video area
+// (client rect minus the controls bar) on WM_SIZE.
 // ---------------------------------------------------------------------------
 static LRESULT CALLBACK parent_subclass_proc(
     HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
@@ -40,7 +48,9 @@ static LRESULT CALLBACK parent_subclass_proc(
     if (msg == WM_SIZE && view && view->hwnd) {
         RECT rc;
         GetClientRect(hwnd, &rc);
-        MoveWindow(view->hwnd, 0, 0, rc.right, rc.bottom, TRUE);
+        int video_h = rc.bottom - CONTROLS_HEIGHT;
+        if (video_h < 0) video_h = 0;
+        MoveWindow(view->hwnd, 0, 0, rc.right, video_h, TRUE);
     }
 
     if (msg == WM_NCDESTROY) {
@@ -61,13 +71,9 @@ static LRESULT CALLBACK gl_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     case WM_BLOWUP_RENDER: {
         if (view && view->hglrc) {
             wglMakeCurrent(view->hdc, view->hglrc);
-
             RECT rc;
             GetClientRect(hwnd, &rc);
-            int w = rc.right;
-            int h = rc.bottom;
-
-            blowup_render_mpv_frame(0, w, h);
+            blowup_render_mpv_frame(0, rc.right, rc.bottom);
             SwapBuffers(view->hdc);
         }
         return 0;
@@ -78,13 +84,9 @@ static LRESULT CALLBACK gl_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         BeginPaint(hwnd, &ps);
         if (view && view->hglrc) {
             wglMakeCurrent(view->hdc, view->hglrc);
-
             RECT rc;
             GetClientRect(hwnd, &rc);
-            int w = rc.right;
-            int h = rc.bottom;
-
-            blowup_render_mpv_frame(0, w, h);
+            blowup_render_mpv_frame(0, rc.right, rc.bottom);
             SwapBuffers(view->hdc);
         }
         EndPaint(hwnd, &ps);
@@ -93,6 +95,14 @@ static LRESULT CALLBACK gl_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
     case WM_ERASEBKGND:
         return 1;   // prevent flicker
+
+    case WM_NCHITTEST:
+        // Click-through: events that land on the GL view pass through to
+        // the parent (Tauri) HWND, which routes them to WebView2. Without
+        // this, clicking on the video area would be captured by the GL
+        // window instead of reaching the play/pause click handler in
+        // Player.tsx.
+        return HTTRANSPARENT;
 
     default:
         return DefWindowProcW(hwnd, msg, wp, lp);
@@ -110,9 +120,9 @@ static void ensure_wnd_class(void)
     wc.cbSize        = sizeof(wc);
     wc.style         = CS_OWNDC;           // persistent HDC
     wc.lpfnWndProc   = gl_wnd_proc;
-    wc.hInstance      = GetModuleHandleW(NULL);
-    wc.lpszClassName  = WND_CLASS_NAME;
-    wc.hCursor        = LoadCursorW(NULL, IDC_ARROW);
+    wc.hInstance     = GetModuleHandleW(NULL);
+    wc.lpszClassName = WND_CLASS_NAME;
+    wc.hCursor       = LoadCursorW(NULL, IDC_ARROW);
 
     wnd_class_atom = RegisterClassExW(&wc);
 }
@@ -136,7 +146,6 @@ static int setup_wgl(GlView* view)
 
     int pf = ChoosePixelFormat(view->hdc, &pfd);
     if (!pf) return -1;
-
     if (!SetPixelFormat(view->hdc, pf, &pfd)) return -1;
 
     view->hglrc = wglCreateContext(view->hdc);
@@ -174,13 +183,11 @@ void* blowup_create_gl_view(double width, double height)
 {
     ensure_wnd_class();
 
-    GlView* view = (GlView*)calloc(1, sizeof(GlView));
-    if (!view) return NULL;
-
+    GlView* view = &g_static_view;
+    memset(view, 0, sizeof(GlView));
     view->init_width  = width;
     view->init_height = height;
 
-    OutputDebugStringA("blowup: GL view struct created\n");
     return view;
 }
 
@@ -197,47 +204,43 @@ int blowup_attach_to_window(void* parent_hwnd_ptr, void* view_ptr)
     int w = rc.right  > 0 ? rc.right  : (int)view->init_width;
     int h = rc.bottom > 0 ? rc.bottom : (int)view->init_height;
 
-    // Create the GL child window inside the Tauri window
+    // Reserve CONTROLS_HEIGHT pixels at the bottom for the WebView2
+    // controls bar — the GL view only covers the video area above it.
+    int video_h = h - CONTROLS_HEIGHT;
+    if (video_h < 0) video_h = 0;
+
     view->hwnd = CreateWindowExW(
         0,
         WND_CLASS_NAME,
         L"BlowupGL",
         WS_CHILD | WS_VISIBLE,
-        0, 0, w, h,
+        0, 0, w, video_h,
         parent,
         NULL,
         GetModuleHandleW(NULL),
         NULL);
 
     if (!view->hwnd) {
-        OutputDebugStringA("blowup: CreateWindowExW failed\n");
         return -1;
     }
 
-    // Store the view pointer on the HWND for the window proc
     SetWindowLongPtrW(view->hwnd, GWLP_USERDATA, (LONG_PTR)view);
 
-    // Set up WGL OpenGL context
     if (setup_wgl(view) != 0) {
-        OutputDebugStringA("blowup: WGL setup failed\n");
         DestroyWindow(view->hwnd);
         view->hwnd = NULL;
         return -1;
     }
 
-    // Position GL window behind all siblings (WebView2 is in front)
-    SetWindowPos(view->hwnd, HWND_BOTTOM, 0, 0, 0, 0,
+    // Put the GL view at the top of the z-order so it's visually above
+    // the WebView2 render target in the video area. WM_NCHITTEST returns
+    // HTTRANSPARENT so mouse events still reach WebView2.
+    SetWindowPos(view->hwnd, HWND_TOP, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
     // Subclass parent to auto-resize GL child on WM_SIZE
     SetWindowSubclass(parent, parent_subclass_proc, 1, (DWORD_PTR)view);
 
-    {
-        char buf[256];
-        snprintf(buf, sizeof(buf),
-                 "blowup: GL view attached %dx%d, hwnd=%p\n", w, h, (void*)view->hwnd);
-        OutputDebugStringA(buf);
-    }
     return 0;
 }
 
@@ -250,12 +253,8 @@ void blowup_make_gl_context_current(void* view_ptr)
 {
     if (!view_ptr) return;
     GlView* view = (GlView*)view_ptr;
-
     if (view->hglrc && view->hdc) {
         wglMakeCurrent(view->hdc, view->hglrc);
-        OutputDebugStringA("blowup: WGL context made current\n");
-    } else {
-        OutputDebugStringA("blowup: WARNING — no WGL context\n");
     }
 }
 
@@ -273,24 +272,21 @@ void blowup_remove_view(void* view_ptr)
     if (!view_ptr) return;
     GlView* view = (GlView*)view_ptr;
 
-    // Remove parent subclass first
     if (view->parent_hwnd) {
         RemoveWindowSubclass(view->parent_hwnd, parent_subclass_proc, 1);
     }
 
-    // Tear down WGL
     if (view->hglrc) {
         wglMakeCurrent(NULL, NULL);
         wglDeleteContext(view->hglrc);
         view->hglrc = NULL;
     }
 
-    // Destroy the child window (HDC released automatically with CS_OWNDC)
     if (view->hwnd) {
         DestroyWindow(view->hwnd);
         view->hwnd = NULL;
     }
 
-    free(view);
-    OutputDebugStringA("blowup: GL view removed\n");
+    // Do NOT free(view) — view points at the static g_static_view slot.
+    memset(view, 0, sizeof(GlView));
 }

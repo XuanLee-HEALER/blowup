@@ -130,69 +130,153 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
     // Ensure previous player window is fully gone
     if let Some(old_window) = app.get_webview_window("player") {
         old_window.close().ok();
-        std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
     EVENT_LOOP_SHUTDOWN.store(false, Ordering::SeqCst);
     *CURRENT_FILE_PATH.lock().unwrap() = Some(file_path.to_string());
 
-    // 1. Create Tauri transparent webview window (controls overlay)
-    let window = WebviewWindowBuilder::new(app, "player", WebviewUrl::App("player.html".into()))
-        .title("blowup player")
-        .inner_size(1280.0, 720.0)
-        .min_inner_size(640.0, 360.0)
-        .transparent(true)
-        .build()
-        .map_err(|e| format!("failed to create player window: {e}"))?;
+    // The player setup is split into TWO short main-thread closures with an
+    // async sleep in between. A single long closure (build + sleep + GL +
+    // mpv) deadlocks WebView2 on Windows because `WebviewWindowBuilder::build()`
+    // blocks the main thread until WebView2 is fully initialized, but
+    // WebView2 init needs the main thread's message loop to keep pumping —
+    // which can't happen while the closure is running. By returning from
+    // the phase-1 closure immediately after `build()`, the main loop pumps
+    // the pending init messages, WebView2 comes up, and phase 2 then
+    // attaches the GL view and starts mpv on the (again free) main thread.
+    //
+    // We use `tauri::async_runtime::spawn` to drive the phase chain so the
+    // `tokio::time::sleep` between phases happens on a worker instead of
+    // blocking the main thread.
+    let app_clone = app.clone();
+    let file_path_owned = file_path.to_string();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = run_open_player_phases(app_clone, file_path_owned).await {
+            tracing::error!(error = %e, "failed to set up player window");
+        }
+    });
+    Ok(())
+}
 
-    // Wait for WKWebView to fully attach
-    std::thread::sleep(std::time::Duration::from_millis(300));
+async fn run_open_player_phases(app: AppHandle, file_path: String) -> Result<(), String> {
+    // Phase 1: build the player window on the main thread. The closure is
+    // kept short (just `.build()`) so the main event loop returns to
+    // pumping messages quickly enough for WebView2 to finish initializing
+    // without the deadlock that would happen if GL + mpv setup were
+    // bundled into the same closure.
+    //
+    // `.transparent(true)` is required on both platforms:
+    //   - macOS: NSView subview compositing lets CAOpenGLLayer render
+    //     behind the transparent WKWebView.
+    //   - Windows: WebView2's Chromium renderer uses DirectComposition
+    //     regardless. With an opaque window, WebView2's composition
+    //     output paints a solid background rectangle over our Win32 GL
+    //     child window and the video becomes invisible. With transparent
+    //     window + transparent HTML body, WebView2's composition output
+    //     is transparent in the video region, so the GL child (at
+    //     HWND_TOP) shows the video. The bottom strip reserved by
+    //     `CONTROLS_HEIGHT` in `win_gl_layer.c` is only covered by
+    //     WebView2's opaque controls bar, which stays visible.
+    let window = {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let app_for_build = app.clone();
+        app.run_on_main_thread(move || {
+            let _ = tx.send(
+                WebviewWindowBuilder::new(
+                    &app_for_build,
+                    "player",
+                    WebviewUrl::App("player.html".into()),
+                )
+                .title("blowup player")
+                .inner_size(1280.0, 720.0)
+                .min_inner_size(640.0, 360.0)
+                .transparent(true)
+                .build()
+                .map_err(|e| format!("failed to create player window: {e}")),
+            );
+        })
+        .map_err(|e| format!("dispatch phase 1: {e}"))?;
+        rx.await
+            .map_err(|e| format!("phase 1 channel dropped: {e}"))??
+    };
 
-    // 2. Attach CAOpenGLLayer view below WKWebView
-    let _gl_view = native::create_and_attach_gl_view(&window)?;
+    #[cfg(debug_assertions)]
+    {
+        let _ = window.run_on_main_thread({
+            let w = window.clone();
+            move || {
+                w.open_devtools();
+            }
+        });
+    }
 
-    // 3. Create mpv instance (no window — render API mode)
+    // Give WebView2 room to finish initializing before we start hammering
+    // the main thread with GL + mpv work. The main thread is free during
+    // this await — it's pumping its message loop and dispatching WebView2
+    // init messages.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Phase 2: attach GL view, create mpv render context, load file, and
+    // spawn the mpv event-loop thread. All GL + Tauri window operations
+    // must run on the main thread.
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let app_for_setup = app.clone();
+    let window_for_setup = window.clone();
+    let file_path_for_setup = file_path.clone();
+    app.run_on_main_thread(move || {
+        let result =
+            setup_gl_and_mpv_on_main(&app_for_setup, &window_for_setup, &file_path_for_setup);
+        let _ = tx.send(result);
+    })
+    .map_err(|e| format!("dispatch phase 2: {e}"))?;
+    rx.await
+        .map_err(|e| format!("phase 2 channel dropped: {e}"))??;
+
+    Ok(())
+}
+
+fn setup_gl_and_mpv_on_main(
+    app: &AppHandle,
+    window: &tauri::WebviewWindow,
+    file_path: &str,
+) -> Result<(), String> {
+    let _gl_view = native::create_and_attach_gl_view(window)?;
+
+    // Create mpv instance (no window — render API mode)
     let mpv = Mpv::new()?;
     mpv.set_option("vo", "libmpv")?;
     mpv.set_option("hwdec", "auto")?;
     mpv.set_option("keep-open", "yes")?;
     mpv.initialize()?;
 
-    // 4. Make CGL context current, then create render context
+    // Make GL context current, then create render context
     native::make_gl_context_current();
-    tracing::debug!("creating mpv render context...");
     let get_proc_addr = native::get_gl_proc_address_fn();
     let render_ctx_raw = mpv.create_render_context(get_proc_addr)?;
-    tracing::info!("mpv render context created successfully");
     let render_ctx = MpvRenderCtx {
         ctx: render_ctx_raw,
     };
 
-    // Store render context globally for the ObjC draw callback
+    // Store render context globally for the ObjC / Win32 draw callback
     *RENDER_CTX.lock().unwrap() = Some(RenderCtxPtr(render_ctx_raw));
-
-    // Store raw mpv handle for event loop (thread-safe, no mutex needed for wait_event)
+    // Store raw mpv handle for event loop (mpv is thread-safe for wait_event)
     *MPV_HANDLE.lock().unwrap() = Some(MpvHandlePtr(mpv.raw_handle()));
 
-    // 5. Set update callback — mpv notifies us when a new frame is ready
     // Safety: null context, callback is a static function
     unsafe { render_ctx.set_update_callback(Some(on_mpv_render_update), std::ptr::null_mut()) };
 
-    // 6. Observe properties + load file
     mpv.observe_property("time-pos", MPV_FORMAT_DOUBLE, 1)?;
     mpv.observe_property("duration", MPV_FORMAT_DOUBLE, 2)?;
     mpv.observe_property("pause", ffi::MPV_FORMAT_FLAG, 3)?;
     mpv.observe_property("volume", MPV_FORMAT_DOUBLE, 4)?;
 
     mpv.command(&["loadfile", file_path])?;
-
     tracing::info!(file_path, "player opened with render API");
 
     let player = MpvPlayer {
         _render_ctx: render_ctx,
         mpv,
     };
-
     {
         let mut guard = PLAYER.lock().unwrap();
         *guard = Some(player);

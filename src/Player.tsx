@@ -36,18 +36,37 @@ function trackLabel(t: TrackInfo): string {
   return parts.length > 0 ? parts.join(" — ") : `Track ${t.id}`;
 }
 
+// ── Platform detection ──────────────────────────────────────────
+//
+// Windows uses a fixed bottom-bar layout because the Win32 GL child
+// window rendering mpv frames sits on top of WebView2 (DirectComposition
+// surfaces render below traditional HWND children regardless of z-order).
+// The GL view is sized to `client_height - CONTROLS_HEIGHT`, leaving the
+// bottom strip for WebView2 to render the controls. macOS keeps the
+// original overlay design where NSView subview compositing lets
+// CAOpenGLLayer render behind the transparent WKWebView.
+//
+// `CONTROLS_HEIGHT` must match the `CONTROLS_HEIGHT` macro in
+// `native/win_gl_layer.c`.
+const IS_WINDOWS = /Windows/i.test(navigator.userAgent);
+const CONTROLS_HEIGHT = 100;
+
 // ── Glass design tokens ─────────────────────────────────────────
 
 const glass = {
-  bg: "rgba(255, 255, 255, 0.06)",
+  bg: IS_WINDOWS ? "rgba(18, 18, 20, 0.98)" : "rgba(255, 255, 255, 0.06)",
   bgHover: "rgba(255, 255, 255, 0.12)",
   bgActive: "rgba(255, 255, 255, 0.18)",
-  border: "1px solid rgba(255, 255, 255, 0.12)",
+  border: IS_WINDOWS
+    ? "1px solid rgba(255, 255, 255, 0.06)"
+    : "1px solid rgba(255, 255, 255, 0.12)",
   borderLight: "1px solid rgba(255, 255, 255, 0.08)",
-  backdrop: "blur(40px) saturate(180%)",
-  shadow: "0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
+  backdrop: IS_WINDOWS ? "none" : "blur(40px) saturate(180%)",
+  shadow: IS_WINDOWS
+    ? "0 -4px 16px rgba(0, 0, 0, 0.4)"
+    : "0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08)",
   shadowSmall: "0 2px 8px rgba(0, 0, 0, 0.3)",
-  radius: 14,
+  radius: IS_WINDOWS ? 0 : 14,
   radiusSmall: 8,
   text: "rgba(255, 255, 255, 0.9)",
   textDim: "rgba(255, 255, 255, 0.5)",
@@ -159,11 +178,20 @@ export function Player() {
   const hideTimer = useRef<number | null>(null);
   const seekTarget = useRef<number | null>(null);
   const progressRef = useRef<HTMLDivElement>(null);
+  // Mirror `seeking` into a ref so the player-state listener effect can
+  // read the latest value without being re-registered on every toggle.
+  // Re-registering produced "listener callback not found" warnings in the
+  // WebView2 devtools console because the async `unlisten.then(...)` path
+  // raced with the new subscription.
+  const seekingRef = useRef(seeking);
+  useEffect(() => { seekingRef.current = seeking; }, [seeking]);
 
-  // Listen to player-state events (push model: mpv pushes property changes)
+  // Listen to player-state events (push model: mpv pushes property changes).
+  // Registered once on mount and torn down on unmount — deps must stay
+  // empty to avoid churning Tauri's event subscription.
   useEffect(() => {
     const unlisten = listen<PlayerState>("player-state", (event) => {
-      if (seeking) return;
+      if (seekingRef.current) return;
 
       const s = event.payload;
       if (seekTarget.current !== null) {
@@ -176,10 +204,13 @@ export function Player() {
       setState(s);
     });
     return () => { unlisten.then((f) => f()); };
-  }, [seeking]);
+  }, []);
 
-  // Auto-hide controls
+  // Auto-hide controls (macOS only — on Windows the controls bar is a
+  // fixed strip at the bottom and never auto-hides, because hiding it
+  // would reveal an opaque gap instead of the video behind it).
   const resetHideTimer = useCallback(() => {
+    if (IS_WINDOWS) return;
     setShowControls(true);
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = window.setTimeout(() => {
@@ -243,6 +274,13 @@ export function Player() {
     <div
       style={{
         position: "fixed", inset: 0,
+        // Both platforms use a transparent body. On macOS the CAOpenGL
+        // layer shows through the transparent WKWebView; on Windows the
+        // Win32 GL child (sized to client height - CONTROLS_HEIGHT) sits
+        // on top of the WebView2 DComp surface, which is transparent in
+        // this region. The bottom CONTROLS_HEIGHT strip is not covered by
+        // the GL child, so the opaque controls bar rendered by WebView2
+        // is visible and interactive there.
         background: "transparent",
         display: "flex", flexDirection: "column",
         cursor: showControls ? "default" : "none",
@@ -251,8 +289,18 @@ export function Player() {
       }}
       onMouseMove={resetHideTimer}
     >
-      {/* Click area — play/pause on click, fullscreen on double-click */}
-      <div style={{ flex: 1 }} onClick={() => playPause()} onDoubleClick={() => toggleFullscreen()} />
+      {/* Click area — play/pause on click, fullscreen on double-click.
+          On Windows this div is also a drag region (`data-tauri-drag-region`)
+          so the user can reposition the window by dragging the video area,
+          since transparent windows have no native title bar on Windows.
+          Clicks pass through the GL child's HTTRANSPARENT hit-test and
+          land on this div. */}
+      <div
+        data-tauri-drag-region={IS_WINDOWS ? "" : undefined}
+        style={{ flex: 1 }}
+        onClick={() => playPause()}
+        onDoubleClick={() => toggleFullscreen()}
+      />
 
       {/* Track selector panel */}
       {showTracks && (
@@ -298,18 +346,25 @@ export function Player() {
         </div>
       )}
 
-      {/* ── Controls bar (liquid glass) ────────────────────────── */}
+      {/* ── Controls bar ─────────────────────────────────────────
+          macOS: floating liquid-glass card with auto-hide.
+          Windows: fixed-height opaque strip pinned to the bottom,
+          always visible (matches CONTROLS_HEIGHT reserved by
+          win_gl_layer.c for the GL view). */}
       <div style={{
-        margin: "0 16px 16px",
-        padding: "12px 16px 14px",
+        margin: IS_WINDOWS ? 0 : "0 16px 16px",
+        padding: IS_WINDOWS ? "14px 20px 16px" : "12px 16px 14px",
+        height: IS_WINDOWS ? CONTROLS_HEIGHT : undefined,
+        boxSizing: IS_WINDOWS ? "border-box" : undefined,
         background: glass.bg,
         backdropFilter: glass.backdrop,
         WebkitBackdropFilter: glass.backdrop,
-        border: glass.border,
+        border: IS_WINDOWS ? "none" : glass.border,
+        borderTop: IS_WINDOWS ? glass.border : undefined,
         borderRadius: glass.radius,
         boxShadow: glass.shadow,
         opacity: showControls ? 1 : 0,
-        transition: "opacity 0.3s ease",
+        transition: IS_WINDOWS ? "none" : "opacity 0.3s ease",
         pointerEvents: showControls ? "auto" : "none",
       }}>
         {/* Progress bar */}
