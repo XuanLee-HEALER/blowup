@@ -134,8 +134,48 @@ pub fn close(_app: &AppHandle) {
     }
 }
 
-pub fn reposition(_x: i32, _y: i32, _w: i32, _h: i32) {
-    // Phase 5
+pub fn reposition(x: i32, y: i32, w: i32, h: i32) {
+    if !CONTROLS_WINDOW_READY.load(Ordering::Acquire) {
+        return;
+    }
+    // Move/resize via raw HWND + SetWindowPos to avoid pulling
+    // `WebviewWindow::set_size` / `set_position` — and by extension
+    // `get_webview_window` — into this module. Anything that touches the
+    // Tauri `Manager::get_webview_window` codepath from controls.rs drags
+    // `TaskDialogIndirect` into the cargo-test binary (see note at top of
+    // file) and makes the test exe fail to load.
+    let Some(CtrlHwnd(hwnd)) = *CONTROLS_HWND.lock().unwrap() else {
+        return;
+    };
+
+    unsafe extern "system" {
+        fn SetWindowPos(
+            hwnd: *mut c_void,
+            hwnd_insert_after: *mut c_void,
+            x: i32,
+            y: i32,
+            cx: i32,
+            cy: i32,
+            u_flags: u32,
+        ) -> i32;
+    }
+    const SWP_NOZORDER: u32 = 0x0004;
+    const SWP_NOACTIVATE: u32 = 0x0010;
+    const SWP_NOSENDCHANGING: u32 = 0x0400;
+
+    let width = w.max(1);
+    let ctrl_y = y + h - CONTROLS_HEIGHT as i32;
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            x,
+            ctrl_y,
+            width,
+            CONTROLS_HEIGHT as i32,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSENDCHANGING,
+        );
+    }
 }
 
 pub fn forward_mouse_move() {
