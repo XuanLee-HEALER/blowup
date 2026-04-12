@@ -15,7 +15,7 @@
 use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, WebviewUrl, WebviewWindowBuilder};
 
 use super::video_window::CONTROLS_WINDOW_READY;
 
@@ -179,5 +179,10 @@ pub fn reposition(x: i32, y: i32, w: i32, h: i32) {
 }
 
 pub fn forward_mouse_move() {
-    // Phase 10
+    use std::sync::atomic::Ordering;
+    if !CONTROLS_WINDOW_READY.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(app) = super::PLAYER_APP_HANDLE.get() else { return };
+    let _ = app.emit_to("player-controls", "player:video-mouse-move", ());
 }
