@@ -170,6 +170,11 @@ static LRESULT CALLBACK video_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         // from cleanup_player_resources, which ensures mpv is torn down first.
         return 0;
 
+    case WM_LBUTTONDBLCLK: {
+        blowup_on_video_window_event(3, LOWORD(lp), HIWORD(lp), 0, 0);
+        return 0;
+    }
+
     case WM_DESTROY:
         return 0;
 
@@ -184,7 +189,7 @@ static void ensure_video_wnd_class(void)
 
     WNDCLASSEXW wc = {0};
     wc.cbSize        = sizeof(wc);
-    wc.style         = CS_HREDRAW | CS_VREDRAW;
+    wc.style         = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
     wc.lpfnWndProc   = video_wnd_proc;
     wc.hInstance     = GetModuleHandleW(NULL);
     wc.lpszClassName = VIDEO_WND_CLASS_NAME;
@@ -470,9 +475,79 @@ void blowup_set_video_window_rect(void* hwnd_ptr, int x, int y, int w, int h)
 // Stubs for fullscreen / window control / round corners (Phase 6, 8, 11)
 // ---------------------------------------------------------------------------
 
-int  blowup_enter_fullscreen(void* hwnd) { (void)hwnd; return -1; }
-int  blowup_leave_fullscreen(void* hwnd) { (void)hwnd; return -1; }
-int  blowup_is_fullscreen(void* hwnd)    { (void)hwnd; return 0; }
+int blowup_enter_fullscreen(void* hwnd_ptr)
+{
+    if (!hwnd_ptr) return -1;
+    HWND hwnd = (HWND)hwnd_ptr;
+
+    if (g_video_window.is_fullscreen) return 0;
+
+    // Save current placement + style
+    g_video_window.saved_placement.length = sizeof(WINDOWPLACEMENT);
+    if (!GetWindowPlacement(hwnd, &g_video_window.saved_placement)) return -1;
+    g_video_window.saved_style   = GetWindowLongW(hwnd, GWL_STYLE);
+    g_video_window.saved_exstyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
+    g_video_window.saved_was_maximized = IsZoomed(hwnd) ? 1 : 0;
+
+    // If currently maximized, restore first so the saved_placement we
+    // already captured reflects the non-maximized rect (otherwise
+    // exiting fullscreen would leap to pre-maximize bounds).
+    if (g_video_window.saved_was_maximized) {
+        ShowWindow(hwnd, SW_RESTORE);
+    }
+
+    // Pick the monitor the window is currently on
+    HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi = { sizeof(MONITORINFO) };
+    if (!GetMonitorInfoW(mon, &mi)) return -1;
+
+    // Strip caption + thick frame, keep WS_POPUP + WS_VISIBLE
+    LONG new_style = (g_video_window.saved_style
+        & ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU))
+        | WS_POPUP | WS_VISIBLE;
+    SetWindowLongW(hwnd, GWL_STYLE, new_style);
+
+    SetWindowPos(hwnd, HWND_TOP,
+                 mi.rcMonitor.left,
+                 mi.rcMonitor.top,
+                 mi.rcMonitor.right  - mi.rcMonitor.left,
+                 mi.rcMonitor.bottom - mi.rcMonitor.top,
+                 SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+
+    g_video_window.is_fullscreen = 1;
+    blowup_on_video_window_event(6, 2, 0, 0, 0);  // state = fullscreen
+    return 0;
+}
+
+int blowup_leave_fullscreen(void* hwnd_ptr)
+{
+    if (!hwnd_ptr) return -1;
+    HWND hwnd = (HWND)hwnd_ptr;
+    if (!g_video_window.is_fullscreen) return 0;
+
+    SetWindowLongW(hwnd, GWL_STYLE,   g_video_window.saved_style);
+    SetWindowLongW(hwnd, GWL_EXSTYLE, g_video_window.saved_exstyle);
+    SetWindowPlacement(hwnd, &g_video_window.saved_placement);
+    SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+
+    g_video_window.is_fullscreen = 0;
+
+    // If we entered fullscreen from Maximized, re-maximize
+    if (g_video_window.saved_was_maximized) {
+        ShowWindow(hwnd, SW_MAXIMIZE);
+        blowup_on_video_window_event(6, 1, 0, 0, 0);  // state = maximized
+    } else {
+        blowup_on_video_window_event(6, 0, 0, 0, 0);  // state = normal
+    }
+    return 0;
+}
+
+int blowup_is_fullscreen(void* hwnd_ptr)
+{
+    (void)hwnd_ptr;
+    return g_video_window.is_fullscreen ? 1 : 0;
+}
 
 void blowup_window_minimize(void* hwnd_ptr)
 {
