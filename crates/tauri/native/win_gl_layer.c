@@ -175,6 +175,21 @@ static LRESULT CALLBACK video_wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         return 0;
     }
 
+    case WM_KEYDOWN: {
+        int vk = (int)wp;
+        blowup_on_video_window_event(5, vk, 0, 0, 0);
+        return 0;
+    }
+
+    case WM_MOUSEMOVE: {
+        DWORD now = GetTickCount();
+        if (now - g_video_window.last_mousemove_tick >= 50) {
+            g_video_window.last_mousemove_tick = now;
+            blowup_on_video_window_event(2, LOWORD(lp), HIWORD(lp), 0, 0);
+        }
+        return 0;
+    }
+
     case WM_DESTROY:
         return 0;
 

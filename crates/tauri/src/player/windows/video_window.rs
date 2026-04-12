@@ -153,12 +153,72 @@ mod tests {
 }
 
 // ---------------------------------------------------------------------------
-// Keyboard dispatch (spec §3.1 keeps this inside video_window.rs). Phase 9
-// fills in the real mapping; this is the stub form.
+// Keyboard dispatch — the native video window captures WM_KEYDOWN and
+// forwards the VK code here via blowup_on_video_window_event(5, vk, ...).
+// We map VK codes to existing player commands.
 // ---------------------------------------------------------------------------
 
 pub mod keyboard {
-    pub fn dispatch(_vk: i32) {
-        // Phase 9
+    // Win32 virtual-key constants. Letter keys map to ASCII uppercase values;
+    // there is no VK_F or VK_M macro in the Windows SDK.
+    const VK_SPACE: i32 = 0x20;
+    const VK_LEFT: i32 = 0x25;
+    const VK_UP: i32 = 0x26;
+    const VK_RIGHT: i32 = 0x27;
+    const VK_DOWN: i32 = 0x28;
+    const VK_ESCAPE: i32 = 0x1B;
+    const VK_F: i32 = 0x46;
+    const VK_M: i32 = 0x4D;
+
+    pub fn dispatch(vk: i32) {
+        match vk {
+            VK_SPACE => {
+                let _ = crate::player::commands::cmd_player_play_pause();
+            }
+            VK_LEFT => {
+                let _ = crate::player::commands::cmd_player_seek_relative(-5.0);
+            }
+            VK_RIGHT => {
+                let _ = crate::player::commands::cmd_player_seek_relative(5.0);
+            }
+            VK_UP => {
+                let cur = crate::player::with_player(|p| {
+                    Ok(p.mpv.get_property_double("volume").unwrap_or(100.0))
+                })
+                .unwrap_or(100.0);
+                let _ = crate::player::commands::cmd_player_set_volume(
+                    (cur + 5.0).min(100.0),
+                );
+            }
+            VK_DOWN => {
+                let cur = crate::player::with_player(|p| {
+                    Ok(p.mpv.get_property_double("volume").unwrap_or(0.0))
+                })
+                .unwrap_or(0.0);
+                let _ = crate::player::commands::cmd_player_set_volume(
+                    (cur - 5.0).max(0.0),
+                );
+            }
+            VK_F => {
+                crate::player::windows::fullscreen::toggle();
+            }
+            VK_ESCAPE => {
+                let hwnd_opt = super::PLAYER_HWND.lock().unwrap().map(|super::HwndPtr(p)| p);
+                if let Some(hwnd) = hwnd_opt
+                    && unsafe { super::blowup_is_fullscreen(hwnd) } != 0
+                {
+                    unsafe { super::blowup_leave_fullscreen(hwnd) };
+                }
+            }
+            VK_M => {
+                let cur = crate::player::with_player(|p| {
+                    Ok(p.mpv.get_property_double("volume").unwrap_or(100.0))
+                })
+                .unwrap_or(100.0);
+                let new = if cur > 0.0 { 0.0 } else { 100.0 };
+                let _ = crate::player::commands::cmd_player_set_volume(new);
+            }
+            _ => {}
+        }
     }
 }
