@@ -1,7 +1,7 @@
 use super::{
     PlayerState, TrackInfo, close_player, get_current_file_path, open_player, with_player,
 };
-use crate::subtitle_parser::{SubtitleOverlayConfig, merge_to_ass, overlay_cache_key};
+use blowup_core::subtitle::parser::{SubtitleOverlayConfig, merge_to_ass, overlay_cache_key};
 use tauri::Manager;
 
 #[tauri::command]

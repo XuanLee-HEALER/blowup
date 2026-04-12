@@ -168,11 +168,7 @@ async fn os_download(
     resp.json().await.map_err(SubError::HttpFailed)
 }
 
-async fn get_os_token(
-    client: &reqwest::Client,
-    username: &str,
-    password: &str,
-) -> Option<String> {
+async fn get_os_token(client: &reqwest::Client, username: &str, password: &str) -> Option<String> {
     if username.is_empty() || password.is_empty() {
         return None;
     }
@@ -249,7 +245,8 @@ pub async fn fetch_subtitle(video: &Path, lang: &str, cfg: &Config) -> Result<()
 
     let dl = os_download(&client, token.as_deref(), file.file_id).await?;
     tracing::info!(
-        file_name = file.file_name, remaining = dl.remaining,
+        file_name = file.file_name,
+        remaining = dl.remaining,
         "subtitle download link obtained"
     );
 
@@ -741,10 +738,7 @@ async fn assrt_download(token: &str, sub_id: &str, out_path: &Path) -> Result<()
         .map_err(|e| format!("ASSRT 详情请求失败: {e}"))?;
 
     let body = resp.text().await.unwrap_or_default();
-    tracing::debug!(
-        body_len = body.len(),
-        "assrt_download: detail response"
-    );
+    tracing::debug!(body_len = body.len(), "assrt_download: detail response");
 
     let parsed: AssrtDetailResponse =
         serde_json::from_str(&body).map_err(|e| format!("ASSRT 详情解析失败: {e}"))?;

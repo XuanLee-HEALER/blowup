@@ -74,9 +74,7 @@ pub async fn remove_library_asset(
 }
 
 #[tauri::command]
-pub async fn get_library_stats(
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<LibraryStats, String> {
+pub async fn get_library_stats(pool: tauri::State<'_, SqlitePool>) -> Result<LibraryStats, String> {
     svc::get_library_stats(pool.inner()).await
 }
 

@@ -1,16 +1,12 @@
-pub use blowup_core::config;
-pub use blowup_core::error;
-pub use blowup_core::infra::cache;
-pub use blowup_core::infra::db;
-pub use blowup_core::infra::ffmpeg;
-pub use blowup_core::library::index as library_index;
-pub use blowup_core::subtitle::alass;
-pub use blowup_core::subtitle::parser as subtitle_parser;
-pub use blowup_core::torrent::manager as torrent;
 pub mod commands;
 pub mod common;
 pub mod player;
 
+use blowup_core::config;
+use blowup_core::infra::{cache, db};
+use blowup_core::library::index::LibraryIndex;
+use blowup_core::torrent::manager::TorrentManager;
+use blowup_core::torrent::tracker::TrackerManager;
 use tauri::Manager;
 
 fn init_tracing() {
@@ -56,7 +52,7 @@ pub fn run() {
             let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
             let library_root = std::path::PathBuf::from(&root_dir);
             std::fs::create_dir_all(&library_root).ok();
-            let library_index = library_index::LibraryIndex::load(&library_root);
+            let library_index = LibraryIndex::load(&library_root);
             handle.manage(library_index);
             tracing::debug!("[timing] library index loaded: {}ms", app_start.elapsed().as_millis());
 
@@ -66,7 +62,7 @@ pub fn run() {
             }
 
             // Init tracker manager (loads trackers.json, migrates legacy format)
-            let (tracker_mgr, trackers) = commands::tracker::TrackerManager::load();
+            let (tracker_mgr, trackers) = TrackerManager::load();
             handle.manage(tracker_mgr);
             tracing::debug!("[timing] tracker manager loaded: {}ms", app_start.elapsed().as_millis());
 
@@ -115,7 +111,7 @@ pub fn run() {
             let tm_handle = handle.clone();
             tauri::async_runtime::spawn(async move {
                 let t = std::time::Instant::now();
-                match torrent::TorrentManager::new(
+                match TorrentManager::new(
                     library_root,
                     cfg.download.max_concurrent,
                     cfg.download.enable_dht,
@@ -135,7 +131,7 @@ pub fn run() {
             });
 
             // Background tracker auto-refresh (daily, with staleness check on startup)
-            let tracker_state = handle.state::<commands::tracker::TrackerManager>().inner().clone();
+            let tracker_state = handle.state::<TrackerManager>().inner().clone();
             tauri::async_runtime::spawn(async move {
                 if tracker_state.is_stale().await {
                     tracing::info!("tracker list stale, refreshing");
@@ -260,7 +256,7 @@ pub fn run() {
         .run(|handle, event| {
             if let tauri::RunEvent::Exit = event {
                 cache::flush_cache();
-                if let Some(idx) = handle.try_state::<library_index::LibraryIndex>() {
+                if let Some(idx) = handle.try_state::<LibraryIndex>() {
                     idx.flush();
                 }
                 // Pause active downloads before shutting down torrent session
@@ -274,7 +270,7 @@ pub fn run() {
                         .ok();
                     });
                 }
-                if let Some(tm) = handle.try_state::<torrent::TorrentManager>() {
+                if let Some(tm) = handle.try_state::<TorrentManager>() {
                     tm.shutdown();
                 }
             }

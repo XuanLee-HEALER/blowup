@@ -79,10 +79,7 @@ pub async fn serialize_knowledge_base(pool: &SqlitePool) -> Result<String, Strin
     serde_json::to_string_pretty(&export).map_err(|e| e.to_string())
 }
 
-pub async fn import_knowledge_base_data(
-    pool: &SqlitePool,
-    json: &str,
-) -> Result<String, String> {
+pub async fn import_knowledge_base_data(pool: &SqlitePool, json: &str) -> Result<String, String> {
     #[derive(Deserialize)]
     struct VersionProbe {
         #[serde(default)]
@@ -203,8 +200,7 @@ pub fn export_config_to_file(config: &Config, path: &Path) -> Result<(), String>
 /// Validate and copy a TOML file into the app's config path.
 pub fn import_config_from_file(src: &Path, dst: &Path) -> Result<(), String> {
     let content = std::fs::read_to_string(src).map_err(|e| e.to_string())?;
-    let _: Config =
-        toml::from_str(&content).map_err(|e| format!("配置文件格式错误: {}", e))?;
+    let _: Config = toml::from_str(&content).map_err(|e| format!("配置文件格式错误: {}", e))?;
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -214,10 +210,7 @@ pub fn import_config_from_file(src: &Path, dst: &Path) -> Result<(), String> {
 
 // ── S3 variants ──────────────────────────────────────────────────
 
-pub async fn export_knowledge_base_s3(
-    pool: &SqlitePool,
-    sync: &SyncConfig,
-) -> Result<(), String> {
+pub async fn export_knowledge_base_s3(pool: &SqlitePool, sync: &SyncConfig) -> Result<(), String> {
     let json = serialize_knowledge_base(pool).await?;
     s3::s3_put(sync, S3_KEY_KB, json.as_bytes()).await
 }
@@ -241,8 +234,7 @@ pub async fn export_config_s3(config: &Config, sync: &SyncConfig) -> Result<(), 
 pub async fn import_config_s3(sync: &SyncConfig, config_path: &Path) -> Result<(), String> {
     let bytes = s3::s3_get(sync, S3_KEY_CONFIG).await?;
     let content = String::from_utf8(bytes).map_err(|e| format!("数据编码错误: {}", e))?;
-    let _: Config =
-        toml::from_str(&content).map_err(|e| format!("配置文件格式错误: {}", e))?;
+    let _: Config = toml::from_str(&content).map_err(|e| format!("配置文件格式错误: {}", e))?;
     if let Some(parent) = config_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }

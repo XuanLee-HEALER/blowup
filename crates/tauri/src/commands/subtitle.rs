@@ -52,9 +52,7 @@ pub async fn extract_subtitle_cmd(video: String, stream: Option<u32>) -> Result<
 }
 
 #[tauri::command]
-pub async fn list_subtitle_streams_cmd(
-    video: String,
-) -> Result<Vec<SubtitleStreamInfo>, String> {
+pub async fn list_subtitle_streams_cmd(video: String) -> Result<Vec<SubtitleStreamInfo>, String> {
     service::list_all_subtitle_stream(Path::new(&video))
         .await
         .map_err(|e| e.to_string())

@@ -1,6 +1,4 @@
-// Re-export so `commands::tracker::TrackerManager` keeps resolving in
-// lib.rs for the state registration and background refresh task.
-pub use blowup_core::torrent::tracker::{TrackerManager, TrackerStatus};
+use blowup_core::torrent::tracker::{TrackerManager, TrackerStatus};
 
 #[tauri::command]
 pub async fn get_tracker_status(

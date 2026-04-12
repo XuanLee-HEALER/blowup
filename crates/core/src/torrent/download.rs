@@ -221,15 +221,13 @@ pub async fn get_active_download(
     id: i64,
     status: &str,
 ) -> Result<DownloadRecord, String> {
-    sqlx::query_as::<_, DownloadRecord>(
-        "SELECT * FROM downloads WHERE id=? AND status=?",
-    )
-    .bind(id)
-    .bind(status)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?
-    .ok_or_else(|| format!("download not found or not in {} state", status))
+    sqlx::query_as::<_, DownloadRecord>("SELECT * FROM downloads WHERE id=? AND status=?")
+        .bind(id)
+        .bind(status)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("download not found or not in {} state", status))
 }
 
 pub async fn get_download_record(pool: &SqlitePool, id: i64) -> Result<DownloadRecord, String> {
@@ -241,10 +239,7 @@ pub async fn get_download_record(pool: &SqlitePool, id: i64) -> Result<DownloadR
         .ok_or_else(|| "download not found".to_string())
 }
 
-pub async fn get_redownload_record(
-    pool: &SqlitePool,
-    id: i64,
-) -> Result<DownloadRecord, String> {
+pub async fn get_redownload_record(pool: &SqlitePool, id: i64) -> Result<DownloadRecord, String> {
     sqlx::query_as::<_, DownloadRecord>(
         "SELECT * FROM downloads WHERE id=? AND status IN ('completed','failed')",
     )

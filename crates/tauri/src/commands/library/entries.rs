@@ -21,10 +21,7 @@ pub async fn list_entries(
 }
 
 #[tauri::command]
-pub async fn get_entry(
-    id: i64,
-    pool: tauri::State<'_, SqlitePool>,
-) -> Result<EntryDetail, String> {
+pub async fn get_entry(id: i64, pool: tauri::State<'_, SqlitePool>) -> Result<EntryDetail, String> {
     service::get_entry(pool.inner(), id).await
 }
 
