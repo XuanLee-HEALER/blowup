@@ -474,7 +474,7 @@ mod tests {
 
     async fn setup_pool() -> SqlitePool {
         let pool = SqlitePool::connect(":memory:").await.unwrap();
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
         pool
     }
 

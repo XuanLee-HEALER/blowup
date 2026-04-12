@@ -1,6 +1,11 @@
 use sqlx::SqlitePool;
-use tauri::AppHandle;
-use tauri::Manager;
+use std::path::Path;
+
+/// Compiled migrator embedded at build time. Re-usable by test code in other
+/// crates — call `blowup_core::infra::db::MIGRATOR.run(&pool).await` instead
+/// of invoking `sqlx::migrate!("./migrations")` (which would look for a
+/// `migrations` directory next to *that* crate's Cargo.toml and fail).
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 /// Initialize the SQLite database.
 ///
@@ -8,12 +13,12 @@ use tauri::Manager;
 /// - If the DB exists and migrations match, return the pool.
 /// - If there's a version mismatch or corruption, return a descriptive error
 ///   (caller should show a dialog instead of panicking).
-pub async fn init_db(app: &AppHandle) -> Result<SqlitePool, String> {
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("无法解析应用数据目录: {}", e))?;
-    std::fs::create_dir_all(&data_dir).ok();
+///
+/// `data_dir` is where `blowup.db` lives. The caller resolves the platform
+/// app-data directory (Tauri via `app.path().app_data_dir()`, server via its
+/// own config path) and passes it here.
+pub async fn init_db(data_dir: &Path) -> Result<SqlitePool, String> {
+    std::fs::create_dir_all(data_dir).ok();
 
     let db_path = data_dir.join("blowup.db");
     let db_exists = db_path.exists();
@@ -28,7 +33,7 @@ pub async fn init_db(app: &AppHandle) -> Result<SqlitePool, String> {
         .await
         .map_err(|e| format!("无法连接数据库: {}", e))?;
 
-    match sqlx::migrate!("./migrations").run(&pool).await {
+    match MIGRATOR.run(&pool).await {
         Ok(_) => Ok(pool),
         Err(sqlx::migrate::MigrateError::VersionMismatch(ver)) => {
             if db_exists {
@@ -40,7 +45,6 @@ pub async fn init_db(app: &AppHandle) -> Result<SqlitePool, String> {
                     db_path.display()
                 ))
             } else {
-                // Shouldn't happen for fresh DB, but handle anyway
                 Err(format!("数据库迁移失败（版本 {}）", ver))
             }
         }

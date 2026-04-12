@@ -284,7 +284,7 @@ mod tests {
 
     #[sqlx::test]
     async fn create_and_list_entries(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
         sqlx::query("INSERT INTO entries (name) VALUES ('Test Entry')")
             .execute(&pool)
             .await
@@ -299,7 +299,7 @@ mod tests {
 
     #[sqlx::test]
     async fn entry_wiki_update(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
         sqlx::query("INSERT INTO entries (name) VALUES ('A')")
             .execute(&pool)
             .await
@@ -317,7 +317,7 @@ mod tests {
 
     #[sqlx::test]
     async fn list_entries_filter_by_tag(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
         sqlx::query("INSERT INTO entries (name) VALUES ('A')")
             .execute(&pool)
             .await
@@ -346,7 +346,7 @@ mod tests {
 
     #[sqlx::test]
     async fn tags_crud(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
         sqlx::query("INSERT INTO entries (name) VALUES ('E')")
             .execute(&pool)
             .await
@@ -380,7 +380,7 @@ mod tests {
 
     #[sqlx::test]
     async fn delete_entry_cascades(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
         sqlx::query("INSERT INTO entries (name) VALUES ('A')")
             .execute(&pool)
             .await
@@ -426,7 +426,7 @@ mod tests {
 
     #[sqlx::test]
     async fn relations_crud(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
         sqlx::query("INSERT INTO entries (name) VALUES ('A')")
             .execute(&pool)
             .await

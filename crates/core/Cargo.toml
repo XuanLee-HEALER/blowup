@@ -20,6 +20,7 @@ chrono                = "0.4"
 tracing               = "0.1"
 dirs                  = "5"
 shellexpand           = "3"
+sqlx                  = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "migrate", "derive"] }
 
 [dev-dependencies]
 tempfile    = "3"

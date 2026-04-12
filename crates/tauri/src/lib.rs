@@ -2,10 +2,10 @@ pub mod alass;
 pub use blowup_core::config;
 pub use blowup_core::error;
 pub use blowup_core::infra::cache;
+pub use blowup_core::infra::db;
 pub use blowup_core::infra::ffmpeg;
 pub mod commands;
 pub mod common;
-pub mod db;
 pub mod library_index;
 pub mod player;
 pub mod subtitle_parser;
@@ -72,8 +72,12 @@ pub fn run() {
 
             // Init DB + crash-recovery in a single block_on
             tracing::debug!("[timing] db init start: {}ms", app_start.elapsed().as_millis());
+            let db_data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("could not resolve app data dir for db");
             tauri::async_runtime::block_on(async {
-                match db::init_db(&handle).await {
+                match db::init_db(&db_data_dir).await {
                     Ok(pool) => {
                         // Mark stale 'downloading' records as 'paused' (crash recovery)
                         let res = sqlx::query(

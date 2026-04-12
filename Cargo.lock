@@ -428,6 +428,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "shellexpand",
+ "sqlx",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",

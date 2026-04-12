@@ -553,7 +553,7 @@ mod tests {
 
     #[sqlx::test]
     async fn test_download_record_crud(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
 
         sqlx::query(
             "INSERT INTO downloads (tmdb_id, title, director, target, status) \
@@ -576,7 +576,7 @@ mod tests {
 
     #[sqlx::test]
     async fn test_pause_sets_status(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
 
         sqlx::query(
             "INSERT INTO downloads (tmdb_id, title, target, status) \
@@ -601,7 +601,7 @@ mod tests {
 
     #[sqlx::test]
     async fn test_delete_download(pool: SqlitePool) {
-        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        blowup_core::infra::db::MIGRATOR.run(&pool).await.unwrap();
 
         sqlx::query(
             "INSERT INTO downloads (tmdb_id, title, target, status) \
