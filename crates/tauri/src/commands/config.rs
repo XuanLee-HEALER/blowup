@@ -1,4 +1,4 @@
-use crate::config::{Config, app_data_dir, load_config, save_config};
+use blowup_core::config::{Config, app_data_dir, load_config, save_config};
 use tauri::Emitter;
 
 #[tauri::command]
