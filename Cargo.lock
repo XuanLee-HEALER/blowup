@@ -427,6 +427,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "hex 0.4.3",
+ "hmac",
  "librqbit",
  "regex",
  "reqwest 0.12.28",

@@ -73,7 +73,7 @@ pub async fn s3_get(cfg: &SyncConfig, key: &str) -> Result<Vec<u8>, String> {
     let date_stamp = now.format("%Y%m%d").to_string();
     let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
-    let content_hash = hex_sha256(b""); // empty body for GET
+    let content_hash = hex_sha256(b"");
     let url = format!(
         "{}/{}/{}",
         cfg.endpoint.trim_end_matches('/'),
@@ -124,7 +124,7 @@ pub async fn s3_get(cfg: &SyncConfig, key: &str) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Check if `{bucket}/{key}` exists (HEAD request). Returns true/false.
+/// Check if `{bucket}/{key}` exists (HEAD request).
 pub async fn s3_head(cfg: &SyncConfig, key: &str) -> Result<bool, String> {
     validate_config(cfg)?;
 
@@ -191,7 +191,6 @@ fn sign_v4(
     access_key: &str,
     secret_key: &str,
 ) -> String {
-    // Canonical headers (must be sorted by header name)
     let mut sorted_headers = headers.to_vec();
     sorted_headers.sort_by_key(|(k, _)| k.to_lowercase());
 
