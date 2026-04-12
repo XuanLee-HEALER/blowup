@@ -1,4 +1,18 @@
-# blowup v2 — Tauri desktop app for film management
+# blowup v2 — desktop app (Tauri + embedded HTTP) and standalone HTTP server
+#
+# Two runtime modes share the same blowup-core business logic:
+#
+#   Desktop  — `just dev` / `just build`
+#              Tauri WebView + React frontend talks to blowup-core via
+#              Tauri IPC `invoke()`. The same process also starts the
+#              blowup-server axum router on 127.0.0.1:17690 so LAN
+#              clients (iPad, iPhone, …) share the same DB + library +
+#              torrent session + event stream.
+#
+#   Server   — `just dev-server` / `just build-server`
+#              Headless blowup-server binary. Just HTTP + SSE, no
+#              WebView, no libmpv, no child windows. Suitable for
+#              NAS / Mac mini / Raspberry Pi deployment.
 
 set windows-shell := ["pwsh", "-NoProfile", "-Command"]
 
@@ -19,9 +33,17 @@ _ensure-dev-dlls:
 [linux]
 _ensure-dev-dlls:
 
-# Start Tauri dev server (frontend + backend hot reload)
+# Desktop dev — Tauri WebView + React + in-process HTTP server
 dev: _ensure-dev-dlls
     bunx tauri dev
+
+# Headless blowup-server dev — no WebView, no libmpv (env: BLOWUP_DATA_DIR, BLOWUP_SERVER_BIND)
+dev-server:
+    cargo run -p blowup-server
+
+# Headless blowup-server dev with auto-restart (requires `cargo install cargo-watch`)
+dev-server-watch:
+    cargo watch -x 'run -p blowup-server'
 
 # Start frontend only (Vite dev server)
 dev-web:
@@ -29,13 +51,23 @@ dev-web:
 
 # ── Build ─────────────────────────────────────────────────────────
 
-# Production build (Tauri installer)
+# Desktop production build (Tauri installer — bundles libmpv + frontend)
 build:
     bunx tauri build
+
+# Standalone server release binary (target/release/blowup-server[.exe])
+build-server:
+    cargo build -p blowup-server --release
 
 # Frontend build only (Vite)
 build-web:
     bun run build
+
+# ── Run (release) ─────────────────────────────────────────────────
+
+# Run the compiled blowup-server release binary (after `just build-server`)
+run-server:
+    cargo run -p blowup-server --release
 
 # ── Quality ───────────────────────────────────────────────────────
 
@@ -72,9 +104,9 @@ fmt:
 test:
     cargo test --workspace
 
-# Run a specific Rust test module
+# Run a specific Rust test module inside blowup-core
 test-mod mod:
-    cargo test -p blowup-tauri --lib {{mod}} -- --nocapture
+    cargo test -p blowup-core --lib {{mod}} -- --nocapture
 
 # ── Install ───────────────────────────────────────────────────────
 
