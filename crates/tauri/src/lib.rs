@@ -292,6 +292,9 @@ pub fn run() {
             commands::subtitle::open_subtitle_viewer,
             commands::subtitle::search_subtitles_cmd,
             commands::subtitle::download_subtitle_cmd,
+            // Tasks
+            commands::tasks::list_tasks,
+            commands::tasks::dismiss_task,
             commands::media::probe_media,
             commands::media::probe_media_detail,
             commands::media::probe_and_cache,

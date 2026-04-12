@@ -1,7 +1,7 @@
-use blowup_core::subtitle::service::{
-    self, AlignResult, SubEntry, SubtitleSearchResult, SubtitleStreamInfo,
-};
-use std::path::Path;
+use blowup_core::infra::events::EventBus;
+use blowup_core::subtitle::service::{self, SubEntry, SubtitleSearchResult, SubtitleStreamInfo};
+use blowup_core::tasks::{TaskRegistry, service as tasks_svc};
+use std::path::{Path, PathBuf};
 
 #[tauri::command]
 pub fn parse_subtitle_cmd(path: String) -> Result<Vec<SubEntry>, String> {
@@ -37,11 +37,23 @@ pub async fn fetch_subtitle_cmd(
         .map_err(|e| e.to_string())
 }
 
+/// Start a subtitle-to-video alignment. Returns the task id
+/// immediately; progress/completion is observable via the
+/// `tasks:changed` event + `list_tasks` query.
 #[tauri::command]
-pub async fn align_subtitle_cmd(video: String, srt: String) -> Result<(), String> {
-    service::align_subtitle(Path::new(&video), Path::new(&srt))
-        .await
-        .map_err(|e| e.to_string())
+pub async fn align_subtitle_cmd(
+    tasks: tauri::State<'_, TaskRegistry>,
+    events: tauri::State<'_, EventBus>,
+    video: String,
+    srt: String,
+) -> Result<String, String> {
+    tasks_svc::run_subtitle_align_to_video(
+        tasks.inner().clone(),
+        events.inner().clone(),
+        PathBuf::from(srt),
+        PathBuf::from(video),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -63,11 +75,24 @@ pub fn shift_subtitle_cmd(srt: String, offset_ms: i64) -> Result<(), String> {
     service::shift_srt(Path::new(&srt), offset_ms).map_err(|e| e.to_string())
 }
 
+/// Start a subtitle-to-audio alignment. Returns the task id
+/// immediately; the aligned SRT is written to disk when the
+/// background task completes and the row rehydrates via the
+/// `tasks:changed` event.
 #[tauri::command]
-pub async fn align_to_audio_cmd(srt: String, audio: String) -> Result<AlignResult, String> {
-    service::align_subtitle_to_audio(Path::new(&srt), Path::new(&audio))
-        .await
-        .map_err(|e| e.to_string())
+pub async fn align_to_audio_cmd(
+    tasks: tauri::State<'_, TaskRegistry>,
+    events: tauri::State<'_, EventBus>,
+    srt: String,
+    audio: String,
+) -> Result<String, String> {
+    tasks_svc::run_subtitle_align_to_audio(
+        tasks.inner().clone(),
+        events.inner().clone(),
+        PathBuf::from(srt),
+        PathBuf::from(audio),
+    )
+    .await
 }
 
 #[tauri::command]

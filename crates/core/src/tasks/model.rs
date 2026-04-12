@@ -50,7 +50,10 @@ pub enum TaskStatus {
 
 impl TaskStatus {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, TaskStatus::Completed { .. } | TaskStatus::Failed { .. })
+        matches!(
+            self,
+            TaskStatus::Completed { .. } | TaskStatus::Failed { .. }
+        )
     }
 }
 
