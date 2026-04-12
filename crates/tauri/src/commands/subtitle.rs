@@ -8,8 +8,11 @@ pub fn parse_subtitle_cmd(path: String) -> Result<Vec<SubEntry>, String> {
     service::parse_subtitle_file(Path::new(&path))
 }
 
+/// See `audio::open_waveform_window` for why this must be `async`:
+/// sync Tauri commands run on the main thread in v2 and
+/// `run_on_main_thread` from main deadlocks the IPC response.
 #[tauri::command]
-pub fn open_subtitle_viewer(app: tauri::AppHandle, file_path: String) -> Result<(), String> {
+pub async fn open_subtitle_viewer(app: tauri::AppHandle, file_path: String) -> Result<(), String> {
     let label = crate::common::unique_window_label("subtitle-viewer");
     let url = format!(
         "subtitle-viewer.html?file={}",
