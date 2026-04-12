@@ -128,11 +128,31 @@ install: build
 # ── Clean ─────────────────────────────────────────────────────────
 
 # Clean ALL build and dev caches: Vite dev cache, frontend dist, cargo target
+[windows]
 clean:
-    rm -rf dist
-    rm -rf node_modules/.vite
+    if (Test-Path dist) { Remove-Item -Recurse -Force dist }
+    if (Test-Path node_modules/.vite) { Remove-Item -Recurse -Force node_modules/.vite }
+    cargo clean
+
+[macos]
+clean:
+    rm -rf dist node_modules/.vite
+    cargo clean
+
+[linux]
+clean:
+    rm -rf dist node_modules/.vite
     cargo clean
 
 # Clean only Vite's dev cache (fixes stale HMR / multi-entry module graph)
+[windows]
+clean-vite:
+    if (Test-Path node_modules/.vite) { Remove-Item -Recurse -Force node_modules/.vite }
+
+[macos]
+clean-vite:
+    rm -rf node_modules/.vite
+
+[linux]
 clean-vite:
     rm -rf node_modules/.vite
