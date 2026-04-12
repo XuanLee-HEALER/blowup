@@ -14,8 +14,8 @@ use alass_core::{self, NoProgressHandler, TimePoint, TimeSpan};
 use byteorder::{LittleEndian, ReadBytesExt};
 use webrtc_vad::Vad;
 
-use crate::ffmpeg::FfmpegTool;
-use crate::subtitle_parser::SubCue;
+use crate::infra::ffmpeg::FfmpegTool;
+use crate::subtitle::parser::SubCue;
 
 // ── Constants ────────────────────────────────────────────────────
 
@@ -283,7 +283,7 @@ fn format_offset_ms(ms: i64) -> String {
 
 /// Format aligned cues back to SRT string.
 pub fn cues_to_srt(cues: &[SubCue]) -> String {
-    use crate::subtitle_parser::format_srt_ts;
+    use crate::subtitle::parser::format_srt_ts;
     let mut out = String::new();
     for (i, cue) in cues.iter().enumerate() {
         out.push_str(&format!("{}\n", i + 1));
@@ -304,7 +304,7 @@ pub fn cues_to_srt(cues: &[SubCue]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::subtitle_parser::format_srt_ts;
+    use crate::subtitle::parser::format_srt_ts;
 
     #[test]
     fn vad_empty_input() {
@@ -375,7 +375,7 @@ mod tests {
         // 1. Parse SRT
         let t = std::time::Instant::now();
         let content = std::fs::read_to_string(&srt_path).expect("read SRT");
-        let cues = crate::subtitle_parser::parse_srt(&content);
+        let cues = crate::subtitle::parser::parse_srt(&content);
         eprintln!(
             "[1] SRT parsed: {} cues in {}ms",
             cues.len(),

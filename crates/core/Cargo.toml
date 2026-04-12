@@ -21,6 +21,12 @@ tracing               = "0.1"
 dirs                  = "5"
 shellexpand           = "3"
 sqlx                  = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "migrate", "derive"] }
+regex                 = "1"
+sha2                  = "0.10"
+hex                   = "0.4"
+alass-core            = "2.0"
+webrtc-vad            = "0.4"
+byteorder             = "1"
 
 [dev-dependencies]
 tempfile    = "3"

@@ -1,14 +1,14 @@
-pub mod alass;
 pub use blowup_core::config;
 pub use blowup_core::error;
 pub use blowup_core::infra::cache;
 pub use blowup_core::infra::db;
 pub use blowup_core::infra::ffmpeg;
 pub use blowup_core::library::index as library_index;
+pub use blowup_core::subtitle::alass;
+pub use blowup_core::subtitle::parser as subtitle_parser;
 pub mod commands;
 pub mod common;
 pub mod player;
-pub mod subtitle_parser;
 pub mod torrent;
 
 use tauri::Manager;
