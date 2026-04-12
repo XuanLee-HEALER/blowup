@@ -333,7 +333,36 @@ export default function Search() {
           {results.map((m) => (
             <div
               key={m.id}
-              onClick={() => setSelected(m)}
+              onClick={() => {
+                // Open immediately with whatever data we have. If director
+                // hasn't been enriched yet (only top-3 are enriched on
+                // search), fetch credits in the background so the panel
+                // shows the real director(s) and the download flow writes
+                // the correct folder name.
+                setSelected(m);
+                if (!m.director && apiKey) {
+                  tmdb
+                    .enrichCredits(apiKey, [m.id])
+                    .then(([credits]) => {
+                      if (!credits) return;
+                      const enriched = {
+                        ...m,
+                        director: credits.director ?? undefined,
+                        cast: credits.cast,
+                      };
+                      setResults((prev) =>
+                        prev.map((x) => (x.id === m.id ? enriched : x))
+                      );
+                      setSelected((current) =>
+                        current && current.id === m.id ? enriched : current
+                      );
+                    })
+                    .catch(() => {
+                      /* best-effort; panel will surface the missing-director
+                         error at download-confirm time */
+                    });
+                }
+              }}
               style={{
                 display: "flex",
                 gap: "0.75rem",

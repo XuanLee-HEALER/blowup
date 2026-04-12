@@ -152,13 +152,20 @@ pub(crate) fn parse_movie_details(details: &MovieDetails) -> TmdbMovie {
         .map(|g| g.name.as_str())
         .collect::<Vec<_>>()
         .join(", ");
-    let director = details
+    // Collect all directors (some films have 2+, e.g. Coen brothers, Wachowskis,
+    // Taiwanese GATAO franchise etc.). TMDB returns one crew row per director.
+    let directors: Vec<String> = details
         .credits
         .crew
         .iter()
-        .find(|c| c.job == "Director")
+        .filter(|c| c.job == "Director")
         .map(|c| c.name.clone())
-        .unwrap_or_else(|| "N/A".to_string());
+        .collect();
+    let director = if directors.is_empty() {
+        "N/A".to_string()
+    } else {
+        directors.join(", ")
+    };
     let mut cast = details.credits.cast.clone();
     cast.sort_by_key(|c| c.order);
     let actors = cast
@@ -524,12 +531,20 @@ async fn fetch_credits_for_id(
 
     let details: CreditsMovieDetailsResponse = resp.json().await.ok()?;
 
-    let director = details
+    // Collect all directors; join with ", " so multi-director films don't
+    // drop the second name. Matches the normalize_director_name convention.
+    let directors: Vec<String> = details
         .credits
         .crew
         .iter()
-        .find(|c| c.job == "Director")
-        .map(|c| c.name.clone());
+        .filter(|c| c.job == "Director")
+        .map(|c| c.name.clone())
+        .collect();
+    let director = if directors.is_empty() {
+        None
+    } else {
+        Some(directors.join(", "))
+    };
 
     let cast: Vec<String> = details
         .credits
@@ -727,6 +742,38 @@ mod tests {
         let details = sample_details();
         let movie = parse_movie_details(&details);
         assert_eq!(movie.director, "Michelangelo Antonioni");
+    }
+
+    #[test]
+    fn parse_movie_details_joins_multiple_directors() {
+        let mut details = sample_details();
+        details.credits.crew = vec![
+            CrewMember {
+                job: "Director".to_string(),
+                name: "Chiang Jui-chih".to_string(),
+            },
+            CrewMember {
+                job: "Director of Photography".to_string(),
+                name: "Yao Hung-i".to_string(),
+            },
+            CrewMember {
+                job: "Director".to_string(),
+                name: "Yao Hung-i".to_string(),
+            },
+        ];
+        let movie = parse_movie_details(&details);
+        assert_eq!(movie.director, "Chiang Jui-chih, Yao Hung-i");
+    }
+
+    #[test]
+    fn parse_movie_details_no_director_falls_back_to_na() {
+        let mut details = sample_details();
+        details.credits.crew = vec![CrewMember {
+            job: "Producer".to_string(),
+            name: "Carlo Ponti".to_string(),
+        }];
+        let movie = parse_movie_details(&details);
+        assert_eq!(movie.director, "N/A");
     }
 
     #[test]

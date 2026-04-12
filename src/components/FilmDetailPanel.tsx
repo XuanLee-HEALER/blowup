@@ -65,12 +65,20 @@ function TorrentSearchModal({
     if (!filePickResult) return;
     const target = filePickResult.magnet ?? filePickResult.torrent_url;
     if (!target) return;
+    // Require a resolved director before starting the torrent — the
+    // backend computes the on-disk path from this string, so falling
+    // back to "Unknown" silently would create a bogus library directory
+    // (see: GATAO bug fix).
+    if (!film.director || !film.director.trim()) {
+      setError("无法确定导演，请重试或稍后再试 (TMDB credits 未就绪)");
+      return;
+    }
     setSubmitting(true);
     try {
       await download.startDownload({
         title: film.title,
         target,
-        director: film.director ?? "Unknown",
+        director: film.director,
         tmdbId: film.id,
         year: year,
         genres: [],
