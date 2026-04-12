@@ -4,7 +4,7 @@ pub mod commands;
 pub mod common;
 pub mod config;
 pub mod db;
-pub mod error;
+pub use blowup_core::error;
 pub mod ffmpeg;
 pub mod library_index;
 pub mod player;
