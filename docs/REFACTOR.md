@@ -1,6 +1,8 @@
 # Workspace Refactor — core / server / tauri
 
-> **Status**: in progress on branch `refactor/workspace-core-server`
+> **Status**: steps 1–5 complete on branch `refactor/workspace-core-server`
+> (awaiting review). Steps 6 (iOS client) and 7 (static libav) are still
+> open.
 > **Goal**: split the single `src-tauri` crate into a `blowup-core` library plus
 > two thin adapters (`blowup-server`, `blowup-tauri`) so that a future native
 > iOS/iPadOS client can share the same Rust business logic via HTTP.
@@ -312,19 +314,117 @@ events. Frontend event names are unchanged.
 
 Done when `crates/tauri/src/commands/` contains nothing but thin wrappers.
 
-### Step 4 — Add `blowup-server` crate
+### Step 4 — Add `blowup-server` crate ✅
 
-- `axum` router with REST routes mirroring the Tauri commands
-- SSE `/api/v1/events` fed by the broadcast channel
-- standalone binary that boots its own `AppContext` from a server-side
-  config path
-- initially not wired into the desktop binary
+Delivered across batches L–O on branch `refactor/workspace-core-server`.
 
-### Step 5 — Embed server in tauri-app (optional, after Step 4 is stable)
+**Crate layout (`crates/server/src/`)**:
 
-At startup, `blowup-tauri` spins up an in-process axum router on
-`127.0.0.1:<fixed-port>`. The same process serves both Tauri commands and
-HTTP for LAN clients.
+```
+main.rs           # standalone bootstrap (BLOWUP_DATA_DIR + BLOWUP_SERVER_BIND)
+lib.rs            # build_router(state), serve(addr, state)
+state.rs          # AppState
+error.rs          # ApiError + IntoResponse
+routes/
+  health.rs       # GET /health
+  config.rs       # GET/POST /config, GET /config/cache-path
+  search.rs       # POST /search/yify
+  tmdb.rs         # /tmdb/{search,discover,genres,credits/*,credits/enrich}
+  media.rs        # GET /media/probe, probe-detail, POST /probe-and-cache
+  audio.rs        # GET /audio/streams, POST /audio/extract
+  tracker.rs      # /tracker/{status,refresh,user}
+  subtitle.rs     # 9 routes (streams/parse/search/download/fetch/align/
+                  #           align-to-audio/extract/shift)
+  entries.rs      # 13 routes (CRUD + tags + relations + graph)
+  library.rs      # 15 routes (items/assets/stats + index ops)
+  downloads.rs    # 7 routes (list/start/pause/resume/delete/redo/files)
+  export.rs       # 9 routes (local + S3 export/import + s3/test)
+  events.rs       # GET /events — SSE stream of DomainEvent
+```
+
+All routes mounted under `/api/v1`. Total: 53 endpoints.
+
+**AppState** holds shared handles:
+
+```rust
+#[derive(Clone)]
+pub struct AppState {
+    pub db: sqlx::SqlitePool,
+    pub library_index: Arc<LibraryIndex>,
+    pub tracker: Arc<TrackerManager>,
+    pub torrent: Arc<tokio::sync::OnceCell<TorrentManager>>,
+    pub http: reqwest::Client,
+    pub events: EventBus,
+}
+```
+
+- `SqlitePool` is already cheap-clone (internal `Arc<PoolInner>`)
+- `TorrentManager` is gated via `OnceCell` because it's built
+  asynchronously; handlers that need it call `state.torrent()?` and
+  return a 503-style "still initializing" error if it hasn't landed
+  yet
+- `EventBus` wraps `tokio::sync::broadcast::Sender<DomainEvent>`
+
+**Error mapping**: `core::*::service` functions mostly return
+`Result<T, String>`. The server wraps them in `ApiError::{NotFound,
+BadRequest, Internal}` via a heuristic `From<String>` impl and
+`IntoResponse` produces a `{ "error": "…" }` JSON body with the
+right HTTP status.
+
+**SSE endpoint** (`GET /api/v1/events`) subscribes to the shared
+`EventBus`, emits an initial `hello` event, then streams each
+`DomainEvent` as `event: downloads:changed` + JSON payload. 15s
+keepalives hold the connection open through idle proxies.
+
+**Standalone bootstrap**: `main.rs` reads `BLOWUP_DATA_DIR` (default:
+`$DATA_DIR/blowup-server`), initializes config/db/library_index/
+tracker/torrent synchronously, constructs an `AppState`, and calls
+`axum::serve` on `BLOWUP_SERVER_BIND` (default
+`127.0.0.1:17690`). Run with:
+
+```bash
+cargo run -p blowup-server
+```
+
+**CORS** is permissive for now (`CorsLayer::very_permissive()`).
+Auth + LAN-bind gating remain open questions for later.
+
+### Step 5 — Embed server in tauri-app ✅
+
+Delivered in batch P. The desktop app now spawns `blowup_server::serve`
+in-process after the async `TorrentManager::new` resolves.
+
+**Shared state**: `blowup-tauri`'s setup() builds the same handles the
+standalone server would, registers each one as Tauri managed state,
+then constructs an `AppState` from clones/Arcs of the same values and
+hands it to the embedded `blowup_server::serve("127.0.0.1:17690", …)`.
+Both the Tauri IPC bridge and the axum router see the same
+`SqlitePool`, `Arc<LibraryIndex>`, `TorrentManager` (via `OnceCell`),
+`TrackerManager`, and `EventBus`.
+
+The `LibraryIndex` Tauri state type changed from `LibraryIndex` to
+`Arc<LibraryIndex>`; deref coercion keeps every wrapper body
+unchanged — only the signature moved.
+
+**Unified event path**: every Tauri wrapper that used to call
+`app.emit("xxx:changed", ())` now calls
+`events.publish(DomainEvent::Xxx)`. A single listener task spawned in
+`lib.rs` subscribes to the bus and forwards each event via
+`app.emit(event.as_str(), ())`, so the desktop frontend keeps
+receiving the exact same string identifiers without changes. The
+embedded server's SSE endpoint subscribes to the **same bus**, so
+mutations from the desktop side propagate to LAN-side iOS clients.
+
+**Failure modes**:
+- If the embedded server fails to bind `127.0.0.1:17690` (port in
+  use), Tauri logs a warning and keeps running — LAN access is
+  disabled, desktop still works.
+- If `TorrentManager::new` fails, the `OnceCell` stays empty; both
+  Tauri download commands and the server's download routes return
+  the same "still initializing" error.
+
+**Port**: hard-coded `127.0.0.1:17690` for now. To be promoted to a
+user setting in a later round.
 
 ### Step 6 — iOS client
 
@@ -414,10 +514,22 @@ Alternative is native MSYS2. Decide at step 7.
 
 ## Open questions
 
-- Server auth default: bind `127.0.0.1` with no auth; require a token
-  only when binding to LAN. Revisit at step 4.
-- HLS segment lifetime: tempdir + cleanup after N minutes idle, or
-  persisted per video? Revisit at step 4.
-- In-process server port inside `blowup-tauri`: fixed default
-  (e.g. `17690`) vs auto-pick. Fixed is simpler for iOS client
-  configuration. Revisit at step 5.
+- **Server auth**: currently CORS is permissive and there's no token.
+  Acceptable while both the server and its client live on localhost,
+  but the moment the user wants to reach the desktop from an iPad on
+  the same Wi-Fi, we need a bind toggle (`127.0.0.1` → `0.0.0.0`) and
+  a token. Revisit at step 6.
+- **HLS segment lifetime**: no streaming routes yet. When step 7 or
+  an earlier iOS-streaming push lands, decide between a tempdir with
+  idle cleanup or per-video persistent segments.
+- **In-process server port**: hard-coded `127.0.0.1:17690`. Promote
+  to `Config.server.port` + `Config.server.bind` when the iOS client
+  starts needing to discover it.
+- **Downloads progress on standalone server**: `blowup-tauri`'s
+  embedded monitor task drives DB updates + event publishes. The
+  standalone `blowup-server` binary currently does not spawn its own
+  monitor — iOS clients against a headless server see downloads
+  transition to `downloading` but progress bytes stay at zero until
+  they poll again. A short-term fix is to spawn an equivalent monitor
+  inside the server's `start_download` / `resume_download` / `redownload`
+  handlers.
