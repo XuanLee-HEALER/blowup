@@ -22,29 +22,12 @@ serde              = { version = "1", features = ["derive"] }
 serde_json         = "1"
 reqwest            = { version = "0.12", features = ["json"] }
 tokio              = { version = "1", features = ["full"] }
-thiserror          = "2"
 chrono             = "0.4"
-regex              = "1"
 shellexpand        = "3"
-which              = "8"
-walkdir            = "2"
-toml               = "0.8"
-dirs               = "5"
-anyhow             = "1"
-flate2             = "1"
-librqbit           = "8.1"
-unicode-normalization = "0.1"
-url                = "2"
 sqlx               = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls", "migrate", "derive"] }
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-hmac               = "0.12"
-sha2               = "0.10"
-hex                = "0.4"
-urlencoding = "2.1.3"
-alass-core = "2.0"
-webrtc-vad = "0.4"
-byteorder  = "1"
+urlencoding        = "2.1.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2              = "0.6"
