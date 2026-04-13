@@ -368,6 +368,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|handle, event| {
             if let tauri::RunEvent::Exit = event {
+                crate::player::close_player_inner(handle);
                 cache::flush_cache();
                 if let Some(idx) = handle.try_state::<Arc<LibraryIndex>>() {
                     idx.flush();
