@@ -122,9 +122,8 @@ fn setup_gl_and_mpv_on_video_window(app: &AppHandle, file_path: &str) -> Result<
         );
     }
 
-    let view = unsafe {
-        super::native::create_and_attach_gl_view_win_hwnd(hwnd, w as f64, h as f64)?
-    };
+    let view =
+        unsafe { super::native::create_and_attach_gl_view_win_hwnd(hwnd, w as f64, h as f64)? };
     let _ = view;
 
     let mpv = Mpv::new()?;

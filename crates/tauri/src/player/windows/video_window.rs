@@ -65,13 +65,7 @@ pub static CONTROLS_WINDOW_READY: AtomicBool = AtomicBool::new(false);
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub extern "C" fn blowup_on_video_window_event(
-    event_type: i32,
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
-) {
+pub extern "C" fn blowup_on_video_window_event(event_type: i32, x: i32, y: i32, w: i32, h: i32) {
     match event_type {
         0 | 1 => {
             // move / size — Phase 5 fills in the controls reposition
@@ -113,8 +107,7 @@ pub extern "C" fn blowup_on_video_window_event(
 // Mouse move throttling (Phase 10)
 // ---------------------------------------------------------------------------
 
-pub static LAST_MOUSEMOVE_MS: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(0);
+pub static LAST_MOUSEMOVE_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 const MOUSEMOVE_THROTTLE_MS: u64 = 50;
 
 pub fn should_forward_mouse_move(state: &std::sync::atomic::AtomicU64, now_ms: u64) -> bool {
@@ -186,24 +179,23 @@ pub mod keyboard {
                     Ok(p.mpv.get_property_double("volume").unwrap_or(100.0))
                 })
                 .unwrap_or(100.0);
-                let _ = crate::player::commands::cmd_player_set_volume(
-                    (cur + 5.0).min(100.0),
-                );
+                let _ = crate::player::commands::cmd_player_set_volume((cur + 5.0).min(100.0));
             }
             VK_DOWN => {
                 let cur = crate::player::with_player(|p| {
                     Ok(p.mpv.get_property_double("volume").unwrap_or(0.0))
                 })
                 .unwrap_or(0.0);
-                let _ = crate::player::commands::cmd_player_set_volume(
-                    (cur - 5.0).max(0.0),
-                );
+                let _ = crate::player::commands::cmd_player_set_volume((cur - 5.0).max(0.0));
             }
             VK_F => {
                 crate::player::windows::fullscreen::toggle();
             }
             VK_ESCAPE => {
-                let hwnd_opt = super::PLAYER_HWND.lock().unwrap().map(|super::HwndPtr(p)| p);
+                let hwnd_opt = super::PLAYER_HWND
+                    .lock()
+                    .unwrap()
+                    .map(|super::HwndPtr(p)| p);
                 if let Some(hwnd) = hwnd_opt
                     && unsafe { super::blowup_is_fullscreen(hwnd) } != 0
                 {

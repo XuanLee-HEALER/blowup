@@ -92,9 +92,7 @@ pub fn create(app: &AppHandle, video_rect: (i32, i32, i32, i32)) -> Result<(), S
     window.on_window_event(move |event| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
             if CLOSING_PROGRAMMATICALLY.load(Ordering::Acquire) {
-                tracing::debug!(
-                    "player-controls CloseRequested (programmatic) — allowing"
-                );
+                tracing::debug!("player-controls CloseRequested (programmatic) — allowing");
                 return;
             }
             api.prevent_close();
@@ -183,6 +181,8 @@ pub fn forward_mouse_move() {
     if !CONTROLS_WINDOW_READY.load(Ordering::Acquire) {
         return;
     }
-    let Some(app) = super::PLAYER_APP_HANDLE.get() else { return };
+    let Some(app) = super::PLAYER_APP_HANDLE.get() else {
+        return;
+    };
     let _ = app.emit_to("player-controls", "player:video-mouse-move", ());
 }

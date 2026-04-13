@@ -12,9 +12,9 @@ use serde::Serialize;
 use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{AppHandle, Emitter};
 #[cfg(target_os = "macos")]
 use tauri::Manager;
+use tauri::{AppHandle, Emitter};
 
 pub(crate) static PLAYER: Mutex<Option<MpvPlayer>> = Mutex::new(None);
 
