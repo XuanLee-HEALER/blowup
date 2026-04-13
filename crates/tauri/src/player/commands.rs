@@ -1,6 +1,6 @@
-use super::{
-    PlayerState, TrackInfo, close_player, get_current_file_path, open_player, with_player,
-};
+#[cfg(target_os = "macos")]
+use super::close_player;
+use super::{PlayerState, TrackInfo, get_current_file_path, open_player, with_player};
 use blowup_core::subtitle::parser::{SubtitleOverlayConfig, merge_to_ass, overlay_cache_key};
 #[cfg(target_os = "macos")]
 use tauri::Manager;
@@ -14,7 +14,18 @@ pub fn cmd_open_player(app: tauri::AppHandle, file_path: String) -> Result<(), S
 #[tauri::command]
 pub fn cmd_close_player(app: tauri::AppHandle) -> Result<(), String> {
     tracing::info!("cmd_close_player");
-    close_player(&app)
+    #[cfg(target_os = "windows")]
+    {
+        let app_clone = app.clone();
+        super::windows::run_on_main_sync(&app, move || {
+            crate::player::close_player_inner(&app_clone);
+        });
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        close_player(&app)
+    }
 }
 
 #[tauri::command]
@@ -91,8 +102,9 @@ pub fn cmd_player_toggle_fullscreen(app: tauri::AppHandle) -> Result<(), String>
     tracing::info!("cmd_player_toggle_fullscreen");
     #[cfg(target_os = "windows")]
     {
-        let _ = &app;
-        super::windows::fullscreen::toggle();
+        super::windows::run_on_main_sync(&app, || {
+            super::windows::fullscreen::toggle();
+        });
         Ok(())
     }
     #[cfg(target_os = "macos")]
@@ -169,12 +181,13 @@ pub fn cmd_player_window_minimize(app: tauri::AppHandle) -> Result<(), String> {
     tracing::info!("cmd_player_window_minimize");
     #[cfg(target_os = "windows")]
     {
-        let _ = &app;
-        if let Some(super::windows::video_window::HwndPtr(hwnd)) =
-            *super::windows::video_window::PLAYER_HWND.lock().unwrap()
-        {
-            unsafe { super::windows::video_window::blowup_window_minimize(hwnd) };
-        }
+        super::windows::run_on_main_sync(&app, || {
+            if let Some(super::windows::video_window::HwndPtr(hwnd)) =
+                *super::windows::video_window::PLAYER_HWND.lock().unwrap()
+            {
+                unsafe { super::windows::video_window::blowup_window_minimize(hwnd) };
+            }
+        });
         Ok(())
     }
     #[cfg(target_os = "macos")]
@@ -191,12 +204,13 @@ pub fn cmd_player_window_toggle_maximize(app: tauri::AppHandle) -> Result<(), St
     tracing::info!("cmd_player_window_toggle_maximize");
     #[cfg(target_os = "windows")]
     {
-        let _ = &app;
-        if let Some(super::windows::video_window::HwndPtr(hwnd)) =
-            *super::windows::video_window::PLAYER_HWND.lock().unwrap()
-        {
-            unsafe { super::windows::video_window::blowup_window_toggle_maximize(hwnd) };
-        }
+        super::windows::run_on_main_sync(&app, || {
+            if let Some(super::windows::video_window::HwndPtr(hwnd)) =
+                *super::windows::video_window::PLAYER_HWND.lock().unwrap()
+            {
+                unsafe { super::windows::video_window::blowup_window_toggle_maximize(hwnd) };
+            }
+        });
         Ok(())
     }
     #[cfg(target_os = "macos")]
@@ -218,12 +232,13 @@ pub fn cmd_player_window_start_drag(app: tauri::AppHandle) -> Result<(), String>
     tracing::info!("cmd_player_window_start_drag");
     #[cfg(target_os = "windows")]
     {
-        let _ = &app;
-        if let Some(super::windows::video_window::HwndPtr(hwnd)) =
-            *super::windows::video_window::PLAYER_HWND.lock().unwrap()
-        {
-            unsafe { super::windows::video_window::blowup_window_start_drag(hwnd) };
-        }
+        super::windows::run_on_main_sync(&app, || {
+            if let Some(super::windows::video_window::HwndPtr(hwnd)) =
+                *super::windows::video_window::PLAYER_HWND.lock().unwrap()
+            {
+                unsafe { super::windows::video_window::blowup_window_start_drag(hwnd) };
+            }
+        });
         Ok(())
     }
     #[cfg(target_os = "macos")]

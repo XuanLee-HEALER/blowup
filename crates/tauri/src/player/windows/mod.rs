@@ -24,11 +24,38 @@ use video_window::{HwndPtr, PLAYER_HWND};
 /// successful `open_player` call.
 pub static PLAYER_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
-pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
-    super::close_player_inner(app);
+/// Dispatch `f` to the main thread and block until it completes.
+///
+/// Win32 HWND operations (`DestroyWindow`, `SetWindowLongW`, `SetWindowPos`,
+/// `ShowWindow`, `SetWindowPlacement`) must run on the thread that created
+/// the window (main). Tauri `#[tauri::command]` handlers run on the async
+/// runtime worker pool, so all command-driven FFI calls that touch the
+/// video HWND must marshal through this helper first.
+///
+/// Paths that are already on main — the C `video_wnd_proc` callback via
+/// `blowup_on_video_window_event` and Tauri's `RunEvent::Exit` — do NOT
+/// need this helper and should call FFI directly.
+///
+/// ⚠️ Must NOT be called from the main thread itself — doing so would
+/// deadlock because the queued closure would sit in the main loop's
+/// pending-work queue while this function blocks on `recv()`.
+pub fn run_on_main_sync<F>(app: &tauri::AppHandle, f: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = app.run_on_main_thread(move || {
+        f();
+        let _ = tx.send(());
+    });
+    let _ = rx.recv();
+}
 
-    super::EVENT_LOOP_SHUTDOWN.store(false, std::sync::atomic::Ordering::SeqCst);
-    *super::CURRENT_FILE_PATH.lock().unwrap() = Some(file_path.to_string());
+pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
+    // `OnceLock::set` is thread-safe and `AppHandle` is `Send + Sync`, so
+    // caching it here (synchronously, off-main) is fine. Everything else
+    // that touches HWND-affine state moves into the async phases below,
+    // which marshal to the main thread.
     let _ = PLAYER_APP_HANDLE.set(app.clone());
 
     let file_path_owned = file_path.to_string();
@@ -42,6 +69,25 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
 }
 
 async fn run_open_phases(app: AppHandle, file_path: String) -> Result<(), String> {
+    // Phase 0: tear down any previous player on the main thread. Win32
+    // HWND operations (`DestroyWindow` etc.) require the creation thread,
+    // and `open_player` was invoked from a Tauri command running on the
+    // async runtime worker pool — not main.
+    let (tx0, rx0) = tokio::sync::oneshot::channel();
+    let app_for_cleanup = app.clone();
+    app.run_on_main_thread(move || {
+        crate::player::close_player_inner(&app_for_cleanup);
+        let _ = tx0.send(());
+    })
+    .map_err(|e| format!("dispatch phase 0: {e}"))?;
+    rx0.await.map_err(|e| format!("phase 0 channel: {e}"))?;
+
+    // Reset shared state for the new player AFTER the old cleanup has
+    // run. `cleanup_player_resources` sets `EVENT_LOOP_SHUTDOWN = true`
+    // and clears `CURRENT_FILE_PATH`, so we re-establish them here.
+    super::EVENT_LOOP_SHUTDOWN.store(false, std::sync::atomic::Ordering::SeqCst);
+    *super::CURRENT_FILE_PATH.lock().unwrap() = Some(file_path.clone());
+
     // Phase 1: create HWND (main thread)
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.run_on_main_thread(move || {
