@@ -51,22 +51,6 @@ pub struct TmdbMovie {
     pub overview: String,
 }
 
-impl TmdbMovie {
-    pub fn print_info(&self) {
-        println!("Title:    {} ({})", self.title, self.year);
-        println!("Genre:    {}", self.genres);
-        println!("Director: {}", self.director);
-        println!("Actors:   {}", self.actors);
-        println!("Rating:   {}/10 (TMDB)", self.rating);
-        println!("Plot:     {}", self.overview);
-        println!();
-        println!(
-            "💡 搜索种子: blowup search \"{}\" --year {}",
-            self.title, self.year
-        );
-    }
-}
-
 // ── Credits ────────────────────────────────────────────────────
 
 #[derive(Serialize)]

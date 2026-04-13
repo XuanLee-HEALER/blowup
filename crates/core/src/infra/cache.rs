@@ -127,7 +127,10 @@ pub fn credits_get(id: u64) -> Option<CreditsCacheEntry> {
 /// Insert or update a cache entry. Evicts oldest if over limit. Writes to disk.
 pub fn credits_put(id: u64, director: Option<String>, cast: Vec<String>) {
     let mut guard = CACHE.lock().unwrap();
-    let cache = guard.as_mut().expect("cache not initialized");
+    let Some(cache) = guard.as_mut() else {
+        tracing::warn!(id, "credits_put called before init_cache — dropping write");
+        return;
+    };
 
     // Remove existing entry for this id
     cache.entries.retain(|e| e.id != id);

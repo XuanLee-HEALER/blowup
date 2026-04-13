@@ -358,14 +358,32 @@ pub async fn get_library_stats(pool: &SqlitePool) -> Result<LibraryStats, String
 
 /// Delete a media resource: removes disk file + DB records.
 /// If deleting an SRT file, also cleans up any cached overlay ASS files.
+///
+/// Refuses to delete anything outside the configured `library.root_dir`
+/// — the caller supplies a raw file path, but all legitimate resources
+/// live somewhere beneath the library root, so anything else is almost
+/// certainly a bug or a traversal attempt.
 pub async fn delete_library_resource(pool: &SqlitePool, file_path: &str) -> Result<(), String> {
+    let cfg = crate::config::load_config();
+    let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
+    let root_path = Path::new(&root_dir);
     let path = Path::new(file_path);
+
+    // The file must already exist for canonicalize() to succeed; we
+    // need that before we know we're talking about the real path and
+    // not a symlink to somewhere outside the root.
+    if !crate::infra::paths::is_within_root(path, root_path) {
+        return Err(format!(
+            "refusing to delete resource outside library root: {file_path}"
+        ));
+    }
+
     let is_srt = path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("srt"));
 
-    match std::fs::remove_file(file_path) {
-        Ok(()) | Err(_) => {}
+    if let Err(e) = std::fs::remove_file(file_path) {
+        tracing::warn!(error = %e, path = %file_path, "failed to remove library resource");
     }
 
     if is_srt && let Some(dir) = path.parent() {

@@ -7,7 +7,7 @@ use std::{
 };
 
 use thiserror::Error;
-use tokio::{fs::File, io::AsyncReadExt, process::Command};
+use tokio::process::Command;
 use walkdir::WalkDir;
 use which::which;
 
@@ -100,48 +100,6 @@ pub async fn exec_command<S: AsRef<OsStr>>(
     }
 }
 
-/// 将给定的文件列表读取到字符串中并返回
-/// # Error
-/// * 如果文件不可读或者路径不存在、类型不是文件会返回系统IO错误
-/// # Panic
-/// 如果文件数量很多，程序会因为内存占用过高而崩溃
-pub async fn read_multiple_file_to_string<P: AsRef<Path> + Send + 'static>(
-    files: Vec<P>,
-) -> Result<Vec<String>> {
-    let file_size = files.len();
-    let mut handlers: Vec<_> = Vec::with_capacity(file_size);
-    for (idx, file) in files.into_iter().enumerate() {
-        handlers.push(tokio::spawn(
-            async move { read_file_to_string(idx, file).await },
-        ));
-    }
-    let mut res = vec![Default::default(); file_size];
-    for handler in handlers {
-        match handler.await {
-            Ok(result) => {
-                let (idx, text) = result?;
-                res[idx] = text
-            }
-            Err(e) => panic!("Tokio: failed to execute some subtask {}", e),
-        }
-    }
-
-    Ok(res)
-}
-
-async fn read_file_to_string<P: AsRef<Path>>(idx: usize, file: P) -> Result<(usize, String)> {
-    const SIZE_LIMIT: u64 = 1024 * 1024;
-    let file_path = file.as_ref();
-    let meta = std::fs::metadata(file_path).map_err(|_| CommonError::IoError)?;
-    if !meta.is_file() || meta.len() > SIZE_LIMIT {
-        return Err(CommonError::IoError);
-    }
-    let mut res = String::new();
-    let mut f = File::open(file_path).await?;
-    f.read_to_string(&mut res).await?;
-    Ok((idx, res))
-}
-
 /// Normalize director name(s) for use as a filesystem directory name.
 pub fn normalize_director_name(raw: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
@@ -175,71 +133,6 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-
-    #[tokio::test]
-    async fn test_read_multiple_file_success() {
-        let dir = tempdir().unwrap();
-        let file1_path = dir.path().join("file1.txt");
-        let file2_path = dir.path().join("file2.txt");
-
-        fs::write(&file1_path, "Hello, world!").unwrap();
-        fs::write(&file2_path, "Another file content.").unwrap();
-
-        let files = vec![file1_path.clone(), file2_path.clone()];
-        let result = read_multiple_file_to_string(files).await;
-
-        assert!(result.is_ok());
-        let contents = result.unwrap();
-        assert_eq!(contents.len(), 2);
-        assert_eq!(contents[0], "Hello, world!");
-        assert_eq!(contents[1], "Another file content.");
-    }
-
-    #[tokio::test]
-    async fn test_read_multiple_file_with_non_existent_file() {
-        let dir = tempdir().unwrap();
-        let file1_path = dir.path().join("file1.txt");
-        let nonexistent_path = PathBuf::from("/path/to/a/nonexistent/file");
-
-        fs::write(&file1_path, "Existing file.").unwrap();
-
-        let files = vec![file1_path.clone(), nonexistent_path.clone()];
-        let result = read_multiple_file_to_string(files).await;
-
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            CommonError::IoError => {}
-            other => panic!("Expected IoError, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_read_multiple_file_with_directory() {
-        let dir = tempdir().unwrap();
-        let file1_path = dir.path().join("file1.txt");
-        let directory_path = dir.path().join("my_dir");
-        fs::create_dir(&directory_path).unwrap();
-
-        fs::write(&file1_path, "Existing file.").unwrap();
-
-        let files = vec![file1_path.clone(), directory_path.clone()];
-        let result = read_multiple_file_to_string(files).await;
-
-        assert!(result.is_err());
-        assert!(
-            matches!(result, Err(CommonError::IoError)),
-            "Expected an IoError"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_read_empty_file_list() {
-        let files: Vec<PathBuf> = Vec::new();
-        let result = read_multiple_file_to_string(files).await;
-
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
-    }
 
     #[test]
     fn test_same_path_with() {

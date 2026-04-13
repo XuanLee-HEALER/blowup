@@ -590,6 +590,17 @@ pub async fn enrich_index_entry(
         .get_entry(tmdb_id)
         .ok_or_else(|| "索引中未找到该电影".to_string())?;
 
+    // `.index.json` is user-owned but we still shouldn't join a
+    // poison path into the library root (e.g. a manual edit with
+    // `..`). Refuse to enrich anything whose path isn't a plain
+    // relative segment — the caller can't do anything useful with it.
+    if !crate::infra::paths::is_safe_relative_path(&entry.path) {
+        return Err(format!(
+            "library index entry {} has unsafe path: {}",
+            tmdb_id, entry.path
+        ));
+    }
+
     // Already enriched — return cached data (unless force refresh)
     if entry.poster_url.is_some() && !force {
         return Ok(entry);

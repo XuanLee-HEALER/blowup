@@ -157,18 +157,36 @@ pub async fn delete_film_directory(
         .get_entry(tmdb_id)
         .ok_or_else(|| "索引中未找到该电影".to_string())?;
 
-    let cfg = blowup_core::config::load_config();
-    let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
-    let film_dir = format!("{}/{}", root_dir, entry.path);
-
-    if let Some(current_file) = crate::player::get_current_file_path()
-        && current_file.starts_with(&film_dir)
-    {
-        return Err("播放器正在播放该电影的文件，请先关闭播放器".to_string());
+    // `.index.json` is user-owned; refuse to touch anything that isn't
+    // a plain relative path underneath the library root.
+    if !blowup_core::infra::paths::is_safe_relative_path(&entry.path) {
+        return Err(format!(
+            "library index entry {} has unsafe path: {}",
+            tmdb_id, entry.path
+        ));
     }
 
-    match std::fs::remove_dir_all(&film_dir) {
-        Ok(()) | Err(_) => {}
+    let cfg = blowup_core::config::load_config();
+    let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
+    let film_dir = std::path::Path::new(&root_dir).join(&entry.path);
+
+    // Block the delete if the player currently has a file open that
+    // lives under this directory. Compare by path components rather
+    // than string prefix so "Director/12345" doesn't accidentally match
+    // "Director/123".
+    if let Some(current_file) = crate::player::get_current_file_path() {
+        let current_path = std::path::Path::new(&current_file);
+        if current_path.starts_with(&film_dir) {
+            return Err("播放器正在播放该电影的文件，请先关闭播放器".to_string());
+        }
+    }
+
+    if let Err(e) = std::fs::remove_dir_all(&film_dir) {
+        tracing::warn!(
+            error = %e,
+            dir = %film_dir.display(),
+            "failed to remove film directory"
+        );
     }
 
     index.remove_entry(tmdb_id);
