@@ -1,8 +1,11 @@
 use axum::extract::{Path, State};
 use axum::{Json, Router, routing::get, routing::post};
 use blowup_core::infra::events::DomainEvent;
-use blowup_core::torrent::download::{self as svc, DownloadRecord, StartDownloadRequest};
+use blowup_core::torrent::download::{
+    self as svc, DownloadRecord, StartDownloadRequest, parse_genres_csv,
+};
 use blowup_core::torrent::manager::TorrentFileInfo;
+use blowup_core::workflows::download_monitor::{self, DownloadMonitorParams};
 use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
@@ -56,7 +59,7 @@ async fn start_download(
     let download_id = svc::insert_download_record(&state.db, &req).await?;
 
     let trackers = state.tracker.hot_trackers().await;
-    let (torrent_id, _handle) = match tm
+    let (torrent_id, handle) = match tm
         .start_download(
             &req.target,
             output_folder.clone(),
@@ -73,10 +76,22 @@ async fn start_download(
     };
 
     svc::set_torrent_id(&state.db, download_id, torrent_id as i64).await?;
+
+    download_monitor::spawn(DownloadMonitorParams {
+        pool: state.db.clone(),
+        events: state.events.clone(),
+        library_index: state.library_index.clone(),
+        handle,
+        download_id,
+        output_folder,
+        director: req.director.clone(),
+        title: req.title.clone(),
+        tmdb_id: req.tmdb_id,
+        year: req.year,
+        genres: req.genres.clone().unwrap_or_default(),
+    });
+
     state.events.publish(DomainEvent::DownloadsChanged);
-    // Note: standalone server mode does not spawn a progress monitor task yet —
-    // iOS/LAN clients poll list_downloads for updates. Embedded-mode Tauri
-    // continues to run its own monitor that writes back to the same DB.
     Ok(Json(download_id))
 }
 
@@ -115,11 +130,26 @@ async fn resume(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult
         .compute_download_path(&director, tmdb_id);
 
     let trackers = state.tracker.hot_trackers().await;
-    let (torrent_id, _handle) = tm
-        .start_download(&record.target, output_folder, None, Some(trackers))
+    let (torrent_id, handle) = tm
+        .start_download(&record.target, output_folder.clone(), None, Some(trackers))
         .await
         .map_err(ApiError::Internal)?;
     svc::mark_resumed_with_new_torrent(&state.db, id, torrent_id as i64).await?;
+
+    download_monitor::spawn(DownloadMonitorParams {
+        pool: state.db.clone(),
+        events: state.events.clone(),
+        library_index: state.library_index.clone(),
+        handle,
+        download_id: id,
+        output_folder,
+        director,
+        title: record.title,
+        tmdb_id,
+        year: record.year.map(|y| y as u32),
+        genres: parse_genres_csv(record.genres.as_deref()),
+    });
+
     state.events.publish(DomainEvent::DownloadsChanged);
     Ok(())
 }
@@ -179,10 +209,10 @@ async fn redownload(
 
     let tm = state.torrent().map_err(ApiError::Internal)?;
     let trackers = state.tracker.hot_trackers().await;
-    let (torrent_id, _handle) = tm
+    let (torrent_id, handle) = tm
         .start_download(
             &record.target,
-            output_folder,
+            output_folder.clone(),
             req.only_files,
             Some(trackers),
         )
@@ -190,6 +220,21 @@ async fn redownload(
         .map_err(ApiError::Internal)?;
 
     svc::reset_for_redownload(&state.db, id, torrent_id as i64).await?;
+
+    download_monitor::spawn(DownloadMonitorParams {
+        pool: state.db.clone(),
+        events: state.events.clone(),
+        library_index: state.library_index.clone(),
+        handle,
+        download_id: id,
+        output_folder,
+        director,
+        title: record.title,
+        tmdb_id,
+        year: record.year.map(|y| y as u32),
+        genres: parse_genres_csv(record.genres.as_deref()),
+    });
+
     state.events.publish(DomainEvent::DownloadsChanged);
     Ok(())
 }

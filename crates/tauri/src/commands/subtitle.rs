@@ -1,6 +1,7 @@
 use blowup_core::infra::events::EventBus;
 use blowup_core::subtitle::service::{self, SubEntry, SubtitleSearchResult, SubtitleStreamInfo};
-use blowup_core::tasks::{TaskRegistry, service as tasks_svc};
+use blowup_core::tasks::TaskRegistry;
+use blowup_core::workflows as tasks_svc;
 use std::path::{Path, PathBuf};
 
 #[tauri::command]

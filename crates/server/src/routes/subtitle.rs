@@ -1,7 +1,7 @@
 use axum::extract::{Query, State};
 use axum::{Json, Router, routing::get, routing::post};
 use blowup_core::subtitle::service::{self, SubEntry, SubtitleSearchResult, SubtitleStreamInfo};
-use blowup_core::tasks::service as tasks_svc;
+use blowup_core::workflows as tasks_svc;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 

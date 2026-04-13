@@ -2,6 +2,7 @@ pub mod commands;
 pub mod common;
 pub mod player;
 
+use blowup_core::AppContext;
 use blowup_core::config;
 use blowup_core::infra::events::EventBus;
 use blowup_core::infra::{cache, db};
@@ -24,6 +25,29 @@ fn init_tracing() {
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("blowup_lib=debug"));
     fmt().with_env_filter(filter).init();
+}
+
+/// Resolve the embedded HTTP server's bearer token. The Tauri frontend
+/// doesn't hit the HTTP server (it uses IPC), so this token is only
+/// relevant to LAN/iOS clients — but it still has to exist because
+/// every route is gated. Prefer `$BLOWUP_SERVER_TOKEN` when set;
+/// otherwise generate a fresh random token and log it so the user
+/// can copy it to their external client.
+fn resolve_server_auth_token() -> String {
+    match std::env::var("BLOWUP_SERVER_TOKEN") {
+        Ok(t) if !t.is_empty() => {
+            tracing::info!("embedded server: auth token loaded from BLOWUP_SERVER_TOKEN");
+            t
+        }
+        _ => {
+            let t = blowup_server::auth::generate_random_token();
+            tracing::warn!(
+                token = %t,
+                "embedded server: BLOWUP_SERVER_TOKEN not set — generated ephemeral token for this session"
+            );
+            t
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -137,7 +161,7 @@ pub fn run() {
 
             // OnceCell that holds the async-initialized TorrentManager.
             // Both Tauri wrappers (via State<Arc<OnceCell<…>>>) and the
-            // embedded server's AppState read from it.
+            // embedded server's AppContext read from it.
             let torrent_cell: Arc<OnceCell<TorrentManager>> = Arc::new(OnceCell::new());
             handle.manage(torrent_cell.clone());
 
@@ -150,7 +174,7 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .expect("could not resolve app data dir for db");
-            tauri::async_runtime::block_on(async {
+            let pool = tauri::async_runtime::block_on(async {
                 match db::init_db(&db_data_dir).await {
                     Ok(pool) => {
                         // Mark stale 'downloading' records as 'paused' (crash recovery)
@@ -164,7 +188,7 @@ pub fn run() {
                         {
                             tracing::info!(count = r.rows_affected(), "paused stale downloads");
                         }
-                        handle.manage(pool);
+                        pool
                     }
                     Err(msg) => {
                         use tauri_plugin_dialog::DialogExt;
@@ -177,6 +201,28 @@ pub fn run() {
                     }
                 }
             });
+            handle.manage(pool.clone());
+
+            // Resolve the shared bearer token once, up-front. The Tauri
+            // frontend doesn't call the HTTP server (Tauri IPC is used
+            // instead), so this is only relevant to LAN/iOS clients —
+            // but we need a value now so the AppContext is complete.
+            let auth_token = Arc::new(resolve_server_auth_token());
+
+            // Build the canonical AppContext once. Both the embedded
+            // axum server and any future in-process caller read the
+            // same struct, so there's exactly one place to extend when
+            // a new shared resource shows up.
+            let ctx = Arc::new(AppContext::new(
+                pool,
+                library_index.clone(),
+                tracker_arc.clone(),
+                torrent_cell.clone(),
+                events.clone(),
+                tasks.clone(),
+                auth_token,
+            ));
+            handle.manage(ctx.clone());
 
             tracing::debug!(
                 "[timing] setup complete: {}ms",
@@ -191,11 +237,7 @@ pub fn run() {
             // Init torrent manager in background — don't block window.
             // On success, also start the embedded HTTP server for LAN clients.
             let tm_handle = handle.clone();
-            let server_cell = torrent_cell.clone();
-            let server_index = library_index.clone();
-            let server_tracker = tracker_arc.clone();
-            let server_events = events.clone();
-            let server_tasks = tasks.clone();
+            let ctx_for_bg = ctx.clone();
             tauri::async_runtime::spawn(async move {
                 let t = std::time::Instant::now();
                 match TorrentManager::new(
@@ -212,7 +254,7 @@ pub fn run() {
                             elapsed_ms = t.elapsed().as_millis(),
                             "torrent manager ready"
                         );
-                        let _ = server_cell.set(tm.clone());
+                        let _ = ctx_for_bg.torrent.set(tm.clone());
                         tm_handle.manage(tm);
                     }
                     Err(e) => {
@@ -225,46 +267,15 @@ pub fn run() {
                 }
 
                 // Start the embedded blowup-server axum router bound to
-                // 127.0.0.1. Shares the same state as the Tauri wrappers.
-                let Some(pool) = tm_handle
-                    .try_state::<sqlx::SqlitePool>()
-                    .map(|s| s.inner().clone())
-                else {
-                    tracing::error!("embedded server: SqlitePool state missing");
-                    return;
-                };
-                // Resolve the embedded server's auth token. When the
-                // token env var isn't supplied, generate a fresh one per
-                // launch and log it (Tauri frontend doesn't touch the
-                // HTTP server — this token is only for LAN/iOS clients).
-                let auth_token = match std::env::var("BLOWUP_SERVER_TOKEN") {
-                    Ok(t) if !t.is_empty() => {
-                        tracing::info!("embedded server: auth token loaded from BLOWUP_SERVER_TOKEN");
-                        t
-                    }
-                    _ => {
-                        let t = blowup_server::auth::generate_random_token();
-                        tracing::warn!(
-                            token = %t,
-                            "embedded server: BLOWUP_SERVER_TOKEN not set — generated ephemeral token for this session"
-                        );
-                        t
-                    }
-                };
-                let app_state = blowup_server::AppState::new(
-                    pool,
-                    server_index,
-                    server_tracker,
-                    server_cell,
-                    server_events,
-                    server_tasks,
-                    std::sync::Arc::new(auth_token),
-                );
+                // 127.0.0.1. It shares the AppContext instance with
+                // the Tauri wrappers — no duplicate wiring.
                 tracing::info!(
                     bind = EMBEDDED_SERVER_BIND,
                     "embedded blowup-server listening"
                 );
-                if let Err(e) = blowup_server::serve(EMBEDDED_SERVER_BIND, app_state).await {
+                if let Err(e) =
+                    blowup_server::serve(EMBEDDED_SERVER_BIND, (*ctx_for_bg).clone()).await
+                {
                     tracing::warn!(
                         error = %e,
                         bind = EMBEDDED_SERVER_BIND,

@@ -24,7 +24,6 @@
 
 pub mod model;
 pub mod registry;
-pub mod service;
 
 pub use model::{TaskKind, TaskRecord, TaskStatus};
 pub use registry::TaskRegistry;

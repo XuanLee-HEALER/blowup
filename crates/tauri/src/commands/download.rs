@@ -1,20 +1,19 @@
 //! Tauri wrappers around `blowup_core::torrent::download::*`. The
-//! background monitor task stays here because it uses the Tauri
-//! state-manager to look up the LibraryIndex; it publishes to the
-//! shared EventBus so both the desktop frontend (via the event
-//! forwarder in lib.rs) and LAN-side iOS clients (via SSE) see the
-//! same notifications.
+//! actual download-progress monitor lives in
+//! `blowup_core::workflows::download_monitor` and is shared with the
+//! standalone server so desktop and LAN/iOS clients see identical
+//! completion semantics.
 
 use blowup_core::infra::events::{DomainEvent, EventBus};
-use blowup_core::library::index::{IndexEntry, LibraryIndex};
+use blowup_core::library::index::LibraryIndex;
 use blowup_core::torrent::download::{
     self as svc, DownloadRecord, StartDownloadRequest, parse_genres_csv, validate_library_root,
 };
 use blowup_core::torrent::manager::{TorrentFileInfo, TorrentHandle, TorrentManager};
 use blowup_core::torrent::tracker::TrackerManager;
+use blowup_core::workflows::download_monitor;
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use tauri::Manager;
 
 #[tauri::command]
 pub async fn get_torrent_files(
@@ -26,7 +25,6 @@ pub async fn get_torrent_files(
 
 #[tauri::command]
 pub async fn start_download(
-    app: tauri::AppHandle,
     events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
@@ -58,10 +56,10 @@ pub async fn start_download(
 
     svc::set_torrent_id(pool.inner(), download_id, torrent_id as i64).await?;
 
-    spawn_download_monitor(MonitorParams {
-        app_handle: app,
-        events: events.inner().clone(),
+    download_monitor::spawn(download_monitor::DownloadMonitorParams {
         pool: pool.inner().clone(),
+        events: events.inner().clone(),
+        library_index: index.inner().clone(),
         handle,
         download_id,
         output_folder,
@@ -74,92 +72,6 @@ pub async fn start_download(
 
     events.publish(DomainEvent::DownloadsChanged);
     Ok(download_id)
-}
-
-struct MonitorParams {
-    app_handle: tauri::AppHandle,
-    events: EventBus,
-    pool: SqlitePool,
-    handle: TorrentHandle,
-    download_id: i64,
-    output_folder: std::path::PathBuf,
-    director: String,
-    title: String,
-    tmdb_id: u64,
-    year: Option<u32>,
-    genres: Vec<String>,
-}
-
-fn spawn_download_monitor(p: MonitorParams) {
-    let director_normalized = blowup_core::infra::common::normalize_director_name(&p.director);
-    let director_display = p.director;
-
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            let stats = p.handle.stats();
-
-            svc::update_progress(
-                &p.pool,
-                p.download_id,
-                stats.progress_bytes as i64,
-                stats.total_bytes as i64,
-            )
-            .await;
-
-            p.events.publish(DomainEvent::DownloadsChanged);
-
-            if stats.finished {
-                tracing::info!(p.download_id, "download completed");
-                svc::mark_completed(&p.pool, p.download_id, stats.total_bytes as i64).await;
-
-                let files = blowup_core::library::index::scan_dir_files(&p.output_folder);
-
-                // Auto-extract embedded subtitles before adding to index
-                for file in &files {
-                    let ext = std::path::Path::new(file)
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-                    if blowup_core::library::index::VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-                        let video_path = p.output_folder.join(file);
-                        blowup_core::subtitle::service::auto_extract_all_subtitles(&video_path)
-                            .await;
-                    }
-                }
-
-                // Rescan after extraction to pick up new SRTs
-                let files = blowup_core::library::index::scan_dir_files(&p.output_folder);
-                let entry = IndexEntry {
-                    tmdb_id: p.tmdb_id,
-                    title: p.title,
-                    director: director_normalized.clone(),
-                    director_display,
-                    year: p.year,
-                    genres: p.genres,
-                    path: format!("{}/{}", director_normalized, p.tmdb_id),
-                    files,
-                    added_at: chrono::Utc::now().to_rfc3339(),
-                    ..Default::default()
-                };
-                if let Some(idx) = p.app_handle.try_state::<Arc<LibraryIndex>>()
-                    && let Err(e) = idx.add_entry(entry)
-                {
-                    tracing::warn!(error = %e, "failed to add entry to library index");
-                }
-
-                p.events.publish(DomainEvent::LibraryChanged);
-                break;
-            }
-
-            if let Some(err) = &stats.error {
-                tracing::error!(p.download_id, error = %err, "download failed");
-                svc::mark_failed(&p.pool, p.download_id, err).await;
-                break;
-            }
-        }
-    });
 }
 
 #[tauri::command]
@@ -189,7 +101,6 @@ pub async fn pause_download(
 
 #[tauri::command]
 pub async fn resume_download(
-    app: tauri::AppHandle,
     events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
@@ -222,10 +133,10 @@ pub async fn resume_download(
 
     svc::mark_resumed_with_new_torrent(pool.inner(), id, torrent_id as i64).await?;
 
-    spawn_download_monitor(MonitorParams {
-        app_handle: app,
-        events: events.inner().clone(),
+    download_monitor::spawn(download_monitor::DownloadMonitorParams {
         pool: pool.inner().clone(),
+        events: events.inner().clone(),
+        library_index: index.inner().clone(),
         handle,
         download_id: id,
         output_folder,
@@ -316,7 +227,6 @@ pub async fn list_download_existing_files(
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn redownload(
-    app: tauri::AppHandle,
     events: tauri::State<'_, EventBus>,
     pool: tauri::State<'_, SqlitePool>,
     tm: tauri::State<'_, TorrentManager>,
@@ -344,10 +254,10 @@ pub async fn redownload(
 
     svc::reset_for_redownload(pool.inner(), id, torrent_id as i64).await?;
 
-    spawn_download_monitor(MonitorParams {
-        app_handle: app,
-        events: events.inner().clone(),
+    download_monitor::spawn(download_monitor::DownloadMonitorParams {
         pool: pool.inner().clone(),
+        events: events.inner().clone(),
+        library_index: index.inner().clone(),
         handle,
         download_id: id,
         output_folder,
