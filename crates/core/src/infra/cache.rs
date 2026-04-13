@@ -1,9 +1,9 @@
 use crate::config::{app_data_dir, load_config};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::Mutex;
 
-static CACHE: Mutex<Option<CreditsCache>> = Mutex::new(None);
+static CACHE: Mutex<Option<CreditsCache>> = parking_lot::const_mutex(None);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreditsCacheEntry {
@@ -37,14 +37,14 @@ fn cache_path() -> PathBuf {
 pub fn init_cache() {
     let cache = load_from_disk();
     save_to_disk(&cache);
-    let mut guard = CACHE.lock().unwrap();
+    let mut guard = CACHE.lock();
     *guard = Some(cache);
     tracing::info!("credits cache initialized");
 }
 
 /// Flush the in-memory cache to disk. Call before app exit.
 pub fn flush_cache() {
-    let guard = CACHE.lock().unwrap();
+    let guard = CACHE.lock();
     if let Some(cache) = guard.as_ref() {
         save_to_disk(cache);
         tracing::info!(
@@ -115,7 +115,7 @@ fn save_to_disk(cache: &CreditsCache) {
 
 /// Look up a cached entry by TMDB ID. Moves the entry to the end (LRU touch).
 pub fn credits_get(id: u64) -> Option<CreditsCacheEntry> {
-    let mut guard = CACHE.lock().unwrap();
+    let mut guard = CACHE.lock();
     let cache = guard.as_mut()?;
     let pos = cache.entries.iter().position(|e| e.id == id)?;
     let entry = cache.entries.remove(pos);
@@ -126,7 +126,7 @@ pub fn credits_get(id: u64) -> Option<CreditsCacheEntry> {
 
 /// Insert or update a cache entry. Evicts oldest if over limit. Writes to disk.
 pub fn credits_put(id: u64, director: Option<String>, cast: Vec<String>) {
-    let mut guard = CACHE.lock().unwrap();
+    let mut guard = CACHE.lock();
     let Some(cache) = guard.as_mut() else {
         tracing::warn!(id, "credits_put called before init_cache — dropping write");
         return;
@@ -158,7 +158,7 @@ mod tests {
     use serial_test::serial;
 
     fn setup_test_cache() {
-        let mut guard = CACHE.lock().unwrap();
+        let mut guard = CACHE.lock();
         *guard = Some(CreditsCache {
             max_entries: 3,
             entries: Vec::new(),
@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(entry.director.as_deref(), Some("New"));
         assert_eq!(entry.cast, vec!["Actor"]);
         // Should not have duplicates
-        let guard = CACHE.lock().unwrap();
+        let guard = CACHE.lock();
         let cache = guard.as_ref().unwrap();
         assert_eq!(cache.entries.iter().filter(|e| e.id == 1).count(), 1);
     }

@@ -1,14 +1,24 @@
 //! API error envelope.
 //!
-//! Services in `blowup_core` mostly return `Result<T, String>` today
-//! (the domain-level enums in `blowup_core::error` are used by a few
-//! modules). To keep this layer simple, we wrap any stringly error
-//! from a service call into `ApiError::Internal` and map it to a
-//! 500 response with a JSON `{ "error": "..." }` body.
+//! Services in `blowup_core` mostly return `Result<T, String>`. To let
+//! routes distinguish "not found" from "bad request" from "internal"
+//! without scraping human-readable Chinese substrings, we rely on a
+//! small set of well-known prefixes declared in
+//! [`blowup_core::error::status`]:
+//!
+//!   "not_found: <msg>"   → HTTP 404
+//!   "bad_request: <msg>" → HTTP 400
+//!   anything else        → HTTP 500
+//!
+//! Core service functions that want a specific status code produce
+//! their error string via `blowup_core::error::status::not_found(...)`
+//! / `bad_request(...)`. Any string without a recognised prefix falls
+//! through to 500, so callers that don't know/care still work.
 
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use blowup_core::error::status::{BAD_REQUEST_PREFIX, NOT_FOUND_PREFIX};
 use serde::Serialize;
 
 #[derive(Debug)]
@@ -36,11 +46,10 @@ impl IntoResponse for ApiError {
 
 impl From<String> for ApiError {
     fn from(s: String) -> Self {
-        // Heuristic mapping from core's string errors. Services use
-        // Chinese error messages with characteristic phrases; we only
-        // probe for a couple of common ones here.
-        if s.contains("未找到") || s.contains("not found") {
-            ApiError::NotFound(s)
+        if let Some(msg) = s.strip_prefix(NOT_FOUND_PREFIX) {
+            ApiError::NotFound(msg.to_string())
+        } else if let Some(msg) = s.strip_prefix(BAD_REQUEST_PREFIX) {
+            ApiError::BadRequest(msg.to_string())
         } else {
             ApiError::Internal(s)
         }

@@ -121,7 +121,7 @@ pub async fn probe_and_cache(
         return Ok(cached.clone());
     }
 
-    let entry = index.get_entry(tmdb_id).ok_or("影片条目未找到")?;
+    let entry = index.get_entry(tmdb_id).ok_or_else(|| crate::error::status::not_found("影片条目"))?;
     let full_path = index.root().join(&entry.path).join(filename);
     let full_path_str = full_path.to_string_lossy().to_string();
 
@@ -153,7 +153,7 @@ pub async fn probe_and_cache(
 
     index
         .set_file_media_info(tmdb_id, filename, info.clone())
-        .ok_or("影片条目未找到")?;
+        .ok_or_else(|| crate::error::status::not_found("影片条目"))?;
 
     Ok(info)
 }

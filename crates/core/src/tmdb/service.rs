@@ -588,7 +588,7 @@ pub async fn enrich_index_entry(
 ) -> Result<IndexEntry, String> {
     let entry = index
         .get_entry(tmdb_id)
-        .ok_or_else(|| "索引中未找到该电影".to_string())?;
+        .ok_or_else(|| crate::error::status::not_found("索引中未找到该电影"))?;
 
     // `.index.json` is user-owned but we still shouldn't join a
     // poison path into the library root (e.g. a manual edit with
@@ -706,7 +706,7 @@ pub async fn enrich_index_entry(
 
     index
         .update_entry_metadata(tmdb_id, meta)
-        .ok_or_else(|| "更新后未找到索引条目".to_string())
+        .ok_or_else(|| crate::error::status::not_found("更新后未找到索引条目"))
 }
 
 #[cfg(test)]

@@ -6,22 +6,22 @@ use ffi::{
     MPV_EVENT_END_FILE, MPV_EVENT_NONE, MPV_EVENT_PROPERTY_CHANGE, MPV_EVENT_SHUTDOWN,
     MPV_FORMAT_DOUBLE, Mpv, MpvRenderCtx,
 };
+use parking_lot::Mutex;
 use serde::Serialize;
 use std::ffi::c_void;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
-static PLAYER: Mutex<Option<MpvPlayer>> = Mutex::new(None);
+static PLAYER: Mutex<Option<MpvPlayer>> = parking_lot::const_mutex(None);
 
 // Stored globally so mpv's update callback can trigger re-render
-static RENDER_CTX: Mutex<Option<RenderCtxPtr>> = Mutex::new(None);
+static RENDER_CTX: Mutex<Option<RenderCtxPtr>> = parking_lot::const_mutex(None);
 
 // Raw mpv handle for event loop (mpv is thread-safe, no mutex needed for wait_event)
-static MPV_HANDLE: Mutex<Option<MpvHandlePtr>> = Mutex::new(None);
+static MPV_HANDLE: Mutex<Option<MpvHandlePtr>> = parking_lot::const_mutex(None);
 
 // Current file path being played (for playback state checks)
-static CURRENT_FILE_PATH: Mutex<Option<String>> = Mutex::new(None);
+static CURRENT_FILE_PATH: Mutex<Option<String>> = parking_lot::const_mutex(None);
 
 // Signal for the event loop to exit cleanly
 static EVENT_LOOP_SHUTDOWN: AtomicBool = AtomicBool::new(false);
@@ -133,7 +133,7 @@ pub fn open_player(app: &AppHandle, file_path: &str) -> Result<(), String> {
     }
 
     EVENT_LOOP_SHUTDOWN.store(false, Ordering::SeqCst);
-    *CURRENT_FILE_PATH.lock().unwrap() = Some(file_path.to_string());
+    *CURRENT_FILE_PATH.lock() = Some(file_path.to_string());
 
     // The player setup is split into TWO short main-thread closures with an
     // async sleep in between. A single long closure (build + sleep + GL +
@@ -258,9 +258,9 @@ fn setup_gl_and_mpv_on_main(
     };
 
     // Store render context globally for the ObjC / Win32 draw callback
-    *RENDER_CTX.lock().unwrap() = Some(RenderCtxPtr(render_ctx_raw));
+    *RENDER_CTX.lock() = Some(RenderCtxPtr(render_ctx_raw));
     // Store raw mpv handle for event loop (mpv is thread-safe for wait_event)
-    *MPV_HANDLE.lock().unwrap() = Some(MpvHandlePtr(mpv.raw_handle()));
+    *MPV_HANDLE.lock() = Some(MpvHandlePtr(mpv.raw_handle()));
 
     // Safety: null context, callback is a static function
     unsafe { render_ctx.set_update_callback(Some(on_mpv_render_update), std::ptr::null_mut()) };
@@ -278,7 +278,7 @@ fn setup_gl_and_mpv_on_main(
         mpv,
     };
     {
-        let mut guard = PLAYER.lock().unwrap();
+        let mut guard = PLAYER.lock();
         *guard = Some(player);
     }
 
@@ -312,7 +312,7 @@ pub extern "C" fn blowup_render_mpv_frame(fbo: i32, width: i32, height: i32) {
         tracing::debug!(fbo, width, height, count, "blowup_render_mpv_frame called");
     }
 
-    let guard = RENDER_CTX.lock().unwrap();
+    let guard = RENDER_CTX.lock();
     if let Some(RenderCtxPtr(ctx)) = guard.as_ref() {
         let render_ctx = MpvRenderCtx { ctx: *ctx };
         render_ctx.render(fbo, width, height);
@@ -332,7 +332,7 @@ fn event_loop(app: &AppHandle) {
     // Grab raw handle once — valid until cleanup destroys mpv,
     // but cleanup waits for us to exit first.
     let mpv_raw = {
-        let guard = MPV_HANDLE.lock().unwrap();
+        let guard = MPV_HANDLE.lock();
         match guard.as_ref() {
             Some(MpvHandlePtr(h)) => *h,
             None => return,
@@ -363,7 +363,7 @@ fn event_loop(app: &AppHandle) {
             MPV_EVENT_PROPERTY_CHANGE => {
                 // mpv pushed a property change — read full state under brief lock
                 let state = {
-                    let guard = PLAYER.lock().unwrap();
+                    let guard = PLAYER.lock();
                     let Some(player) = guard.as_ref() else {
                         break;
                     };
@@ -415,7 +415,7 @@ fn cleanup_player_resources() {
 
     // 2. Interrupt wait_event so event loop exits immediately
     {
-        let guard = MPV_HANDLE.lock().unwrap();
+        let guard = MPV_HANDLE.lock();
         if let Some(MpvHandlePtr(h)) = guard.as_ref() {
             unsafe { ffi::wakeup_raw(*h) };
         }
@@ -430,19 +430,19 @@ fn cleanup_player_resources() {
     }
 
     // 4. Stop render callbacks (ObjC draw will see None and skip)
-    *RENDER_CTX.lock().unwrap() = None;
+    *RENDER_CTX.lock() = None;
 
     // 5. Remove GL view — no more CAOpenGLLayer draw callbacks
     native::remove_gl_view();
 
     // 6. Clear raw handle (mpv is about to be destroyed)
-    *MPV_HANDLE.lock().unwrap() = None;
+    *MPV_HANDLE.lock() = None;
 
     // 7. Clear current file path
-    *CURRENT_FILE_PATH.lock().unwrap() = None;
+    *CURRENT_FILE_PATH.lock() = None;
 
     // 8. Destroy mpv (_render_ctx drops first due to field order)
-    let mut guard = PLAYER.lock().unwrap();
+    let mut guard = PLAYER.lock();
     if let Some(player) = guard.take() {
         drop(player);
         tracing::info!("player resources cleaned up");
@@ -450,7 +450,7 @@ fn cleanup_player_resources() {
 }
 
 pub fn get_current_file_path() -> Option<String> {
-    CURRENT_FILE_PATH.lock().unwrap().clone()
+    CURRENT_FILE_PATH.lock().clone()
 }
 
 fn close_player_inner(app: &AppHandle) {
@@ -467,7 +467,7 @@ pub fn with_player<F, R>(f: F) -> Result<R, String>
 where
     F: FnOnce(&MpvPlayer) -> Result<R, String>,
 {
-    let guard = PLAYER.lock().unwrap();
+    let guard = PLAYER.lock();
     let player = guard.as_ref().ok_or("no active player")?;
     f(player)
 }

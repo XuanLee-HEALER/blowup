@@ -227,7 +227,9 @@ pub async fn get_active_download(
         .fetch_optional(pool)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("download not found or not in {} state", status))
+        .ok_or_else(|| {
+            crate::error::status::not_found(format!("download not in {status} state"))
+        })
 }
 
 pub async fn get_download_record(pool: &SqlitePool, id: i64) -> Result<DownloadRecord, String> {
@@ -236,7 +238,7 @@ pub async fn get_download_record(pool: &SqlitePool, id: i64) -> Result<DownloadR
         .fetch_optional(pool)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| "download not found".to_string())
+        .ok_or_else(|| crate::error::status::not_found("download"))
 }
 
 pub async fn get_redownload_record(pool: &SqlitePool, id: i64) -> Result<DownloadRecord, String> {
@@ -247,7 +249,7 @@ pub async fn get_redownload_record(pool: &SqlitePool, id: i64) -> Result<Downloa
     .fetch_optional(pool)
     .await
     .map_err(|e| e.to_string())?
-    .ok_or_else(|| "download not found".to_string())
+    .ok_or_else(|| crate::error::status::not_found("download"))
 }
 
 pub async fn delete_download_record(pool: &SqlitePool, id: i64) -> Result<(), String> {

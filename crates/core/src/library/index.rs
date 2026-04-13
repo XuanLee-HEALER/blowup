@@ -1,9 +1,9 @@
 use crate::infra::common::normalize_director_name;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::RwLock;
 
 pub const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v",
@@ -144,7 +144,7 @@ impl LibraryIndex {
     fn save(&self) {
         // Serialize under read lock, then drop lock before disk I/O
         let content = {
-            let data = self.data.read().unwrap();
+            let data = self.data.read();
             serde_json::to_string_pretty(&*data)
         };
         match content {
@@ -171,7 +171,7 @@ impl LibraryIndex {
         let dir = self.root.join(&entry.path);
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write();
         data.entries.retain(|e| e.tmdb_id != entry.tmdb_id);
         data.entries.push(entry);
         drop(data);
@@ -181,7 +181,7 @@ impl LibraryIndex {
 
     /// Remove entry by tmdb_id.
     pub fn remove_entry(&self, tmdb_id: u64) {
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write();
         data.entries.retain(|e| e.tmdb_id != tmdb_id);
         drop(data);
         self.save();
@@ -189,19 +189,19 @@ impl LibraryIndex {
 
     /// Get entry by tmdb_id.
     pub fn get_entry(&self, tmdb_id: u64) -> Option<IndexEntry> {
-        let data = self.data.read().unwrap();
+        let data = self.data.read();
         data.entries.iter().find(|e| e.tmdb_id == tmdb_id).cloned()
     }
 
     /// Return all entries.
     pub fn list_entries(&self) -> Vec<IndexEntry> {
-        let data = self.data.read().unwrap();
+        let data = self.data.read();
         data.entries.clone()
     }
 
     /// Group entries by normalized director name.
     pub fn list_by_director(&self) -> BTreeMap<String, Vec<IndexEntry>> {
-        let data = self.data.read().unwrap();
+        let data = self.data.read();
         let mut map: BTreeMap<String, Vec<IndexEntry>> = BTreeMap::new();
         for entry in &data.entries {
             map.entry(entry.director_display.clone())
@@ -219,7 +219,7 @@ impl LibraryIndex {
         year_to: Option<u32>,
         genre: Option<&str>,
     ) -> Vec<IndexEntry> {
-        let data = self.data.read().unwrap();
+        let data = self.data.read();
         data.entries
             .iter()
             .filter(|e| {
@@ -254,7 +254,7 @@ impl LibraryIndex {
 
     /// Update file list for a specific entry by scanning its directory.
     pub fn update_files(&self, tmdb_id: u64) {
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write();
         if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
             let dir = self.root.join(&entry.path);
             entry.files = scan_dir_files(&dir);
@@ -315,7 +315,7 @@ impl LibraryIndex {
         }
 
         tracing::info!(entries = entries.len(), "index rebuilt from disk");
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write();
         data.entries = entries;
         data.version = 1;
         drop(data);
@@ -335,7 +335,7 @@ impl LibraryIndex {
         filename: &str,
         info: FileMediaInfo,
     ) -> Option<FileMediaInfo> {
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write();
         let result = if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
             entry.media_info.insert(filename.to_string(), info.clone());
             Some(info)
@@ -353,7 +353,7 @@ impl LibraryIndex {
         tmdb_id: u64,
         configs: HashMap<String, SubtitleDisplayConfig>,
     ) {
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write();
         if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
             entry.subtitle_configs = configs;
         }
@@ -363,7 +363,7 @@ impl LibraryIndex {
 
     /// Update TMDB metadata for an entry and persist. Returns the updated entry.
     pub fn update_entry_metadata(&self, tmdb_id: u64, meta: EntryMetadata) -> Option<IndexEntry> {
-        let mut data = self.data.write().unwrap();
+        let mut data = self.data.write();
         let result = if let Some(entry) = data.entries.iter_mut().find(|e| e.tmdb_id == tmdb_id) {
             if let Some(title) = meta.title {
                 entry.title = title;

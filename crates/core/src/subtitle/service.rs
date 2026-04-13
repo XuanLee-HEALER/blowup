@@ -14,7 +14,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use std::sync::{LazyLock, Mutex};
+use parking_lot::Mutex;
+use std::sync::LazyLock;
 use std::time::Instant;
 
 // ── OpenSubtitles REST API ─────────────────────────────────────────
@@ -174,7 +175,7 @@ async fn get_os_token(client: &reqwest::Client, username: &str, password: &str) 
     }
     // Check cache first
     let cached = {
-        let guard = TOKEN_CACHE.lock().expect("TOKEN_CACHE mutex poisoned");
+        let guard = TOKEN_CACHE.lock();
         guard
             .as_ref()
             .filter(|(_, created)| created.elapsed().as_secs() < TOKEN_TTL_SECS)
@@ -187,8 +188,7 @@ async fn get_os_token(client: &reqwest::Client, username: &str, password: &str) 
     match os_login(client, username, password).await {
         Ok(t) => {
             tracing::info!("OpenSubtitles: logged in as {username}");
-            *TOKEN_CACHE.lock().expect("TOKEN_CACHE mutex poisoned") =
-                Some((t.clone(), Instant::now()));
+            *TOKEN_CACHE.lock() = Some((t.clone(), Instant::now()));
             Some(t)
         }
         Err(e) => {
@@ -766,7 +766,9 @@ async fn assrt_download(token: &str, sub_id: &str, out_path: &Path) -> Result<()
             let fname = e.filename.unwrap_or_else(|| "subtitle.srt".to_string());
             (url, fname)
         } else {
-            return Err("ASSRT 未找到可下载的字幕文件".to_string());
+            return Err(crate::error::status::not_found(
+                "ASSRT 未找到可下载的字幕文件",
+            ));
         }
     } else {
         return Err("ASSRT 详情中无字幕条目".to_string());

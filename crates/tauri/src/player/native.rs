@@ -3,14 +3,14 @@
 //! macOS: calls into ObjC code compiled from native/metal_layer.m
 //! Windows: calls into C code compiled from native/win_gl_layer.c
 
+use parking_lot::Mutex;
 use std::ffi::{c_char, c_void};
-use std::sync::Mutex;
 
 struct ViewPtr(*mut c_void);
 unsafe impl Send for ViewPtr {}
 unsafe impl Sync for ViewPtr {}
 
-static GL_VIEW_PTR: Mutex<Option<ViewPtr>> = Mutex::new(None);
+static GL_VIEW_PTR: Mutex<Option<ViewPtr>> = parking_lot::const_mutex(None);
 
 // ---------------------------------------------------------------------------
 // macOS FFI
@@ -63,7 +63,7 @@ pub fn create_and_attach_gl_view(window: &tauri::WebviewWindow) -> Result<*mut c
             return Err("failed to attach GL view".into());
         }
 
-        *GL_VIEW_PTR.lock().unwrap() = Some(ViewPtr(view));
+        *GL_VIEW_PTR.lock() = Some(ViewPtr(view));
         tracing::info!("GL view attached below webview");
         Ok(view)
     }
@@ -92,7 +92,7 @@ pub fn create_and_attach_gl_view(window: &tauri::WebviewWindow) -> Result<*mut c
             return Err("failed to attach GL view".into());
         }
 
-        *GL_VIEW_PTR.lock().unwrap() = Some(ViewPtr(view));
+        *GL_VIEW_PTR.lock() = Some(ViewPtr(view));
         tracing::info!("GL view attached");
         Ok(view)
     }
@@ -104,7 +104,7 @@ pub fn create_and_attach_gl_view(window: &tauri::WebviewWindow) -> Result<*mut c
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn make_gl_context_current() {
-    let guard = GL_VIEW_PTR.lock().unwrap();
+    let guard = GL_VIEW_PTR.lock();
     if let Some(ViewPtr(view)) = guard.as_ref() {
         unsafe { blowup_make_gl_context_current(*view) };
     }
@@ -120,7 +120,7 @@ pub fn get_gl_proc_address_fn() -> unsafe extern "C" fn(*mut c_void, *const c_ch
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn request_render() {
-    let guard = GL_VIEW_PTR.lock().unwrap();
+    let guard = GL_VIEW_PTR.lock();
     if let Some(ViewPtr(view)) = guard.as_ref() {
         unsafe {
             blowup_request_render(*view);
@@ -129,7 +129,7 @@ pub fn request_render() {
 }
 
 pub fn remove_gl_view() {
-    let ptr = GL_VIEW_PTR.lock().unwrap().take();
+    let ptr = GL_VIEW_PTR.lock().take();
     if let Some(ViewPtr(view)) = ptr {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         unsafe {

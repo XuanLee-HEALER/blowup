@@ -105,7 +105,7 @@ impl TorrentManager {
                     // No file selection — reuse existing torrent as-is
                     let handle = self
                         .get_handle(id)
-                        .ok_or_else(|| format!("torrent {id} not found"))?;
+                        .ok_or_else(|| crate::error::status::not_found(format!("torrent {id}")))?;
                     tracing::info!(id, "torrent already managed, reusing");
                     return Ok((id, handle));
                 }
@@ -175,7 +175,7 @@ impl TorrentManager {
     pub async fn pause(&self, id: TorrentId) -> Result<(), String> {
         let handle = self
             .get_handle(id)
-            .ok_or_else(|| format!("torrent {id} not found"))?;
+            .ok_or_else(|| crate::error::status::not_found(format!("torrent {id}")))?;
         self.session
             .pause(&handle)
             .await
@@ -188,7 +188,7 @@ impl TorrentManager {
     pub async fn unpause(&self, id: TorrentId) -> Result<(), String> {
         let handle = self
             .get_handle(id)
-            .ok_or_else(|| format!("torrent {id} not found"))?;
+            .ok_or_else(|| crate::error::status::not_found(format!("torrent {id}")))?;
         self.session
             .unpause(&handle)
             .await

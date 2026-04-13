@@ -1,5 +1,33 @@
 use thiserror::Error;
 
+/// Tagged string errors for adapter-level HTTP status mapping.
+///
+/// Core service functions keep their ergonomic `Result<T, String>`
+/// signature. For errors that should *explicitly* map to a non-500
+/// HTTP status, they produce the string via one of these helpers so
+/// the axum adapter can do a prefix match instead of a substring
+/// match on the human-readable body (which breaks every time a
+/// sentence gets reworded).
+///
+/// The Tauri adapter ignores the prefixes — it just forwards the
+/// whole string to the frontend as-is, so the prefix shows up in the
+/// UI error banner. That's a feature: it flags at a glance that the
+/// error is "expected" (404) vs. "something exploded" (no prefix).
+pub mod status {
+    pub const NOT_FOUND_PREFIX: &str = "not_found: ";
+    pub const BAD_REQUEST_PREFIX: &str = "bad_request: ";
+
+    /// Tag an error string as "404 Not Found" for the HTTP adapter.
+    pub fn not_found(msg: impl Into<String>) -> String {
+        format!("{}{}", NOT_FOUND_PREFIX, msg.into())
+    }
+
+    /// Tag an error string as "400 Bad Request" for the HTTP adapter.
+    pub fn bad_request(msg: impl Into<String>) -> String {
+        format!("{}{}", BAD_REQUEST_PREFIX, msg.into())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Failed to read config file: {0}")]
