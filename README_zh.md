@@ -2,7 +2,7 @@
 
 > [Click here for English version](./README.md)
 
-![Version](https://img.shields.io/badge/Version-2.0.5-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.0.7-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
 
 > **《放大》[米开朗基罗·安东尼奥尼，1966]**：一位时装摄影师在公园里跟拍两名恋人时，无意间将一桩谋杀摄入镜头。
 >
@@ -57,7 +57,13 @@ blowup 的典型使用流程：
 
 ### 架构
 
-数据流采用**事件驱动**模式：后端数据变更后发射领域事件（`downloads:changed`、`library:changed`、`entries:changed`、`config:changed`），前端监听并重新拉取数据 — 无轮询。
+3-crate Rust workspace —— 详见 [`docs/REFACTOR.md`](./docs/REFACTOR.md)。
+
+- **`blowup-core`** —— 纯业务逻辑（种子、字幕、TMDB、电影库……），与 Tauri/HTTP 零耦合
+- **`blowup-server`** —— axum HTTP 封装。可独立运行，也可作为桌面进程内嵌在 `127.0.0.1:17690`，供局域网 iPad 共享同一套 DB + 电影库 + 种子会话
+- **`blowup-tauri`** —— 桌面适配层（Tauri 命令 + 内嵌 mpv 播放器 + 原生窗口）
+
+数据流采用**事件驱动**模式：后端数据变更后发射领域事件（`downloads:changed`、`library:changed`、`entries:changed`、`config:changed`、`tasks:changed`），前端监听并重新拉取数据 —— 无轮询。
 
 两个独立数据系统：
 - **知识库**（SQLite）：统一条目模型，标签分类，开放式关系
@@ -71,9 +77,11 @@ blowup 的典型使用流程：
 # Linux：sudo apt install libmpv-dev libwebkit2gtk-4.1-dev
 
 bun install
-just dev    # 开发模式
-just build  # 生产构建
-just check  # 检查（lint + 类型检查 + 测试）
+just dev          # 桌面开发（Tauri + Vite，热重载）
+just dev-server   # 仅后端 HTTP 服务器（无 WebView、无 libmpv）
+just build        # Tauri 安装包
+just build-server # 独立服务器 release 构建
+just check        # 检查（lint + 类型检查 + clippy + fmt + 测试）
 ```
 
 ### 运行时依赖

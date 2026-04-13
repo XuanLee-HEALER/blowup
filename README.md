@@ -2,7 +2,7 @@
 
 > [中文版本点此链接](./README_zh.md)
 
-![Version](https://img.shields.io/badge/Version-2.0.5-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.0.7-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
 
 > **Blow-Up [Michelangelo Antonioni, 1966]**: A fashion photographer unknowingly captures a death on film after following two lovers in a park.
 >
@@ -57,7 +57,13 @@ A typical workflow in blowup, end to end:
 
 ### Architecture
 
-Data flow is **event-driven**: backend mutations emit domain events (`downloads:changed`, `library:changed`, `entries:changed`, `config:changed`), frontend listens and re-fetches — no polling.
+3-crate Rust workspace — see [`docs/REFACTOR.md`](./docs/REFACTOR.md) for the rationale.
+
+- **`blowup-core`** — pure business logic (torrent, subtitle, tmdb, library, ...). Zero Tauri/HTTP coupling.
+- **`blowup-server`** — `axum` HTTP wrapper around `blowup-core`. Runs headless, or in-process inside the Tauri app on `127.0.0.1:17690` so a LAN iPad can share the same DB + library + torrent session.
+- **`blowup-tauri`** — desktop adapter (Tauri commands + embedded mpv player + native windows).
+
+Data flow is **event-driven**: backend mutations emit domain events (`downloads:changed`, `library:changed`, `entries:changed`, `config:changed`, `tasks:changed`), frontend listens and re-fetches — no polling.
 
 Two independent data systems:
 - **Knowledge Base** (SQLite): unified entry model with tags and open-ended relations
@@ -71,9 +77,11 @@ Two independent data systems:
 # Linux: sudo apt install libmpv-dev libwebkit2gtk-4.1-dev
 
 bun install
-just dev    # Development mode
-just build  # Production build
-just check  # Lint + typecheck + test
+just dev          # Desktop dev (Tauri + Vite, hot reload)
+just dev-server   # Headless HTTP server only (no WebView, no libmpv)
+just build        # Tauri installer
+just build-server # Standalone server release binary
+just check        # Lint + typecheck + clippy + fmt + test
 ```
 
 ### Runtime dependencies
