@@ -215,6 +215,24 @@ pub fn run() {
                     tracing::error!("embedded server: SqlitePool state missing");
                     return;
                 };
+                // Resolve the embedded server's auth token. When the
+                // token env var isn't supplied, generate a fresh one per
+                // launch and log it (Tauri frontend doesn't touch the
+                // HTTP server — this token is only for LAN/iOS clients).
+                let auth_token = match std::env::var("BLOWUP_SERVER_TOKEN") {
+                    Ok(t) if !t.is_empty() => {
+                        tracing::info!("embedded server: auth token loaded from BLOWUP_SERVER_TOKEN");
+                        t
+                    }
+                    _ => {
+                        let t = blowup_server::auth::generate_random_token();
+                        tracing::warn!(
+                            token = %t,
+                            "embedded server: BLOWUP_SERVER_TOKEN not set — generated ephemeral token for this session"
+                        );
+                        t
+                    }
+                };
                 let app_state = blowup_server::AppState::new(
                     pool,
                     server_index,
@@ -222,6 +240,7 @@ pub fn run() {
                     server_cell,
                     server_events,
                     server_tasks,
+                    std::sync::Arc::new(auth_token),
                 );
                 tracing::info!(
                     bind = EMBEDDED_SERVER_BIND,

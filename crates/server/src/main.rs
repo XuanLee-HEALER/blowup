@@ -5,8 +5,13 @@
 //! the axum router on `$BLOWUP_SERVER_BIND` (default 127.0.0.1:17690).
 //!
 //! Environment variables:
-//!   BLOWUP_DATA_DIR   — override app data directory (default: dirs::data_dir()/blowup-server)
+//!   BLOWUP_DATA_DIR    — override app data directory (default: dirs::data_dir()/blowup-server)
 //!   BLOWUP_SERVER_BIND — override bind address (default: 127.0.0.1:17690)
+//!   BLOWUP_SERVER_TOKEN — shared secret required on every request via
+//!                         `Authorization: Bearer <token>`. If unset a
+//!                         random token is generated at startup and
+//!                         logged at WARN level so you can copy it to
+//!                         the iOS / LAN client.
 
 use blowup_core::config;
 use blowup_core::infra::db;
@@ -42,6 +47,24 @@ fn resolve_data_dir() -> PathBuf {
 
 fn resolve_bind() -> String {
     std::env::var("BLOWUP_SERVER_BIND").unwrap_or_else(|_| DEFAULT_BIND.to_string())
+}
+
+fn resolve_auth_token() -> String {
+    match std::env::var("BLOWUP_SERVER_TOKEN") {
+        Ok(t) if !t.is_empty() => {
+            tracing::info!("auth token loaded from BLOWUP_SERVER_TOKEN");
+            t
+        }
+        _ => {
+            let t = blowup_server::auth::generate_random_token();
+            tracing::warn!(
+                token = %t,
+                "BLOWUP_SERVER_TOKEN not set — generated ephemeral token for this session; \
+                 set BLOWUP_SERVER_TOKEN to make it stable"
+            );
+            t
+        }
+    }
 }
 
 #[tokio::main]
@@ -96,7 +119,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let events = EventBus::new();
     let tasks = TaskRegistry::new();
-    let state = AppState::new(pool, library_index, tracker, torrent_cell, events, tasks);
+    let auth_token = Arc::new(resolve_auth_token());
+    let state = AppState::new(
+        pool,
+        library_index,
+        tracker,
+        torrent_cell,
+        events,
+        tasks,
+        auth_token,
+    );
     let app = build_router(state);
 
     let bind = resolve_bind();

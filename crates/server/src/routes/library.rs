@@ -195,11 +195,25 @@ async fn delete_film_directory(
         .get_entry(tmdb_id)
         .ok_or_else(|| crate::error::ApiError::NotFound("索引中未找到该电影".to_string()))?;
 
+    // Defensive: `.index.json` is user-owned and could contain a path
+    // with `..` segments. Refuse to touch anything that isn't a plain
+    // relative path underneath the library root.
+    if !crate::path_guard::is_safe_relative_path(&entry.path) {
+        return Err(crate::error::ApiError::Internal(format!(
+            "library index entry {} has unsafe path: {}",
+            tmdb_id, entry.path
+        )));
+    }
+
     let cfg = blowup_core::config::load_config();
     let root_dir = shellexpand::tilde(&cfg.library.root_dir).to_string();
-    let film_dir = format!("{}/{}", root_dir, entry.path);
-    match std::fs::remove_dir_all(&film_dir) {
-        Ok(()) | Err(_) => {}
+    let film_dir = std::path::Path::new(&root_dir).join(&entry.path);
+    if let Err(e) = std::fs::remove_dir_all(&film_dir) {
+        tracing::warn!(
+            error = %e,
+            dir = %film_dir.display(),
+            "failed to remove film directory"
+        );
     }
     state.library_index.remove_entry(tmdb_id);
     state.events.publish(DomainEvent::LibraryChanged);

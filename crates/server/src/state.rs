@@ -24,6 +24,9 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub events: EventBus,
     pub tasks: TaskRegistry,
+    /// Bearer token required by every route. Compared against the
+    /// client-supplied `Authorization: Bearer <token>` header.
+    pub auth_token: Arc<String>,
 }
 
 impl AppState {
@@ -34,6 +37,7 @@ impl AppState {
         torrent: Arc<OnceCell<TorrentManager>>,
         events: EventBus,
         tasks: TaskRegistry,
+        auth_token: Arc<String>,
     ) -> Self {
         Self {
             db,
@@ -43,6 +47,7 @@ impl AppState {
             http: reqwest::Client::new(),
             events,
             tasks,
+            auth_token,
         }
     }
 
