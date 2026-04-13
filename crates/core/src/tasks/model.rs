@@ -24,11 +24,19 @@ pub enum TaskKind {
 impl TaskKind {
     /// Unique key used as the HashMap index in `TaskRegistry`. Two
     /// tasks with the same key can't run concurrently — attempting
-    /// to start a duplicate returns an error.
-    pub fn id(&self) -> &str {
+    /// to start a duplicate returns an error. Different task kinds
+    /// targeting the same SRT are allowed (e.g. align-to-audio and
+    /// align-to-video produce the same output but through different
+    /// pipelines); we namespace the id with the kind prefix so they
+    /// don't collide.
+    pub fn id(&self) -> String {
         match self {
-            TaskKind::SubtitleAlignToAudio { srt_path, .. }
-            | TaskKind::SubtitleAlignToVideo { srt_path, .. } => srt_path,
+            TaskKind::SubtitleAlignToAudio { srt_path, .. } => {
+                format!("subtitle-align-audio::{srt_path}")
+            }
+            TaskKind::SubtitleAlignToVideo { srt_path, .. } => {
+                format!("subtitle-align-video::{srt_path}")
+            }
         }
     }
 }
@@ -66,4 +74,9 @@ pub struct TaskRecord {
     pub status: TaskStatus,
     pub started_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Monotonic per-start counter. Used by the registry to reject
+    /// late updates from a previous run of the same task id after
+    /// dismiss + restart. Not surfaced to the UI.
+    #[serde(skip)]
+    pub generation: u64,
 }

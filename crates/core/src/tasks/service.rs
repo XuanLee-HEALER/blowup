@@ -8,7 +8,9 @@
 //!   3. `tokio::spawn`s the real work so the caller's IPC/HTTP
 //!      future returns right away with the task id.
 //!   4. In the spawned task, awaits the result, updates the registry
-//!      to Completed / Failed, and publishes another TasksChanged.
+//!      to Completed / Failed (guarded by the task's generation so a
+//!      dismissed + restarted slot doesn't get clobbered), and
+//!      publishes another TasksChanged.
 
 use crate::infra::events::{DomainEvent, EventBus};
 use crate::subtitle::service as sub;
@@ -32,6 +34,7 @@ pub async fn run_subtitle_align_to_audio(
     let record = registry.start(kind).await?;
     events.publish(DomainEvent::TasksChanged);
     let id = record.id.clone();
+    let generation = record.generation;
 
     let reg = registry.clone();
     let evts = events.clone();
@@ -42,12 +45,12 @@ pub async fn run_subtitle_align_to_audio(
         match result {
             Ok(r) => {
                 tracing::info!(task_id = %id_for_task, "subtitle align-to-audio completed");
-                reg.complete(&id_for_task, r.summary, Some(r.output_path))
+                reg.complete(&id_for_task, generation, r.summary, Some(r.output_path))
                     .await;
             }
             Err(e) => {
                 tracing::warn!(task_id = %id_for_task, error = %e, "subtitle align-to-audio failed");
-                reg.fail(&id_for_task, e.to_string()).await;
+                reg.fail(&id_for_task, generation, e.to_string()).await;
             }
         }
         evts.publish(DomainEvent::TasksChanged);
@@ -70,6 +73,7 @@ pub async fn run_subtitle_align_to_video(
     let record = registry.start(kind).await?;
     events.publish(DomainEvent::TasksChanged);
     let id = record.id.clone();
+    let generation = record.generation;
 
     let reg = registry.clone();
     let evts = events.clone();
@@ -81,12 +85,17 @@ pub async fn run_subtitle_align_to_video(
             Ok(()) => {
                 tracing::info!(task_id = %id_for_task, "subtitle align-to-video completed");
                 // align_subtitle overwrites the original SRT in place — no separate output path
-                reg.complete(&id_for_task, "对齐完成（原文件已更新）".to_string(), None)
-                    .await;
+                reg.complete(
+                    &id_for_task,
+                    generation,
+                    "对齐完成（原文件已更新）".to_string(),
+                    None,
+                )
+                .await;
             }
             Err(e) => {
                 tracing::warn!(task_id = %id_for_task, error = %e, "subtitle align-to-video failed");
-                reg.fail(&id_for_task, e.to_string()).await;
+                reg.fail(&id_for_task, generation, e.to_string()).await;
             }
         }
         evts.publish(DomainEvent::TasksChanged);
