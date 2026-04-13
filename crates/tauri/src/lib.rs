@@ -108,10 +108,28 @@ pub fn run() {
                 let app_for_events = handle.clone();
                 let mut rx = events.subscribe();
                 tauri::async_runtime::spawn(async move {
-                    while let Ok(event) = rx.recv().await {
-                        if let Err(e) = app_for_events.emit(event.as_str(), ()) {
-                            tracing::warn!(error = %e, event = event.as_str(),
-                                "failed to forward event bus → app.emit");
+                    // Loop forever: on Lagged we drop the skipped events and
+                    // keep going; only Closed terminates the forwarder.
+                    // Using `while let Ok(..)` here would exit on the first
+                    // Lagged and silently freeze the frontend.
+                    loop {
+                        match rx.recv().await {
+                            Ok(event) => {
+                                if let Err(e) = app_for_events.emit(event.as_str(), ()) {
+                                    tracing::warn!(error = %e, event = event.as_str(),
+                                        "failed to forward event bus → app.emit");
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                                tracing::warn!(
+                                    skipped = n,
+                                    "event bus → app.emit forwarder lagged"
+                                );
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                tracing::info!("event bus closed — forwarder exiting");
+                                break;
+                            }
                         }
                     }
                 });

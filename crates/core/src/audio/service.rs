@@ -128,6 +128,43 @@ fn peaks_cache_path(audio: &Path) -> PathBuf {
     p
 }
 
+/// Cache is fresh iff both files exist and the sidecar's mtime is at
+/// least as recent as the source's. Any missing mtime or metadata
+/// failure counts as stale so the caller re-generates.
+fn peaks_cache_is_fresh(cache: &Path, source: &Path) -> bool {
+    let Ok(c_meta) = std::fs::metadata(cache) else {
+        return false;
+    };
+    let Ok(s_meta) = std::fs::metadata(source) else {
+        return false;
+    };
+    match (c_meta.modified(), s_meta.modified()) {
+        (Ok(c), Ok(s)) => c >= s,
+        _ => false,
+    }
+}
+
+/// Write bytes to `path` via a unique tmp file + rename, so two
+/// concurrent callers never truncate each other's output mid-read.
+fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let unique = format!(
+        ".tmp.{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let mut tmp = path.to_path_buf();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "cache.bin".to_string());
+    tmp.set_file_name(format!("{name}{unique}"));
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
+
 /// Return pre-computed waveform peak samples for `file` as raw
 /// little-endian float32 bytes (100 samples/sec, mono, normalized
 /// to [-1, 1] by ffmpeg).
@@ -146,7 +183,7 @@ pub async fn extract_audio_peaks(file: &Path) -> Result<Vec<u8>, String> {
     }
 
     let cache = peaks_cache_path(file);
-    if cache.exists() {
+    if peaks_cache_is_fresh(&cache, file) {
         return std::fs::read(&cache).map_err(|e| format!("读取峰值缓存失败: {e}"));
     }
 
@@ -171,8 +208,10 @@ pub async fn extract_audio_peaks(file: &Path) -> Result<Vec<u8>, String> {
         .await
         .map_err(|e| format!("生成波形峰值失败: {e}"))?;
 
-    // Persist cache; log and continue on write failure — we still have the bytes.
-    if let Err(e) = std::fs::write(&cache, &bytes) {
+    // Persist cache via atomic write (tmp + rename) so parallel
+    // callers never observe a partially-written file. Log on write
+    // failure — we still have the bytes in hand.
+    if let Err(e) = atomic_write(&cache, &bytes) {
         tracing::warn!(error = %e, path = %cache.display(), "failed to write peaks cache");
     }
 

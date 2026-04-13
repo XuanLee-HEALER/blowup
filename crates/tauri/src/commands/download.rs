@@ -253,20 +253,26 @@ pub async fn delete_download(
     let is_active = matches!(record.status.as_str(), "downloading" | "paused" | "pending");
 
     if is_active {
-        if let Some(tid) = record.torrent_id {
-            tm.remove(tid as usize).await.ok();
+        if let Some(tid) = record.torrent_id
+            && let Err(e) = tm.remove(tid as usize).await
+        {
+            tracing::warn!(torrent_id = tid, error = %e, "failed to remove torrent");
         }
 
         let tmdb_id = record.tmdb_id.unwrap_or(0) as u64;
         let director = record.director.as_deref().unwrap_or("Unknown");
         let dir = index.compute_download_path(director, tmdb_id);
         if dir.exists() {
-            std::fs::remove_dir_all(&dir).ok();
-            tracing::info!(?dir, "deleted download files");
-            if let Some(parent) = dir.parent()
-                && parent.read_dir().is_ok_and(|mut d| d.next().is_none())
-            {
-                std::fs::remove_dir(parent).ok();
+            if let Err(e) = std::fs::remove_dir_all(&dir) {
+                tracing::warn!(error = %e, ?dir, "failed to remove download dir");
+            } else {
+                tracing::info!(?dir, "deleted download files");
+                if let Some(parent) = dir.parent()
+                    && parent.read_dir().is_ok_and(|mut d| d.next().is_none())
+                    && let Err(e) = std::fs::remove_dir(parent)
+                {
+                    tracing::warn!(error = %e, ?parent, "failed to remove empty parent dir");
+                }
             }
         }
 

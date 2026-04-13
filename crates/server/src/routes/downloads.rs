@@ -134,14 +134,17 @@ async fn delete_download(State(state): State<AppState>, Path(id): Path<i64>) -> 
     if is_active {
         if let Ok(tm) = state.torrent()
             && let Some(tid) = record.torrent_id
+            && let Err(e) = tm.remove(tid as usize).await
         {
-            tm.remove(tid as usize).await.ok();
+            tracing::warn!(torrent_id = tid, error = %e, "failed to remove torrent");
         }
         let tmdb_id = record.tmdb_id.unwrap_or(0) as u64;
         let director = record.director.as_deref().unwrap_or("Unknown");
         let dir = state.library_index.compute_download_path(director, tmdb_id);
-        if dir.exists() {
-            std::fs::remove_dir_all(&dir).ok();
+        if dir.exists()
+            && let Err(e) = std::fs::remove_dir_all(&dir)
+        {
+            tracing::warn!(error = %e, dir = %dir.display(), "failed to remove download dir");
         }
         state.library_index.remove_entry(tmdb_id);
     }
