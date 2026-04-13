@@ -227,9 +227,7 @@ pub async fn get_active_download(
         .fetch_optional(pool)
         .await
         .map_err(|e| e.to_string())?
-        .ok_or_else(|| {
-            crate::error::status::not_found(format!("download not in {status} state"))
-        })
+        .ok_or_else(|| crate::error::status::not_found(format!("download not in {status} state")))
 }
 
 pub async fn get_download_record(pool: &SqlitePool, id: i64) -> Result<DownloadRecord, String> {

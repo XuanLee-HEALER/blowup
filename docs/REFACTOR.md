@@ -1,11 +1,88 @@
 # Workspace Refactor — core / server / tauri
 
-> **Status**: steps 1–5 complete on branch `refactor/workspace-core-server`
-> (awaiting review). Steps 6 (iOS client) and 7 (static libav) are still
-> open.
+> **Status**: steps 1–5 merged to `main` (2026-04-13). A follow-up
+> pass addressed review findings — auth + path safety on the axum
+> server (blocker fixes), plus the non-blocker cleanup list below.
+> Steps 6 (iOS client) and 7 (static libav) remain open.
+>
 > **Goal**: split the single `src-tauri` crate into a `blowup-core` library plus
 > two thin adapters (`blowup-server`, `blowup-tauri`) so that a future native
 > iOS/iPadOS client can share the same Rust business logic via HTTP.
+
+## Review follow-up (2026-04-13)
+
+The refactor landed in one large branch. An independent review
+flagged 2 blockers and 18 non-blocker items; both blockers + every
+non-blocker were resolved in the same push to `main`.
+
+**Blockers fixed before merge**:
+
+1. `crates/core/migrations/001_initial.sql` header comment had been
+   rewritten during the workspace split. Since sqlx computes
+   migration checksums over the entire file (comments included), the
+   rewrite produced `MigrateError::VersionMismatch(1)` on every
+   pre-existing install. Reverted so the file is byte-identical to
+   pre-refactor `src-tauri/migrations/001_initial.sql`.
+2. The axum server's `CorsLayer::very_permissive()` + zero-auth
+   combination meant any web page the user visited could POST to
+   `localhost:17690` and (via `import/config`, `subtitle/shift`,
+   `library/resources`, `library/index/{id}` delete, …) write
+   arbitrary files. Replaced with: drop the CORS layer entirely
+   (no `Access-Control-Allow-Origin` → browsers block preflight) +
+   mandatory `Authorization: Bearer <token>` middleware on every
+   route, token resolved from `$BLOWUP_SERVER_TOKEN` or generated
+   randomly per-session and logged at startup. `.index.json`
+   entries are also validated against `..`-traversal before being
+   joined with the library root.
+
+**Non-blockers fixed after merge** (each landed as its own `fix:` /
+`refactor:` commit, tagged N1..N18):
+
+- N1 Tauri EventBus→app.emit forwarder handles `Lagged` without
+  exiting the forwarder task.
+- N2 `TaskRegistry` uses a per-start `generation` counter so a
+  dismissed+restarted task's old spawned future can't clobber the
+  new record. `TaskKind::id()` is also namespaced per variant so
+  align-to-audio and align-to-video on the same SRT don't collide.
+- N3 Download progress monitor moved to
+  `core::workflows::download_monitor` and used by both the Tauri
+  commands and the standalone server routes, so standalone mode
+  actually transitions downloads out of `downloading`.
+- N4 + N16 + N17 path-safety helpers (`infra::paths::{
+  is_safe_relative_path, is_within_root}`) applied at every site
+  that joins a user-controlled string into the library root.
+- N5 destructive fs operations log on failure instead of
+  silently swallowing the error.
+- N6 `AppContext` moved to core; `blowup_server::AppState` is now
+  a type alias over it, and the Tauri adapter constructs the same
+  struct at startup — no more duplicate wiring when a new shared
+  resource is added.
+- N7 new `core::workflows/` module. `subtitle_align` and
+  `download_monitor` migrated there; remaining cross-domain
+  imports (`tmdb → library`, `media → library`, `torrent →
+  library`) are documented as "`LibraryIndex` is an infra type"
+  in `core/src/library/mod.rs` rather than hiding them.
+- N8 server error layer no longer string-matches Chinese substrings
+  to classify 404s. Core services tag status-relevant errors via
+  `core::error::status::{not_found, bad_request}` prefixes; the
+  axum adapter `strip_prefix`-matches instead.
+- N9 17 shadow dependencies removed from `crates/tauri/Cargo.toml`.
+- N10 dead code with `panic!()` in non-test path deleted.
+- N11 `credits_put` degrades to `warn + drop` when the cache
+  wasn't initialised, matching `credits_get`'s lenient behavior.
+- N12 audio-peaks cache is invalidated when the source mtime is
+  newer than the sidecar; writes go through `rename`-atomic tmp
+  files so parallel calls never truncate each other.
+- N13 `crates/server/tests/smoke.rs` — 11 smoke tests covering
+  auth (200/401 for every variant of bad/missing/wrong token),
+  404 on unknown routes + nonexistent resource, and fresh-install
+  empty-array responses from the read paths.
+- N14 (folded into N17).
+- N15 every `std::sync::{Mutex, RwLock}.*().unwrap()` site
+  migrated to `parking_lot` locks (no poisoning → no unwrap).
+- N18 — this section.
+
+See commit range `b4f1938..HEAD` on `main` for the implementation.
 
 ---
 

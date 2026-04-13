@@ -10,11 +10,11 @@ use crate::config::Config;
 use crate::error::SubError;
 use crate::infra::ffmpeg::{FfmpegError, FfmpegTool};
 use crate::subtitle::{alass, parser::format_srt_ts};
+use parking_lot::Mutex;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use parking_lot::Mutex;
 use std::sync::LazyLock;
 use std::time::Instant;
 
