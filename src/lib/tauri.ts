@@ -499,26 +499,26 @@ export const player = {
 
 // ── Skill Bridge ────────────────────────────────────────────────
 
-export type SkillBridgeStatus = {
+export interface SkillBridgeStatus {
   running: boolean;
   socket_path: string | null;
   supported: boolean;
-};
+}
 
-export type InstallReport = {
+export interface InstallReport {
   binary_path: string;
   skill_path: string;
   claude_added: boolean;
   manual_command: string | null;
-};
+}
 
-export type InstallSnippets = {
+export interface InstallSnippets {
   binary_path: string;
   claude_code: string;
   claude_desktop: string;
   cursor: string;
   cline: string;
-};
+}
 
 export const skillBridge = {
   status: () => invoke<SkillBridgeStatus>("skill_bridge_status"),
