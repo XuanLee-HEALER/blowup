@@ -420,7 +420,17 @@ pub fn run() {
             // Skill bridge
             commands::skill::skill_bridge_status,
             commands::skill::skill_bridge_start,
+            commands::skill::skill_bridge_stop,
         ])
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if let Some(state) = window
+                    .try_state::<crate::skill_bridge::state::SkillBridgeState>()
+                {
+                    state.shutdown_blocking();
+                }
+            }
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|handle, event| {

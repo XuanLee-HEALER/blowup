@@ -31,4 +31,16 @@ impl SkillBridgeState {
     pub fn current_socket_path(&self) -> Option<PathBuf> {
         self.0.lock().as_ref().map(|h| h.socket_path.clone())
     }
+
+    /// Sync best-effort cleanup, safe to call from a window-close event
+    /// handler or signal handler. Sends the shutdown signal and unlinks
+    /// the socket file synchronously. Does NOT await the serve task —
+    /// the Tokio runtime will reap it when the process exits.
+    pub fn shutdown_blocking(&self) {
+        if let Some(h) = self.0.lock().take() {
+            let _ = h.shutdown_tx.send(());
+            #[cfg(unix)]
+            let _ = std::fs::remove_file(&h.socket_path);
+        }
+    }
 }

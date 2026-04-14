@@ -121,6 +121,24 @@ pub async fn skill_bridge_start(
     Err("Skill bridge 在 Windows 上暂未支持".to_string())
 }
 
+/// Stop the skill bridge server. Idempotent — no-op if already stopped.
+/// Sends the shutdown signal, waits up to 2 s for the serve task to
+/// exit, then unlinks the socket file (Unix only).
+#[tauri::command]
+pub async fn skill_bridge_stop(
+    state: tauri::State<'_, SkillBridgeState>,
+) -> Result<(), String> {
+    let handle = state.0.lock().take();
+    let Some(h) = handle else {
+        return Ok(()); // already stopped, idempotent
+    };
+    let _ = h.shutdown_tx.send(());
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), h.task).await;
+    #[cfg(unix)]
+    let _ = std::fs::remove_file(&h.socket_path);
+    Ok(())
+}
+
 #[cfg(unix)]
 fn ensure_parent_dir(socket_path: &std::path::Path) -> Result<(), String> {
     let parent = socket_path
