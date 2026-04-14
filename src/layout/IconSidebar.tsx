@@ -31,7 +31,9 @@ export function IconSidebar() {
         width: 78,
         flexShrink: 0,
         background: "var(--color-bg-secondary)",
-        borderRight: "0.5px solid var(--color-separator)",
+        // Faint divider — the default --color-separator (rgba 60 60 67 / 0.29)
+        // is too prominent next to the muted sidebar background; halve it.
+        borderRight: "0.5px solid rgba(60, 60, 67, 0.12)",
         display: "flex",
         flexDirection: "column",
         position: "relative",

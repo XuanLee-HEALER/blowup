@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { Children, Fragment, useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
@@ -6,6 +6,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Divider,
   Group,
   NumberInput,
   Paper,
@@ -592,12 +593,7 @@ function DataIORow({
   };
 
   return (
-    <Group
-      gap="1rem"
-      py="0.65rem"
-      style={{ borderBottom: "1px solid var(--color-separator)" }}
-      wrap="nowrap"
-    >
+    <Group gap="1rem" py="0.65rem" wrap="nowrap">
       <Text size="sm" c="var(--color-label-secondary)" w={120} style={{ flexShrink: 0 }}>
         {label}
       </Text>
@@ -633,6 +629,10 @@ function DataIORow({
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
+  // Insert a Divider between consecutive children (but not after the last
+  // one) so each row's separator lives outside the row component, leaving
+  // the last item in the section borderless.
+  const items = Children.toArray(children);
   return (
     <Box mb="2rem">
       <Text
@@ -652,7 +652,12 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
         py="0.1rem"
         style={{ borderColor: "var(--color-separator)" }}
       >
-        <Stack gap={0}>{children}</Stack>
+        {items.map((child, i) => (
+          <Fragment key={i}>
+            {child}
+            {i < items.length - 1 && <Divider color="var(--color-separator)" />}
+          </Fragment>
+        ))}
       </Paper>
     </Box>
   );
@@ -660,15 +665,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <Group
-      gap="1rem"
-      py="0.65rem"
-      style={{
-        borderBottom: "1px solid var(--color-separator)",
-      }}
-      align="center"
-      wrap="nowrap"
-    >
+    <Group gap="1rem" py="0.65rem" align="center" wrap="nowrap">
       <Text size="sm" c="var(--color-label-secondary)" w={120} style={{ flexShrink: 0 }}>
         {label}
       </Text>

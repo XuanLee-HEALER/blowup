@@ -6,30 +6,20 @@ import { useGlobalHotkeys } from "../lib/useGlobalHotkeys";
 /**
  * Root window shell — two vertical regions side by side:
  *
- *   [ 74px IconSidebar ] [ flex: 1 main column ]
- *                        ┌──────── Outlet → SpaceShell ──────┐
- *                        │  Toolbar (40px, y=0)              │
- *                        │  main + ContextPanel (row)        │
- *                        └───────────────────────────────────┘
+ *   [ 78px IconSidebar ] [ flex: 1 main column                         ]
+ *                        ┌─ 40px drag stripe (vertical alignment) ─────┐
+ *                        ├──────── Outlet → SpaceShell ────────────────┤
+ *                        │  Toolbar (40px, y=40)                       │
+ *                        │  main + ContextPanel (row)                  │
+ *                        └─────────────────────────────────────────────┘
  *
- * The 74px IconSidebar fully contains the macOS traffic-light cluster
- * (8px left margin + 58px buttons + 8px symmetric right margin), so
- * the buttons are horizontally centered and never leak into the main
- * content area. This means the right column can start at y=0 — the
- * toolbar sits flush with the window top edge, like Finder or VS Code.
- *
- * Vertical alignment between the toolbar and the sidebar's first space
- * icon is intentionally NOT enforced here; the sidebar's first icon is
- * offset 40px from the top for the traffic lights, while the toolbar
- * occupies the right column's top 40px directly. This is the same
- * asymmetry every native macOS document app uses.
- *
- * Window dragging is provided by:
- *   - the IconSidebar's top 40px gap (above the first space icon)
- *   - the Toolbar's middle spacer (between left and right clusters)
- * Both are dedicated empty <div>s with `data-tauri-drag-region`, since
- * Tauri 2 with `titleBarStyle: Overlay` does not honour the CSS
- * `-webkit-app-region` contract and the attribute does not bubble.
+ * The right column starts with a 40px drag stripe so the toolbar's top
+ * edge aligns vertically with the sidebar's first space icon (which
+ * sits 40px below the window top to clear the macOS traffic lights).
+ * The stripe is also a `data-tauri-drag-region` so the user can drag
+ * the window from above the toolbar — particularly important for
+ * spaces (like Settings) whose main content area doesn't have its own
+ * draggable spacer.
  */
 export function AppLayout() {
   useGlobalHotkeys();
@@ -54,7 +44,22 @@ export function AppLayout() {
           overflow: "hidden",
         }}
       >
-        <Outlet />
+        <div
+          data-tauri-drag-region
+          style={{ height: 40, flexShrink: 0, width: "100%" }}
+        />
+        <Box
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            minWidth: 0,
+            minHeight: 0,
+            overflow: "hidden",
+          }}
+        >
+          <Outlet />
+        </Box>
       </Box>
     </Box>
   );
