@@ -417,6 +417,8 @@ pub fn run() {
             player::commands::cmd_player_get_current_file,
             player::commands::cmd_player_sub_add,
             player::commands::cmd_player_load_overlay_subs,
+            // Skill bridge
+            commands::skill::skill_bridge_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
