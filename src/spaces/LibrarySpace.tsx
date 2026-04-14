@@ -408,13 +408,14 @@ export function LibrarySpace() {
                           : convertFileSrc(entry.poster_url)
                       }
                       alt={entry.title}
-                      h={180}
-                      fit="cover"
+                      w="100%"
+                      h="auto"
+                      fit="contain"
                     />
                   ) : (
                     <Box
-                      h={180}
                       style={{
+                        aspectRatio: "2 / 3",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
