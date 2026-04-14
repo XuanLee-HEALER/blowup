@@ -8,6 +8,7 @@ pub mod health;
 pub mod library;
 pub mod media;
 pub mod search;
+pub mod skill;
 pub mod subtitle;
 pub mod tasks;
 pub mod tmdb;

@@ -43,6 +43,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::media::router())
         .merge(routes::audio::router())
         .merge(routes::tracker::router())
+        .merge(routes::skill::router())
         .merge(routes::subtitle::router())
         .merge(routes::entries::router())
         .merge(routes::library::router())
