@@ -44,8 +44,6 @@ use blowup_core::AppContext;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(unix)]
-use std::path::PathBuf;
-#[cfg(unix)]
 use std::sync::Arc;
 #[cfg(unix)]
 use tokio::sync::oneshot;
@@ -56,9 +54,11 @@ pub async fn skill_bridge_start(
     state: tauri::State<'_, SkillBridgeState>,
     ctx: tauri::State<'_, Arc<AppContext>>,
 ) -> Result<(), String> {
-    if !SKILL_BRIDGE_SUPPORTED {
-        return Err("Skill bridge 在 Windows 上暂未支持".to_string());
-    }
+    // SKILL_BRIDGE_SUPPORTED is `cfg!(unix)` and this fn body is
+    // `#[cfg(unix)]`, so the const is always true here. Keep a
+    // debug_assert so the link is documented in code without lying
+    // about a runtime check.
+    debug_assert!(SKILL_BRIDGE_SUPPORTED);
 
     if state.is_running() {
         return Err("Skill bridge 已经在运行中".to_string());
@@ -128,16 +128,34 @@ fn ensure_parent_dir(socket_path: &std::path::Path) -> Result<(), String> {
         .ok_or_else(|| "socket path has no parent".to_string())?;
     std::fs::create_dir_all(parent)
         .map_err(|e| format!("mkdir {} 失败: {e}", parent.display()))?;
+    // Best-effort hardening: 0700 on the parent dir keeps other
+    // local users from probing the socket. Failing here doesn't
+    // block startup (the socket file's own 0600 perms below are
+    // the actual security boundary), but log it so an operator can
+    // notice a degraded state.
     let perms = std::fs::Permissions::from_mode(0o700);
-    let _ = std::fs::set_permissions(parent, perms);
+    if let Err(e) = std::fs::set_permissions(parent, perms) {
+        tracing::warn!(
+            error = %e,
+            path = %parent.display(),
+            "failed to chmod 0700 skill bridge parent dir; relying on socket 0600"
+        );
+    }
     Ok(())
 }
 
 /// If the socket file already exists, try to connect to it. If we
 /// can connect, another desktop instance is using it — bail. If we
 /// can't, it's an orphan from a previous crash — unlink it.
+///
+/// Known limitation: `connect` can also fail under load if the
+/// owning process's accept backlog is momentarily full, in which
+/// case we'd unlink a live socket. Acceptable for a single-user
+/// desktop tool where the listener never sees concurrent traffic.
+/// If this ever becomes a problem, replace with a PID-liveness
+/// check (e.g. `getpeercred` on a successful connect).
 #[cfg(unix)]
-async fn handle_stale_socket(socket_path: &PathBuf) -> Result<(), String> {
+async fn handle_stale_socket(socket_path: &std::path::Path) -> Result<(), String> {
     if !socket_path.exists() {
         return Ok(());
     }
