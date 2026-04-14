@@ -632,6 +632,7 @@ function SkillBridgeSection() {
   const [snippetsOpen, setSnippetsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [installMsg, setInstallMsg] = useState<string | null>(null);
+  const [toggleErr, setToggleErr] = useState<string | null>(null);
 
   const refresh = async () => {
     try {
@@ -643,17 +644,21 @@ function SkillBridgeSection() {
 
   useEffect(() => {
     refresh();
-    skillBridge.getInstallSnippets().then(setSnippets).catch(() => {});
+    skillBridge
+      .getInstallSnippets()
+      .then(setSnippets)
+      .catch((e) => console.error("skill bridge get_install_snippets failed:", e));
   }, []);
 
   const toggle = async (on: boolean) => {
     setBusy(true);
+    setToggleErr(null);
     try {
       if (on) await skillBridge.start();
       else await skillBridge.stop();
       await refresh();
     } catch (e) {
-      alert(`Skill Bridge 操作失败: ${e}`);
+      setToggleErr(`Skill Bridge 操作失败: ${e}`);
     } finally {
       setBusy(false);
     }
@@ -700,16 +705,26 @@ function SkillBridgeSection() {
         <Group gap="md" align="center" wrap="nowrap">
           <Switch
             checked={status?.running ?? false}
-            disabled={busy}
+            disabled={busy || status === null}
             onChange={(e) => toggle(e.currentTarget.checked)}
+            aria-label="Skill Bridge 启用开关"
           />
           <Text size="xs" c="var(--color-label-tertiary)">
-            {status?.running
-              ? `运行中 — ${status.socket_path ?? ""}`
-              : "已停止"}
+            {status === null
+              ? "加载中…"
+              : status.running
+                ? `运行中 — ${status.socket_path ?? ""}`
+                : "已停止"}
           </Text>
         </Group>
       </Field>
+      {toggleErr && (
+        <Field label="">
+          <Text size="xs" c="red" style={{ whiteSpace: "pre-wrap" }}>
+            {toggleErr}
+          </Text>
+        </Field>
+      )}
       <Field label="安装">
         <Group gap="0.5rem">
           <Button size="xs" variant="default" onClick={install} loading={busy}>
@@ -719,6 +734,7 @@ function SkillBridgeSection() {
             size="xs"
             variant="subtle"
             onClick={() => setSnippetsOpen(!snippetsOpen)}
+            aria-expanded={snippetsOpen}
           >
             {snippetsOpen ? "隐藏" : "显示"}其他客户端配置
           </Button>
@@ -754,13 +770,18 @@ function SnippetBlock({ title, body }: { title: string; body: string }) {
         <ActionIcon
           size="xs"
           variant="subtle"
+          aria-label={`复制 ${title} 配置`}
           onClick={() => {
-            navigator.clipboard.writeText(body);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
+            navigator.clipboard
+              .writeText(body)
+              .then(() => {
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              })
+              .catch((e) => console.error("clipboard write failed:", e));
           }}
         >
-          {copied ? "✓" : "复制"}
+          {copied ? "已复制" : "复制"}
         </ActionIcon>
       </Group>
       <Code block>{body}</Code>
