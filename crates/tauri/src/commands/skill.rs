@@ -6,6 +6,7 @@
 
 use crate::skill_bridge::state::SkillBridgeState;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 /// Single source of truth for whether the skill bridge feature works
 /// on the current build target. Today this is just `cfg!(unix)` —
@@ -269,8 +270,6 @@ fn shell_escape(s: &str) -> String {
     }
 }
 
-use sha2::{Digest, Sha256};
-
 #[derive(Serialize)]
 pub struct InstallReport {
     pub binary_path: String,
@@ -289,85 +288,110 @@ pub async fn skill_bridge_install_to_claude_code(
         return Err("Skill bridge 在 Windows 上暂未支持".to_string());
     }
 
+    // Resolve paths on the async side — they don't touch disk.
     let resource_dir = app
         .path()
         .resource_dir()
         .map_err(|e| format!("resource_dir: {e}"))?;
-    let bundled_binary = resource_dir.join("blowup-mcp");
-    let bundled_skill = resource_dir
-        .join("skills")
-        .join("blowup-wiki-writer")
-        .join("SKILL.md");
-
-    if !bundled_binary.exists() {
-        return Err(format!(
-            "打包资源缺少 blowup-mcp 二进制(预期 {})。请用 `just build-mcp && just build` 重新打包",
-            bundled_binary.display()
-        ));
-    }
-    if !bundled_skill.exists() {
-        return Err(format!(
-            "打包资源缺少 SKILL.md(预期 {})",
-            bundled_skill.display()
-        ));
-    }
-
     let target_binary = installed_binary_path(&app)?;
-    if let Some(parent) = target_binary.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("mkdir {} 失败: {e}", parent.display()))?;
-    }
-    copy_if_changed(&bundled_binary, &target_binary)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = std::fs::Permissions::from_mode(0o755);
-        std::fs::set_permissions(&target_binary, perms)
-            .map_err(|e| format!("chmod 0755 失败: {e}"))?;
-    }
+    // Path → String via to_str() so we don't silently swallow non-UTF-8
+    // paths inside Command::args (where unwrap_or("") would register a
+    // broken empty MCP entry).
+    let target_binary_str = target_binary
+        .to_str()
+        .ok_or_else(|| {
+            format!(
+                "install path is not valid UTF-8: {}",
+                target_binary.display()
+            )
+        })?
+        .to_string();
 
-    let home = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .ok_or_else(|| "no HOME env var".to_string())?;
-    let skill_dir = home
-        .join(".claude")
-        .join("skills")
-        .join("blowup-wiki-writer");
-    std::fs::create_dir_all(&skill_dir)
-        .map_err(|e| format!("mkdir {} 失败: {e}", skill_dir.display()))?;
-    let skill_target = skill_dir.join("SKILL.md");
-    std::fs::copy(&bundled_skill, &skill_target)
-        .map_err(|e| format!("copy SKILL.md 失败: {e}"))?;
+    // Everything past this point hits the disk (file copies, mkdirs,
+    // SHA256 hashes, chmod, std::process::Command::status). Wrap it in
+    // spawn_blocking so the Tauri async runtime worker isn't held up
+    // for the duration of a multi-megabyte file copy.
+    let target_binary_for_blocking = target_binary.clone();
+    let target_binary_str_for_blocking = target_binary_str.clone();
+    let report = tokio::task::spawn_blocking(move || -> Result<InstallReport, String> {
+        let bundled_binary = resource_dir.join("blowup-mcp");
+        let bundled_skill = resource_dir
+            .join("skills")
+            .join("blowup-wiki-writer")
+            .join("SKILL.md");
 
-    let manual_command = format!(
-        "claude mcp add blowup-skill {}",
-        shell_escape(&target_binary.to_string_lossy())
-    );
+        if !bundled_binary.exists() {
+            return Err(format!(
+                "打包资源缺少 blowup-mcp 二进制(预期 {})。请用 `just build-mcp && just build` 重新打包",
+                bundled_binary.display()
+            ));
+        }
+        if !bundled_skill.exists() {
+            return Err(format!(
+                "打包资源缺少 SKILL.md(预期 {})",
+                bundled_skill.display()
+            ));
+        }
 
-    let claude_added = std::process::Command::new("claude")
-        .args([
-            "mcp",
-            "add",
-            "blowup-skill",
-            target_binary.to_str().unwrap_or(""),
-        ])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
+        if let Some(parent) = target_binary_for_blocking.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("mkdir {} 失败: {e}", parent.display()))?;
+        }
+        copy_if_changed(&bundled_binary, &target_binary_for_blocking)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o755);
+            std::fs::set_permissions(&target_binary_for_blocking, perms)
+                .map_err(|e| format!("chmod 0755 失败: {e}"))?;
+        }
+
+        let home = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .ok_or_else(|| "no HOME env var".to_string())?;
+        let skill_dir = home
+            .join(".claude")
+            .join("skills")
+            .join("blowup-wiki-writer");
+        std::fs::create_dir_all(&skill_dir)
+            .map_err(|e| format!("mkdir {} 失败: {e}", skill_dir.display()))?;
+        let skill_target = skill_dir.join("SKILL.md");
+        std::fs::copy(&bundled_skill, &skill_target)
+            .map_err(|e| format!("copy SKILL.md 失败: {e}"))?;
+
+        let manual_command = format!(
+            "claude mcp add blowup-skill {}",
+            shell_escape(&target_binary_str_for_blocking)
+        );
+
+        let claude_added = std::process::Command::new("claude")
+            .args(["mcp", "add", "blowup-skill", &target_binary_str_for_blocking])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        Ok(InstallReport {
+            binary_path: target_binary_str_for_blocking,
+            skill_path: skill_target.to_string_lossy().into_owned(),
+            claude_added,
+            manual_command: if claude_added {
+                None
+            } else {
+                Some(manual_command)
+            },
+        })
+    })
+    .await
+    .map_err(|e| format!("install task panicked: {e}"))??;
 
     tracing::info!(
-        binary = %target_binary.display(),
-        skill = %skill_target.display(),
-        claude_added,
+        binary = %report.binary_path,
+        skill = %report.skill_path,
+        claude_added = report.claude_added,
         "skill bridge installed"
     );
 
-    Ok(InstallReport {
-        binary_path: target_binary.to_string_lossy().into_owned(),
-        skill_path: skill_target.to_string_lossy().into_owned(),
-        claude_added,
-        manual_command: if claude_added { None } else { Some(manual_command) },
-    })
+    Ok(report)
 }
 
 fn copy_if_changed(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
