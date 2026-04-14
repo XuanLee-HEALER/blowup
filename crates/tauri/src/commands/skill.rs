@@ -190,3 +190,68 @@ async fn handle_stale_socket(socket_path: &std::path::Path) -> Result<(), String
         }
     }
 }
+
+#[derive(Serialize)]
+pub struct InstallSnippets {
+    pub binary_path: String,
+    pub claude_code: String,
+    pub claude_desktop: String,
+    pub cursor: String,
+    pub cline: String,
+}
+
+#[tauri::command]
+pub async fn skill_bridge_get_install_snippets(
+    app: tauri::AppHandle,
+) -> Result<InstallSnippets, String> {
+    let bin = installed_binary_path(&app)?;
+    let bin_str = bin.to_string_lossy().to_string();
+
+    let claude_code = format!(
+        "claude mcp add blowup-skill {}",
+        shell_escape(&bin_str)
+    );
+
+    let json_block = serde_json::json!({
+        "mcpServers": {
+            "blowup-skill": {
+                "command": bin_str.clone(),
+                "args": []
+            }
+        }
+    });
+    let pretty = serde_json::to_string_pretty(&json_block)
+        .map_err(|e| format!("serialize snippet: {e}"))?;
+
+    Ok(InstallSnippets {
+        binary_path: bin_str,
+        claude_code,
+        claude_desktop: pretty.clone(),
+        cursor: pretty.clone(),
+        cline: pretty,
+    })
+}
+
+/// The path where `skill_bridge_install_to_claude_code` will copy the
+/// binary. Same function used by both commands so the snippets and the
+/// install action agree on the target.
+fn installed_binary_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let _ = app; // unused on unix today, kept for Windows future
+    #[cfg(unix)]
+    {
+        let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;
+        Ok(home.join(".local").join("share").join("blowup").join("blowup-mcp"))
+    }
+    #[cfg(not(unix))]
+    {
+        Err("Windows 暂不支持".to_string())
+    }
+}
+
+fn shell_escape(s: &str) -> String {
+    if s.chars().all(|c| c.is_alphanumeric() || "/-._".contains(c)) {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', "'\\''"))
+    }
+}
