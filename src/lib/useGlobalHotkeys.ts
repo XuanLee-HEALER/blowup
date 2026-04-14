@@ -2,30 +2,35 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { SPACES } from "./space";
 
+/** True when the focused element is a text-editing surface where
+ *  Cmd+1 / Cmd+, etc. would otherwise stomp on user input. */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLInputElement) return target.type !== "checkbox" && target.type !== "radio";
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLSelectElement) return true;
+  return target.isContentEditable;
+}
+
 /**
- * Global keyboard shortcuts registered once at the AppLayout level.
+ * Global keyboard shortcuts:
  *
  *   Cmd+1 / Cmd+2 / Cmd+3   switch space (library / discover / knowledge)
  *   Cmd+,                   open settings overlay
- *   Esc                     close context panel (handled by ContextPanel itself
- *                           via document listener — kept here as a no-op note)
  *
- * Cmd+F is space-local (each space's toolbar search input registers its own
- * focus), so it is NOT registered globally.
+ * Suppressed while an editable element has focus so the user's
+ * typing context is never destroyed by a stray modifier collision.
  */
 export function useGlobalHotkeys() {
   const navigate = useNavigate();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Only intercept Cmd/Ctrl combinations.
-      const meta = e.metaKey || e.ctrlKey;
-      if (!meta) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (isEditableTarget(e.target)) return;
 
-      // Cmd+1/2/3
       if (e.key >= "1" && e.key <= "3") {
-        const idx = parseInt(e.key, 10) - 1;
-        const target = SPACES[idx];
+        const target = SPACES[parseInt(e.key, 10) - 1];
         if (target) {
           e.preventDefault();
           navigate(target.route);
@@ -33,11 +38,9 @@ export function useGlobalHotkeys() {
         return;
       }
 
-      // Cmd+,
       if (e.key === ",") {
         e.preventDefault();
         navigate("/settings");
-        return;
       }
     };
 

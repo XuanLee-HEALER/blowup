@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Box, Group } from "@mantine/core";
+import { TOOLBAR_HEIGHT } from "./constants";
 
 interface ToolbarProps {
   /** Left cluster (typically search box, tabs, segmented control) */
@@ -8,26 +9,15 @@ interface ToolbarProps {
   right?: ReactNode;
 }
 
-/**
- * 40px tall horizontal toolbar pinned to the top of every space's main area.
- *
- * Window dragging is provided by a dedicated empty <div> placed BETWEEN
- * the left and right clusters with `data-tauri-drag-region`. Tauri 2's
- * drag-region attribute does NOT bubble to descendants and CSS
- * `-webkit-app-region` is not honoured under `titleBarStyle: Overlay`,
- * so the spacer is a hard requirement — we cannot just mark the whole
- * toolbar bar.
- *
- * The spacer takes `flex: 1` to consume all space between the two
- * clusters, so wherever the user tries to grab the toolbar background
- * (anywhere not covered by an actual control) the drag works.
- */
+/** Per-space toolbar. The drag spacer between left/right clusters is
+ *  a dedicated empty <div> because data-tauri-drag-region does not
+ *  bubble to descendants. */
 export function Toolbar({ left, right }: ToolbarProps) {
   return (
     <Box
       component="header"
       style={{
-        height: 40,
+        height: TOOLBAR_HEIGHT,
         flexShrink: 0,
         borderBottom: "0.5px solid var(--color-separator)",
         background: "var(--color-bg-primary)",
@@ -41,7 +31,6 @@ export function Toolbar({ left, right }: ToolbarProps) {
         {left}
       </Group>
 
-      {/* Drag handle — fills the gap between clusters. */}
       <div data-tauri-drag-region style={{ flex: 1, alignSelf: "stretch" }} />
 
       <Group gap="0.5rem" style={{ flexShrink: 0 }} wrap="nowrap">

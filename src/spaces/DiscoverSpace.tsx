@@ -6,16 +6,8 @@ import Download from "../pages/Download";
 
 type DiscoverTab = "search" | "downloads";
 
-/**
- * Discover space — combines TMDB search and download queue under a single
- * top-level icon (formerly two separate sidebar entries). The tab switcher
- * lives in the toolbar and toggles between the two sub-views via routes.
- *
- * Phase C scope: tab + sub-view rendering. The legacy Search and Download
- * pages render their full content (including their own headers/search inputs)
- * inside the main area. Migrating the search input itself into the toolbar
- * is a future polish step (docs §104, §116).
- */
+/** Discover space — TMDB search + download queue under one icon, with
+ *  a SegmentedControl in the toolbar to switch between the two. */
 export function DiscoverSpace() {
   const navigate = useNavigate();
   const { pathname } = useLocation();

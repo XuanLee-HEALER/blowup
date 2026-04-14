@@ -6,17 +6,8 @@ import Graph from "../pages/Graph";
 
 type KnowledgeView = "list" | "graph";
 
-/**
- * Knowledge space — list view (Wiki) and graph view (D3 force layout)
- * are two views over the same entries+relations data, switched via
- * SegmentedControl in the toolbar. Editing an entry is a separate
- * full-width route (`/knowledge/edit/:entryId`) handled by KnowledgeEditor.
- *
- * Phase D scope: top-level view switch only. The list and graph pages
- * keep their internal layouts (Wiki has its own list+detail split inside;
- * Graph is the full canvas). Future polish step: lift the Wiki entry
- * preview into the context panel and edit into a full-width overlay.
- */
+/** Knowledge space — list (Wiki) and graph (D3 force layout) views
+ *  over the same entries+relations data, switched via the toolbar. */
 export function KnowledgeSpace() {
   const navigate = useNavigate();
   const { pathname } = useLocation();

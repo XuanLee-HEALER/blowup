@@ -51,12 +51,6 @@ export const theme = createTheme({
   cursorType: "pointer",
   focusRing: "auto",
   components: {
-    Input: {
-      defaultProps: { size: "sm", variant: "filled" },
-    },
-    InputWrapper: {
-      defaultProps: { size: "sm" },
-    },
     TextInput: {
       defaultProps: { size: "sm", variant: "filled" },
     },

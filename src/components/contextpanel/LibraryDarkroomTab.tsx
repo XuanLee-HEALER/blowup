@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ActionIcon,
@@ -42,13 +42,14 @@ import {
   formatBitrate,
   formatFrameRate,
 } from "../../lib/format";
+import {
+  AUDIO_EXTS,
+  SUB_EXTS,
+  VIDEO_EXTS,
+  getExt,
+  getStem,
+} from "../../lib/mediaExts";
 import { useBackendEvent, BackendEvent } from "../../lib/useBackendEvent";
-
-const VIDEO_EXTS = ["mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v"];
-const SUB_EXTS = ["srt", "ass", "sub", "idx", "vtt"];
-const AUDIO_EXTS = ["mp3", "aac", "flac", "opus", "m4a", "wav", "ogg", "ac3", "dts", "mka"];
-const getExt = (f: string) => f.split(".").pop()?.toLowerCase() ?? "";
-const getStem = (f: string) => f.replace(/\.[^.]+$/, "");
 
 function openWaveformWindow(filePath: string) {
   invoke("open_waveform_window", { filePath }).catch(console.error);
@@ -641,24 +642,22 @@ interface LibraryDarkroomTabProps {
 export function LibraryDarkroomTab({ entry, rootDir }: LibraryDarkroomTabProps) {
   const rootPath = `${rootDir}/${entry.path}`;
   const [status, setStatus] = useState<StatusMsg | null>(null);
-  const [files, setFiles] = useState(entry.files);
   const [fetchingLang, setFetchingLang] = useState("zh");
   const [fetchingSub, setFetchingSub] = useState(false);
   const [subResults, setSubResults] = useState<SubtitleSearchResult[] | null>(null);
   const [downloadingSub, setDownloadingSub] = useState<string | null>(null);
   const [taskMap, setTaskMap] = useState<Map<string, TaskRecord>>(() => new Map());
 
-  // Sync local files when the parent passes a new entry
-  useEffect(() => {
-    setFiles(entry.files);
-  }, [entry]);
-
-  const refreshFiles = useCallback(async () => {
-    await library.refreshIndexEntry(entry.tmdb_id);
-    const entries = await library.listIndexEntries();
-    const updated = entries.find((e) => e.tmdb_id === entry.tmdb_id);
-    if (updated) setFiles(updated.files);
-  }, [entry.tmdb_id]);
+  // Files come straight from `entry.files`. Whenever a tool action
+  // mutates the directory we just call `library.refreshIndexEntry` —
+  // the resulting LIBRARY_CHANGED event re-pulls the parent's
+  // directorMap, the parent re-derives selectedEntry, and the new
+  // entry prop arrives here automatically. No local files state
+  // means no full-index round-trip per action.
+  const refreshFiles = useCallback(
+    () => library.refreshIndexEntry(entry.tmdb_id),
+    [entry.tmdb_id]
+  );
 
   const refreshTasks = useCallback(async () => {
     try {
@@ -673,17 +672,20 @@ export function LibraryDarkroomTab({ entry, rootDir }: LibraryDarkroomTabProps) 
   }, [refreshTasks]);
   useBackendEvent(BackendEvent.TASKS_CHANGED, refreshTasks);
 
-  const videoFiles = files.filter((f) => VIDEO_EXTS.includes(getExt(f)));
-  const allSubtitleFiles = files.filter((f) => SUB_EXTS.includes(getExt(f)));
-  const isAligned = (f: string) => f.includes(".aligned.");
-  const subtitleFiles = allSubtitleFiles.filter((f) => !isAligned(f));
-  const getAlignedFiles = (parentFile: string) => {
-    const stem = getStem(parentFile);
-    return allSubtitleFiles.filter(
-      (f) => isAligned(f) && f.startsWith(stem + ".aligned.")
-    );
-  };
-  const audioFiles = files.filter((f) => AUDIO_EXTS.includes(getExt(f)));
+  const { videoFiles, subtitleFiles, audioFiles, getAlignedFiles } = useMemo(() => {
+    const all = entry.files;
+    const subs = all.filter((f) => SUB_EXTS.includes(getExt(f)));
+    const isAligned = (f: string) => f.includes(".aligned.");
+    return {
+      videoFiles: all.filter((f) => VIDEO_EXTS.includes(getExt(f))),
+      subtitleFiles: subs.filter((f) => !isAligned(f)),
+      audioFiles: all.filter((f) => AUDIO_EXTS.includes(getExt(f))),
+      getAlignedFiles: (parent: string) => {
+        const stem = getStem(parent);
+        return subs.filter((f) => isAligned(f) && f.startsWith(stem + ".aligned."));
+      },
+    };
+  }, [entry.files]);
   const primaryVideo = videoFiles[0] ?? null;
 
   const handleSearchSubtitle = async () => {

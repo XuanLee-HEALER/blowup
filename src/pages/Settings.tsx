@@ -25,6 +25,7 @@ import {
   type MusicTrack,
   type TrackerStatus,
 } from "../lib/tauri";
+import { BackendEvent, useBackendEvent } from "../lib/useBackendEvent";
 
 const LANG_OPTIONS = [
   { value: "zh", label: "中文 (zh)" },
@@ -44,6 +45,10 @@ export default function Settings() {
     config.getCachePath().then(setCachePath);
     tracker.getStatus().then(setTrackerStatus);
   }, []);
+
+  useBackendEvent(BackendEvent.CONFIG_CHANGED, () => {
+    config.get().then(setCfg);
+  });
 
   const update = (mutate: (draft: AppConfig) => void) => {
     setCfg((prev) => {
@@ -506,7 +511,6 @@ export default function Settings() {
                 if (path) {
                   const msg = await dataIO.importKnowledgeBase(path as string);
                   alert(msg);
-                  config.get().then(setCfg);
                 }
               }
             }}
@@ -517,7 +521,6 @@ export default function Settings() {
               } else {
                 const msg = await dataIO.importKnowledgeBaseS3();
                 alert(msg);
-                config.get().then(setCfg);
               }
             }}
           />
@@ -537,7 +540,6 @@ export default function Settings() {
                 const path = await open({ filters: [{ name: "TOML", extensions: ["toml"] }] });
                 if (path) {
                   await config.importConfig(path as string);
-                  config.get().then(setCfg);
                   alert("配置导入成功，部分设置需重启生效");
                 }
               }
@@ -548,7 +550,6 @@ export default function Settings() {
                 alert("配置已导出到云端");
               } else {
                 await dataIO.importConfigS3();
-                config.get().then(setCfg);
                 alert("云端配置导入成功，部分设置需重启生效");
               }
             }}

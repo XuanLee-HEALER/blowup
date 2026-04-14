@@ -65,7 +65,6 @@ export function LibrarySpace() {
   const [searchResults, setSearchResults] = useState<IndexEntry[] | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [sortMode, setSortMode] = useState<SortMode>("title");
-  const [enrichedOverride, setEnrichedOverride] = useState<IndexEntry | null>(null);
   const [enriching, setEnriching] = useState(false);
   const [subConfigs, setSubConfigs] = useState<Map<string, SubConfig>>(new Map());
   const [rootDir, setRootDir] = useState("");
@@ -84,29 +83,30 @@ export function LibrarySpace() {
 
   useBackendEvent(BackendEvent.LIBRARY_CHANGED, refresh);
 
-  // URL → derived selectedEntry. The base entry comes from the loaded
-  // directorMap; if a TMDB enrichment finishes for the same id we prefer
-  // the enrichedOverride. Storing only the override (not the whole entry)
-  // keeps render derivable from URL + directorMap and avoids the
-  // "setState inside effect" antipattern.
+  // Flat tmdb_id → entry index, rebuilt only when directorMap changes.
+  // Lets selectedEntry resolution be a single Map.get instead of an
+  // O(n) nested .find scan on every render.
+  const entriesById = useMemo(() => {
+    const map = new Map<number, IndexEntry>();
+    for (const entries of Object.values(directorMap)) {
+      for (const entry of entries) map.set(entry.tmdb_id, entry);
+    }
+    return map;
+  }, [directorMap]);
+
   const selectedEntry: IndexEntry | null = useMemo(() => {
     if (!movieId) return null;
     const id = parseInt(movieId, 10);
-    if (isNaN(id)) return null;
-    if (enrichedOverride && enrichedOverride.tmdb_id === id) return enrichedOverride;
-    for (const entries of Object.values(directorMap)) {
-      const found = entries.find((e) => e.tmdb_id === id);
-      if (found) return found;
-    }
-    return null;
-  }, [movieId, directorMap, enrichedOverride]);
+    return isNaN(id) ? null : entriesById.get(id) ?? null;
+  }, [movieId, entriesById]);
 
-  // Auto-enrich newly selected entries that are missing poster data.
-  // Restore subtitle configs from the entry's saved snapshot whenever the
-  // selection changes.
+  // Restore the saved overlay configs for whichever entry just became
+  // selected. Auto-enrich missing posters; the resulting LIBRARY_CHANGED
+  // event re-pulls directorMap which feeds back into selectedEntry, so
+  // no local override state is needed.
   useEffect(() => {
     if (!selectedEntry) {
-      setSubConfigs(new Map());
+      setSubConfigs((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
     const saved = selectedEntry.subtitle_configs ?? {};
@@ -120,13 +120,11 @@ export function LibrarySpace() {
       setEnriching(true);
       library
         .enrichIndexEntry(selectedEntry.tmdb_id)
-        .then((enriched) => setEnrichedOverride(enriched))
         .catch(() => {})
         .finally(() => setEnriching(false));
     }
-    // We deliberately depend only on tmdb_id, not the full object, so
-    // the enrichment effect runs once per selection rather than each
-    // time the override updates.
+    // Only depend on tmdb_id so this fires once per selection, not on
+    // every directorMap refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEntry?.tmdb_id]);
 
@@ -209,7 +207,6 @@ export function LibrarySpace() {
     setEnriching(true);
     library
       .enrichIndexEntry(selectedEntry.tmdb_id, true)
-      .then((enriched) => setEnrichedOverride(enriched))
       .catch((e) => alert(`刷新失败: ${e}`))
       .finally(() => setEnriching(false));
   };
@@ -318,8 +315,6 @@ export function LibrarySpace() {
         onClick={() => onSelectEntry(entry)}
         onContextMenu={(e) => {
           e.preventDefault();
-          // Right-click directly delete via confirm; the context menu was a
-          // 1-item affordance and we lose nothing by inlining.
           handleDeleteFilm(entry);
         }}
         w="100%"
@@ -345,9 +340,21 @@ export function LibrarySpace() {
     );
   };
 
-  const flatList = searchResults
-    ? sortEntries(searchResults, sortMode)
-    : directors.flatMap((dir) => sortEntries(directorMap[dir], sortMode));
+  // Memoized to avoid re-sorting the entire library on every keystroke /
+  // hover / unrelated state change. groupedSorted holds the per-director
+  // sorted slices for the list view; flatList is the same data flattened
+  // for the grid view and the search-results path.
+  const groupedSorted = useMemo(
+    () => Object.fromEntries(directors.map((dir) => [dir, sortEntries(directorMap[dir], sortMode)])),
+    [directors, directorMap, sortMode]
+  );
+  const flatList = useMemo(
+    () =>
+      searchResults
+        ? sortEntries(searchResults, sortMode)
+        : directors.flatMap((dir) => groupedSorted[dir]),
+    [searchResults, sortMode, directors, groupedSorted]
+  );
 
   const main = (
     <ScrollArea style={{ flex: 1 }}>
@@ -374,7 +381,7 @@ export function LibrarySpace() {
                   </Text>
                 </Group>
               </Box>
-              {sortEntries(directorMap[dir], sortMode).map(renderRow)}
+              {groupedSorted[dir].map(renderRow)}
             </Box>
           ))
         )

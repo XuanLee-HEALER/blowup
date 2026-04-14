@@ -2,22 +2,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ActionIcon, Box, Stack, Tooltip } from "@mantine/core";
 import { IconSettings } from "@tabler/icons-react";
 import { SPACES, activeSpaceFor } from "../lib/space";
+import { SIDEBAR_WIDTH, TOPBAR_HEIGHT } from "./constants";
 
-/**
- * Fixed 74px-wide vertical sidebar with three space icons + settings cog.
- *
- *   - 74px = 8px (system left margin, measured) + 58px (traffic-light
- *     cluster: 3 buttons × 14px + 2 gaps × 8px) + 8px (right margin,
- *     symmetric with the left). The cluster is horizontally centered
- *     and never leaks into the main content area.
- *   - Top 40px is reserved as a drag region so the traffic-light buttons
- *     (decorations: true + titleBarStyle: Overlay) sit on top without
- *     overlapping any interactive element.
- *   - First space icon is offset 40px from the top for the same reason.
- *   - Settings cog at the bottom is pinned via flex spacer.
- *
- * No text labels per docs/blowup-layout-spec.md §53.
- */
+/** Vertical sidebar with three space icons + a settings cog at the
+ *  bottom. The first icon sits below a fixed-height top stripe so the
+ *  macOS traffic-light overlay (titleBarStyle: Overlay) doesn't cover
+ *  any interactive element. */
 export function IconSidebar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -28,29 +18,21 @@ export function IconSidebar() {
     <Box
       component="nav"
       style={{
-        width: 78,
+        width: SIDEBAR_WIDTH,
         flexShrink: 0,
         background: "var(--color-bg-secondary)",
-        // Faint divider — the default --color-separator (rgba 60 60 67 / 0.29)
-        // is too prominent next to the muted sidebar background; halve it.
         borderRight: "0.5px solid rgba(60, 60, 67, 0.12)",
         display: "flex",
         flexDirection: "column",
         position: "relative",
       }}
     >
-      {/* Top 40px drag region — sits behind the macOS traffic lights.
-          Must be a plain <div> with `data-tauri-drag-region` (Tauri 2's
-          attribute, not a CSS rule). The attribute does not bubble to
-          descendants, so we use a dedicated empty element rather than
-          marking the whole sidebar. */}
+      {/* Top stripe sits behind the macOS traffic lights and acts as a
+          drag region. Must be a plain <div> with data-tauri-drag-region
+          — the attribute does not bubble to descendants. */}
       <div
         data-tauri-drag-region
-        style={{
-          height: 40,
-          width: "100%",
-          flexShrink: 0,
-        }}
+        style={{ height: TOPBAR_HEIGHT, width: "100%", flexShrink: 0 }}
       />
 
       <Stack gap={8} align="center" style={{ flexShrink: 0 }}>

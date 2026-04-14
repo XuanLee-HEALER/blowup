@@ -16,10 +16,9 @@ import {
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { IndexEntry } from "../../lib/tauri";
 
-const VIDEO_EXTS = ["mp4", "mkv", "avi", "mov", "ts", "flv", "wmv", "webm", "m4v"];
-const SUB_EXTS = ["srt", "ass", "sub", "idx"];
+import { isSubtitleFile, isVideoFile } from "../../lib/mediaExts";
+
 const CREDIT_ORDER = ["导演", "主演", "编剧", "摄影", "配乐", "剪辑", "制片"];
-const getExt = (f: string) => f.split(".").pop()?.toLowerCase() ?? "";
 
 export interface SubConfig {
   enabled: boolean;
@@ -39,12 +38,8 @@ interface LibraryDetailTabProps {
   onUpdateSubConfig: (file: string, patch: Partial<SubConfig>) => void;
 }
 
-/**
- * The "details" tab of the Library context panel. Lifted verbatim from
- * the old Library page (around `Library.tsx:371-623` in the inline-style
- * era). All state lives in the parent space — this component is fully
- * controlled.
- */
+/** Library context panel — "details" tab. Fully controlled by the
+ *  parent space; no internal state. */
 export function LibraryDetailTab({
   entry,
   enriching,
@@ -55,8 +50,8 @@ export function LibraryDetailTab({
   onToggleSub,
   onUpdateSubConfig,
 }: LibraryDetailTabProps) {
-  const videoFiles = entry.files.filter((f) => VIDEO_EXTS.includes(getExt(f)));
-  const subtitleFiles = entry.files.filter((f) => SUB_EXTS.includes(getExt(f)));
+  const videoFiles = entry.files.filter(isVideoFile);
+  const subtitleFiles = entry.files.filter(isSubtitleFile);
   const credits = entry.credits ?? {};
 
   return (

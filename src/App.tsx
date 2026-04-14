@@ -10,10 +10,8 @@ import { MusicPlayer } from "./components/MusicPlayer";
 import { config, type MusicTrack } from "./lib/tauri";
 import { useBackendEvent, BackendEvent } from "./lib/useBackendEvent";
 
-/**
- * Global music-player state lives at the App root so the floating widget
- * stays mounted across space switches and isn't unmounted by route changes.
- */
+// Music-player state lives at the App root so the floating widget
+// stays mounted across space switches.
 export default function App() {
   const [musicEnabled, setMusicEnabled] = useState(false);
   const [musicMode, setMusicMode] = useState<"sequential" | "random">("sequential");
@@ -44,30 +42,18 @@ export default function App() {
       <Routes>
         <Route element={<AppLayout />}>
           <Route index element={<Navigate to="/library" replace />} />
-
-          {/* Library space */}
           <Route path="library" element={<LibrarySpace />} />
           <Route path="library/:movieId" element={<LibrarySpace />} />
-
-          {/* Discover space */}
           <Route path="discover" element={<DiscoverSpace />} />
           <Route path="discover/downloads" element={<DiscoverSpace />} />
-
-          {/* Knowledge space */}
           <Route path="knowledge" element={<KnowledgeSpace />} />
           <Route path="knowledge/graph" element={<KnowledgeSpace />} />
           <Route path="knowledge/edit/:entryId" element={<KnowledgeSpace />} />
-
-          {/* Settings overlay (sidebar still visible, main+context replaced) */}
           <Route path="settings" element={<SettingsOverlay />} />
-
-          {/* Catch-all → library */}
           <Route path="*" element={<Navigate to="/library" replace />} />
         </Route>
       </Routes>
 
-      {/* Floating music player: rendered outside the layout so it doesn't get
-          re-mounted on space switches and stays pinned bottom-right. */}
       <MusicPlayer active enabled={musicEnabled} mode={musicMode} playlist={musicPlaylist} />
     </>
   );

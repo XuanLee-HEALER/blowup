@@ -41,8 +41,6 @@ export const SPACES: SpaceDef[] = [
   },
 ];
 
-export const DEFAULT_SPACE: SpaceDef = SPACES[0];
-
 /** Resolve which space a pathname belongs to (route prefix match). */
 export function activeSpaceFor(pathname: string): SpaceDef | null {
   return SPACES.find((s) => pathname === s.route || pathname.startsWith(s.route + "/")) ?? null;

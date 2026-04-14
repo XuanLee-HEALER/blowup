@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Box } from "@mantine/core";
 import { Toolbar } from "./Toolbar";
 import { ContextPanel } from "./ContextPanel";
+import { MAIN_MIN_WIDTH } from "./constants";
 
 interface SpaceShellProps {
   /** Toolbar left cluster */
@@ -51,7 +52,7 @@ export function SpaceShell({
           component="main"
           style={{
             flex: 1,
-            minWidth: 480,
+            minWidth: MAIN_MIN_WIDTH,
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
