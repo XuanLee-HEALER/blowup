@@ -140,10 +140,14 @@ pub struct GetEntryArgs {
     pub id: i64,
 }
 
+// Each tool's user-visible documentation lives in its
+// `#[tool(description = "...")]` attribute — that string lands in
+// `tools/list` verbatim and is what Claude actually reads. We
+// deliberately don't duplicate it as a rustdoc comment because the
+// rustdoc gets stripped at compile time and never reaches the wire,
+// so the two would drift out of sync.
 #[tool_router]
 impl BlowupService {
-    /// 探测 desktop app 是否在线。无副作用,返回 desktop 的健康响应。
-    /// 调试 skill bridge 时用。
     #[tool(
         description = "探测 blowup desktop app 是否在线。调用 /api/v1/health,成功返回 \"ok\"。无副作用,主要用于调试 skill bridge 是否已开启。"
     )]
@@ -152,8 +156,6 @@ impl BlowupService {
         Ok("ok".to_string())
     }
 
-    /// 列出知识库条目。可选按名称子串(query)和/或标签(tag)过滤。
-    /// 写新条目前必须先用此工具查重 — 同名条目存在时应改为 update_wiki。
     #[tool(
         description = "列出知识库条目。可选按名称子串(query)和/或标签(tag)过滤。写新条目前必须先用此工具查重 — 同名条目存在时应改为 update_wiki,不要新建。"
     )]
@@ -182,8 +184,6 @@ impl BlowupService {
         Ok(Json(EntryList { entries }))
     }
 
-    /// 获取单个条目的完整内容(包括 wiki markdown、标签、关系)。
-    /// 若返回 NotFound,先用 list_entries 查询正确的 ID。
     #[tool(
         description = "获取单个条目的完整内容(包括 wiki markdown、标签、关系)。参数 id 来自 list_entries 或 create_entry 的返回值。若返回 NotFound,先用 list_entries 查询正确的 ID。"
     )]
@@ -199,7 +199,6 @@ impl BlowupService {
         Ok(Json(detail))
     }
 
-    /// 列出知识库中已使用的全部标签。
     #[tool(
         description = "列出知识库中已使用的全部标签。写条目前调用一次,从中挑选最匹配的现有标签,只在确实没有合适标签时才用 add_tag 创建新标签。这避免标签碎片化(\"导演\" / \"电影导演\" / \"导演角色\" 同时存在)。"
     )]
@@ -208,7 +207,6 @@ impl BlowupService {
         Ok(Json(StringList { items }))
     }
 
-    /// 列出知识库中已使用的全部关系类型。
     #[tool(
         description = "列出知识库中已使用的全部关系类型(如 \"导演了\"、\"主演了\"、\"属于流派\")。调用 add_relation 前必须先用此工具查询 — 关系类型是用户自定义字符串,没有固定枚举,但要复用现有的而不是发明新的。"
     )]
