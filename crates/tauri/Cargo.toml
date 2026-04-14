@@ -18,6 +18,7 @@ blowup-server      = { path = "../server" }
 tauri              = { version = "2.10", features = ["protocol-asset", "macos-private-api"] }
 tauri-plugin-dialog = "2.7"
 tauri-plugin-opener = "2.5"
+tauri-plugin-single-instance = "2"
 serde              = { version = "1", features = ["derive"] }
 serde_json         = "1"
 reqwest            = { version = "0.12", features = ["json"] }
