@@ -51,8 +51,16 @@ dev-web:
 
 # ── Build ─────────────────────────────────────────────────────────
 
+# Build the blowup-mcp bridge binary and copy it into Tauri resources
+# so the bundler picks it up. Always runs in release mode — debug
+# bridge binaries are huge and have no practical use here.
+build-mcp:
+    cargo build --release -p blowup-mcp
+    mkdir -p crates/tauri/resources
+    cp target/release/blowup-mcp crates/tauri/resources/blowup-mcp
+
 # Desktop production build (Tauri installer — bundles libmpv + frontend)
-build:
+build: build-mcp
     bunx tauri build
 
 # Standalone server release binary (target/release/blowup-server[.exe])
