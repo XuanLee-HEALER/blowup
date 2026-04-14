@@ -505,6 +505,12 @@ dependencies = [
 [[package]]
 name = "blowup-mcp"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs 5.0.1",
+ "serial_test",
+ "tempfile",
+]
 
 [[package]]
 name = "blowup-server"
