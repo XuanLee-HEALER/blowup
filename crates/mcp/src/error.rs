@@ -40,9 +40,23 @@ impl ErrorCode {
 
 #[derive(Debug, Clone)]
 pub struct McpError {
-    pub code: ErrorCode,
-    pub message: String,
-    pub hint: Option<String>,
+    code: ErrorCode,
+    message: String,
+    hint: Option<String>,
+}
+
+impl McpError {
+    pub fn code(&self) -> ErrorCode {
+        self.code
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn hint(&self) -> Option<&str> {
+        self.hint.as_deref()
+    }
 }
 
 impl McpError {
@@ -91,9 +105,13 @@ impl McpError {
     }
 }
 
+/// `Display` renders the raw message only — no `[FATAL] ` prefix, no
+/// hint. Use this for tracing/logging so the structured error type
+/// stays clean. Reserve `user_message()` for the MCP boundary where
+/// Claude needs the prefix to pattern-match.
 impl fmt::Display for McpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.user_message())
+        f.write_str(&self.message)
     }
 }
 
@@ -125,9 +143,22 @@ mod tests {
             "条目 #999 不存在",
             Some("请先用 list_entries 查询".to_string()),
         );
-        let msg = e.user_message();
-        assert!(msg.contains("条目 #999 不存在"));
-        assert!(msg.contains("请先用 list_entries 查询"));
+        // Lock down the exact format — the skill markdown pattern-matches
+        // on `\n提示: ` so any drift here silently breaks the prompt.
+        assert_eq!(
+            e.user_message(),
+            "条目 #999 不存在\n提示: 请先用 list_entries 查询"
+        );
+    }
+
+    #[test]
+    fn display_does_not_leak_fatal_prefix() {
+        // Display is for logging/tracing — keep the [FATAL] marker out
+        // of structured logs. Only the MCP boundary (user_message) sees it.
+        let e = McpError::bridge_offline();
+        let displayed = format!("{e}");
+        assert!(!displayed.contains("[FATAL]"));
+        assert!(displayed.contains("blowup app 未启用 skill bridge"));
     }
 
     #[test]
