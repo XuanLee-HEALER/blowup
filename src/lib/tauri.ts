@@ -496,3 +496,36 @@ export const player = {
   loadOverlaySubs: (configs: SubtitleOverlayConfig[]) =>
     invoke<string>("cmd_player_load_overlay_subs", { configs }),
 };
+
+// ── Skill Bridge ────────────────────────────────────────────────
+
+export type SkillBridgeStatus = {
+  running: boolean;
+  socket_path: string | null;
+  supported: boolean;
+};
+
+export type InstallReport = {
+  binary_path: string;
+  skill_path: string;
+  claude_added: boolean;
+  manual_command: string | null;
+};
+
+export type InstallSnippets = {
+  binary_path: string;
+  claude_code: string;
+  claude_desktop: string;
+  cursor: string;
+  cline: string;
+};
+
+export const skillBridge = {
+  status: () => invoke<SkillBridgeStatus>("skill_bridge_status"),
+  start: () => invoke<void>("skill_bridge_start"),
+  stop: () => invoke<void>("skill_bridge_stop"),
+  installToClaudeCode: () =>
+    invoke<InstallReport>("skill_bridge_install_to_claude_code"),
+  getInstallSnippets: () =>
+    invoke<InstallSnippets>("skill_bridge_get_install_snippets"),
+};
