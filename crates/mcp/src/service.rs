@@ -22,8 +22,7 @@ use rmcp::schemars::JsonSchema;
 use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
 use serde::{Deserialize, Serialize};
 
-/// Minimal service used to verify the rmcp wiring before adding the
-/// 9 real tools. After Tasks 8/9 the `ping` method will be removed.
+/// Bridge service exposing the 9 knowledge-base tools over stdio MCP.
 ///
 /// Not `Clone`: `BlowupClient` holds a hyper client that isn't cheaply
 /// cloneable. rmcp's `ServerHandler` doesn't require `Clone` on the
@@ -101,6 +100,18 @@ pub struct StringList {
     pub items: Vec<String>,
 }
 
+/// Wrapper for `create_entry` tool output. MCP outputSchema root must be object.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct EntryIdResponse {
+    pub id: i64,
+}
+
+/// Wrapper for `add_relation` tool output. MCP outputSchema root must be object.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct RelationIdResponse {
+    pub id: i64,
+}
+
 /// Mirrors `blowup_core::entries::model::RelationEntry`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RelationEntry {
@@ -140,6 +151,52 @@ pub struct GetEntryArgs {
     pub id: i64,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct CreateEntryArgs {
+    /// 条目名称,中文,不含书名号 / 引号 / 年份后缀。
+    /// 例:`情书` (✓), `《情书》` (✗), `情书 (1995)` (✗)
+    /// 创建前必须先用 list_entries(query=name) 查重,
+    /// 同名条目存在时应改为 update_wiki 而不是新建。
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdateWikiArgs {
+    /// 条目 ID。从 list_entries 或 create_entry 的返回值取得。
+    pub id: i64,
+    /// Wiki 内容,Markdown 格式,中文。会**完全覆盖**条目现有的 wiki 内容,
+    /// 不是 append。先用 get_entry 拿到现有 wiki 再合并,如果是更新而非新写。
+    pub wiki: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct UpdateNameArgs {
+    /// 条目 ID。
+    pub id: i64,
+    /// 新的条目名称,规则同 create_entry.name。
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AddTagArgs {
+    /// 条目 ID。
+    pub entry_id: i64,
+    /// 标签字符串。优先使用 list_all_tags 返回的现有标签,
+    /// 只在确实没有合适标签时才创建新标签。
+    pub tag: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AddRelationArgs {
+    /// 关系起点条目 ID。
+    pub from_id: i64,
+    /// 关系终点条目 ID。
+    pub to_id: i64,
+    /// 关系类型字符串。必须先用 list_relation_types 查询现有类型并复用,
+    /// 不要发明新类型(例如不要用 "拍了" 当 "导演了" 已经存在时)。
+    pub relation_type: String,
+}
+
 // Each tool's user-visible documentation lives in its
 // `#[tool(description = "...")]` attribute — that string lands in
 // `tools/list` verbatim and is what Claude actually reads. We
@@ -148,14 +205,6 @@ pub struct GetEntryArgs {
 // so the two would drift out of sync.
 #[tool_router]
 impl BlowupService {
-    #[tool(
-        description = "探测 blowup desktop app 是否在线。调用 /api/v1/health,成功返回 \"ok\"。无副作用,主要用于调试 skill bridge 是否已开启。"
-    )]
-    pub async fn ping(&self) -> Result<String, ErrorData> {
-        let _: serde_json::Value = self.client.get("/api/v1/health", None).await?;
-        Ok("ok".to_string())
-    }
-
     #[tool(
         description = "列出知识库条目。可选按名称子串(query)和/或标签(tag)过滤。写新条目前必须先用此工具查重 — 同名条目存在时应改为 update_wiki,不要新建。"
     )]
@@ -216,6 +265,121 @@ impl BlowupService {
             .get("/api/v1/entries/relation-types", None)
             .await?;
         Ok(Json(StringList { items }))
+    }
+
+    #[tool(
+        description = "创建一个新的知识库条目并返回其 ID。**调用前必须**先用 list_entries(query=name) 查重 — 同名条目存在时应改为 update_wiki,而不是新建。条目名称规则:中文,不含书名号、引号、年份后缀。"
+    )]
+    pub async fn create_entry(
+        &self,
+        Parameters(args): Parameters<CreateEntryArgs>,
+    ) -> Result<Json<EntryIdResponse>, ErrorData> {
+        #[derive(serde::Serialize)]
+        struct Body<'a> {
+            name: &'a str,
+        }
+        let id: i64 = self
+            .client
+            .post(
+                "/api/v1/entries",
+                &Body { name: &args.name },
+                Some("先用 list_entries(query=name) 查重"),
+            )
+            .await?;
+        Ok(Json(EntryIdResponse { id }))
+    }
+
+    #[tool(
+        description = "更新条目的 wiki markdown 内容。**完全覆盖**,不是 append。若是更新而非新写,先用 get_entry 拿到现有内容再合并。Wiki 内容应为中文 Markdown。"
+    )]
+    pub async fn update_wiki(
+        &self,
+        Parameters(args): Parameters<UpdateWikiArgs>,
+    ) -> Result<String, ErrorData> {
+        #[derive(serde::Serialize)]
+        struct Body<'a> {
+            wiki: &'a str,
+        }
+        let path = format!("/api/v1/entries/{}/wiki", args.id);
+        let _: () = self
+            .client
+            .put(
+                &path,
+                &Body { wiki: &args.wiki },
+                Some("条目 ID 不存在时,先用 list_entries 查询"),
+            )
+            .await?;
+        Ok("ok".to_string())
+    }
+
+    #[tool(
+        description = "更新条目的名称。规则同 create_entry:中文,不含书名号、引号、年份后缀。"
+    )]
+    pub async fn update_name(
+        &self,
+        Parameters(args): Parameters<UpdateNameArgs>,
+    ) -> Result<String, ErrorData> {
+        #[derive(serde::Serialize)]
+        struct Body<'a> {
+            name: &'a str,
+        }
+        let path = format!("/api/v1/entries/{}/name", args.id);
+        let _: () = self
+            .client
+            .put(&path, &Body { name: &args.name }, None)
+            .await?;
+        Ok("ok".to_string())
+    }
+
+    #[tool(
+        description = "给条目添加一个标签。**优先使用 list_all_tags 返回的现有标签**,只在确实没有合适标签时才创建新标签 — 这避免标签碎片化。"
+    )]
+    pub async fn add_tag(
+        &self,
+        Parameters(args): Parameters<AddTagArgs>,
+    ) -> Result<String, ErrorData> {
+        #[derive(serde::Serialize)]
+        struct Body<'a> {
+            tag: &'a str,
+        }
+        let path = format!("/api/v1/entries/{}/tags", args.entry_id);
+        let _: () = self
+            .client
+            .post(
+                &path,
+                &Body { tag: &args.tag },
+                Some("先用 list_all_tags 检查是否有合适的现有标签"),
+            )
+            .await?;
+        Ok("ok".to_string())
+    }
+
+    #[tool(
+        description = "在两个条目之间添加一条关系,返回关系 ID。**调用前必须**先用 list_relation_types 查询现有类型并复用,不要发明同义的新类型(例如不要用 \"拍了\" 当 \"导演了\" 已经存在)。"
+    )]
+    pub async fn add_relation(
+        &self,
+        Parameters(args): Parameters<AddRelationArgs>,
+    ) -> Result<Json<RelationIdResponse>, ErrorData> {
+        #[derive(serde::Serialize)]
+        struct Body<'a> {
+            from_id: i64,
+            to_id: i64,
+            relation_type: &'a str,
+        }
+        let id: i64 = self
+            .client
+            .post(
+                "/api/v1/entries/relations",
+                &Body {
+                    from_id: args.from_id,
+                    to_id: args.to_id,
+                    relation_type: &args.relation_type,
+                },
+                Some("先用 list_relation_types 查询现有类型并复用"),
+            )
+            .await?;
+        Ok(Json(RelationIdResponse { id }))
     }
 }
 
