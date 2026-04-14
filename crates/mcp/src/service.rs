@@ -66,7 +66,7 @@ impl BlowupService {
     /// 探测 desktop app 是否在线。无副作用,返回 desktop 的健康响应。
     /// 调试 skill bridge 时用。
     #[tool(
-        description = "Ping the blowup desktop app via /api/v1/health; returns \"ok\" on success"
+        description = "探测 blowup desktop app 是否在线。调用 /api/v1/health,成功返回 \"ok\"。无副作用,主要用于调试 skill bridge 是否已开启。"
     )]
     pub async fn ping(&self) -> Result<String, ErrorData> {
         let _: serde_json::Value = self.client.get("/api/v1/health", None).await?;
