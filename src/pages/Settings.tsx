@@ -1,4 +1,4 @@
-import { Children, Fragment, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
@@ -6,10 +6,9 @@ import {
   Box,
   Button,
   Checkbox,
-  Divider,
   Group,
   NumberInput,
-  Paper,
+  PasswordInput,
   ScrollArea,
   Select,
   Stack,
@@ -35,7 +34,6 @@ const LANG_OPTIONS = [
 
 export default function Settings() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
-  const [showKey, setShowKey] = useState(false);
   const [cachePath, setCachePath] = useState("");
   const [trackerStatus, setTrackerStatus] = useState<TrackerStatus | null>(null);
   const [trackerInput, setTrackerInput] = useState("");
@@ -91,30 +89,22 @@ export default function Settings() {
 
         <Section title="TMDB">
           <Field label="API Key">
-            <Group gap="0.5rem">
-              <TextInput
-                type={showKey ? "text" : "password"}
-                defaultValue={cfg.tmdb.api_key}
-                placeholder="在 themoviedb.org 免费申请"
-                style={{ flex: 1 }}
-                onBlur={(e) => {
-                  const v = e.currentTarget.value;
-                  update((c) => {
-                    c.tmdb.api_key = v;
-                  });
-                }}
-              />
-              <Button variant="default" size="xs" onClick={() => setShowKey((v) => !v)}>
-                {showKey ? "隐藏" : "显示"}
-              </Button>
-            </Group>
+            <PasswordInput
+              defaultValue={cfg.tmdb.api_key}
+              placeholder="在 themoviedb.org 免费申请"
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.tmdb.api_key = v;
+                });
+              }}
+            />
           </Field>
         </Section>
 
         <Section title="OpenSubtitles">
           <Field label="API Key">
-            <TextInput
-              type="password"
+            <PasswordInput
               defaultValue={cfg.opensubtitles.api_key}
               placeholder="必填"
               onBlur={(e) => {
@@ -138,8 +128,7 @@ export default function Settings() {
             />
           </Field>
           <Field label="密码">
-            <TextInput
-              type="password"
+            <PasswordInput
               defaultValue={cfg.opensubtitles.password}
               placeholder="可选"
               onBlur={(e) => {
@@ -154,8 +143,7 @@ export default function Settings() {
 
         <Section title="ASSRT（射手网）">
           <Field label="Token">
-            <TextInput
-              type="password"
+            <PasswordInput
               defaultValue={cfg.assrt?.token ?? ""}
               placeholder="从 assrt.net 获取"
               onBlur={(e) => {
@@ -219,21 +207,23 @@ export default function Settings() {
           <Field label="启用 DHT">
             <Checkbox
               checked={cfg.download?.enable_dht ?? true}
-              onChange={(e) =>
+              onChange={(e) => {
+                const checked = e.currentTarget.checked;
                 update((c) => {
-                  c.download.enable_dht = e.currentTarget.checked;
-                })
-              }
+                  c.download.enable_dht = checked;
+                });
+              }}
             />
           </Field>
           <Field label="会话持久化">
             <Checkbox
               checked={cfg.download?.persist_session ?? false}
-              onChange={(e) =>
+              onChange={(e) => {
+                const checked = e.currentTarget.checked;
                 update((c) => {
-                  c.download.persist_session = e.currentTarget.checked;
-                })
-              }
+                  c.download.persist_session = checked;
+                });
+              }}
             />
           </Field>
         </Section>
@@ -355,11 +345,12 @@ export default function Settings() {
           <Field label="启用">
             <Checkbox
               checked={!!cfg.music?.enabled}
-              onChange={(e) =>
+              onChange={(e) => {
+                const checked = e.currentTarget.checked;
                 update((c) => {
-                  c.music.enabled = e.currentTarget.checked;
-                })
-              }
+                  c.music.enabled = checked;
+                });
+              }}
             />
           </Field>
           <Field label="播放模式">
@@ -458,8 +449,7 @@ export default function Settings() {
             />
           </Field>
           <Field label="Access Key">
-            <TextInput
-              type="password"
+            <PasswordInput
               defaultValue={cfg.sync?.access_key ?? ""}
               onBlur={(e) => {
                 const v = e.currentTarget.value;
@@ -470,8 +460,7 @@ export default function Settings() {
             />
           </Field>
           <Field label="Secret Key">
-            <TextInput
-              type="password"
+            <PasswordInput
               defaultValue={cfg.sync?.secret_key ?? ""}
               onBlur={(e) => {
                 const v = e.currentTarget.value;
@@ -629,44 +618,27 @@ function DataIORow({
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
-  // Insert a Divider between consecutive children (but not after the last
-  // one) so each row's separator lives outside the row component, leaving
-  // the last item in the section borderless.
-  const items = Children.toArray(children);
   return (
-    <Box mb="2rem">
+    <Box mb="lg">
       <Text
         size="xs"
         tt="uppercase"
-        c="var(--color-label-quaternary)"
-        mb="0.75rem"
-        style={{ letterSpacing: "0.08em", fontSize: "0.7rem" }}
+        c="dimmed"
+        fw={600}
+        mb="xs"
+        style={{ letterSpacing: "0.06em" }}
       >
         {title}
       </Text>
-      <Paper
-        withBorder
-        radius="md"
-        bg="var(--color-bg-secondary)"
-        px="1rem"
-        py="0.1rem"
-        style={{ borderColor: "var(--color-separator)" }}
-      >
-        {items.map((child, i) => (
-          <Fragment key={i}>
-            {child}
-            {i < items.length - 1 && <Divider color="var(--color-separator)" />}
-          </Fragment>
-        ))}
-      </Paper>
+      <Stack gap="xs">{children}</Stack>
     </Box>
   );
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <Group gap="1rem" py="0.65rem" align="center" wrap="nowrap">
-      <Text size="sm" c="var(--color-label-secondary)" w={120} style={{ flexShrink: 0 }}>
+    <Group gap="md" align="center" wrap="nowrap">
+      <Text size="sm" c="dimmed" w={96} style={{ flexShrink: 0 }}>
         {label}
       </Text>
       <Box style={{ flex: 1 }}>{children}</Box>

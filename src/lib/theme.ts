@@ -1,76 +1,85 @@
-import { createTheme, type MantineColorsTuple } from "@mantine/core";
+import { createTheme, rem } from "@mantine/core";
 
-// Apple systemBlue 10-step palette.
-// #007AFF sits at shade 5 (the solid accent); the lighter shades are used
-// for hover / subtle backgrounds, the darker ones for pressed states.
-const accent: MantineColorsTuple = [
-  "#e7f2ff",
-  "#cce0ff",
-  "#99c0ff",
-  "#66a1ff",
-  "#3381ff",
-  "#007AFF",
-  "#0062cc",
-  "#004999",
-  "#003166",
-  "#001833",
-];
-
-// Apple systemRed / systemGreen / systemOrange / systemYellow — only the
-// shade-5 anchors matter; the rest are linearly interpolated.
-const danger: MantineColorsTuple = [
-  "#ffeceb",
-  "#ffd1cf",
-  "#ffa39f",
-  "#ff7570",
-  "#ff4740",
-  "#FF3B30",
-  "#cc2f26",
-  "#99231d",
-  "#661813",
-  "#330c09",
-];
-
-const success: MantineColorsTuple = [
-  "#ebfaef",
-  "#d1f3d9",
-  "#a3e7b3",
-  "#75db8d",
-  "#47cf67",
-  "#34C759",
-  "#2a9f47",
-  "#1f7735",
-  "#155024",
-  "#0a2812",
-];
-
-const warning: MantineColorsTuple = [
-  "#fff4e5",
-  "#ffe0b8",
-  "#ffc17a",
-  "#ffa23d",
-  "#ff8a0a",
-  "#FF9500",
-  "#cc7700",
-  "#995900",
-  "#663c00",
-  "#331e00",
-];
-
+/**
+ * Application theme — Mantine v9 defaults with a few targeted overrides
+ * for desktop density and macOS visual fidelity. We DO NOT define a
+ * custom color palette anymore: Mantine's built-in `blue` is the
+ * primary, and grays come straight from `--mantine-color-gray-*`.
+ *
+ * Overrides:
+ *
+ * - **fontFamily**: native macOS system font stack so SF Pro is picked
+ *   up automatically; falls back to system sans on other platforms.
+ * - **fontSizes**: scaled down ~1px from Mantine defaults so the body
+ *   text reads at 13px (matches a native macOS app).
+ * - **spacing**: tightened — `md` 16→12, `lg` 20→16. Mantine's default
+ *   scale is comfortable for marketing pages but feels airy in a
+ *   dense desktop form.
+ * - **defaultRadius**: 4px (Mantine `xs`) instead of the default 8px,
+ *   to make controls feel more like macOS rather than web.
+ * - **components.{Input,TextInput,…}.defaultProps**: every text-like
+ *   input defaults to `size="sm"` (~30px tall) and `variant="filled"`
+ *   so forms render flat-tinted instead of bordered. Buttons default
+ *   to `size="sm"` for the same density reason.
+ */
 export const theme = createTheme({
-  primaryColor: "accent",
-  primaryShade: 5,
-  colors: {
-    accent,
-    danger,
-    success,
-    warning,
-  },
-  fontFamily: "var(--font-sans)",
+  primaryColor: "blue",
+  fontFamily:
+    '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif',
   fontFamilyMonospace:
     'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-  headings: { fontFamily: "var(--font-sans)" },
-  defaultRadius: "md",
+  headings: {
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif',
+    fontWeight: "600",
+  },
+  fontSizes: {
+    xs: rem(11),
+    sm: rem(12),
+    md: rem(13),
+    lg: rem(15),
+    xl: rem(18),
+  },
+  spacing: {
+    xs: rem(8),
+    sm: rem(10),
+    md: rem(12),
+    lg: rem(16),
+    xl: rem(24),
+  },
+  defaultRadius: "xs",
   cursorType: "pointer",
   focusRing: "auto",
+  components: {
+    Input: {
+      defaultProps: { size: "sm", variant: "filled" },
+    },
+    InputWrapper: {
+      defaultProps: { size: "sm" },
+    },
+    TextInput: {
+      defaultProps: { size: "sm", variant: "filled" },
+    },
+    PasswordInput: {
+      defaultProps: { size: "sm", variant: "filled" },
+    },
+    NumberInput: {
+      defaultProps: { size: "sm", variant: "filled" },
+    },
+    Select: {
+      defaultProps: { size: "sm", variant: "filled" },
+    },
+    Textarea: {
+      defaultProps: { size: "sm", variant: "filled" },
+    },
+    Button: {
+      defaultProps: { size: "sm" },
+    },
+    Checkbox: {
+      defaultProps: { size: "sm" },
+    },
+    Switch: {
+      defaultProps: { size: "sm" },
+    },
+  },
 });

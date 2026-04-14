@@ -28,7 +28,7 @@ export function SettingsOverlay() {
       }}
     >
       <ScrollArea style={{ flex: 1, minHeight: 0 }}>
-        <Box maw={600} mx="auto" px="1.5rem" py="2rem">
+        <Box maw={480} mx="auto" px="1.5rem" py="2rem">
           <Settings />
         </Box>
       </ScrollArea>
