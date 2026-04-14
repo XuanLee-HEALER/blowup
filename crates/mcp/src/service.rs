@@ -289,6 +289,20 @@ impl BlowupService {
         Ok(Json(EntryIdResponse { id }))
     }
 
+    // ── Void-write convention ────────────────────────────────────
+    //
+    // The three void writes (update_wiki, update_name, add_tag)
+    // return `Result<String, ErrorData>` with a literal `"ok"` on
+    // success rather than `Result<Json<OkResponse>, ErrorData>`.
+    //
+    // Why: rmcp's MCP outputSchema constraint requires the root JSON
+    // to be an object, so we can't return a bare `()`/`null`. The
+    // alternatives are (a) wrap "ok" in a one-field struct, or
+    // (b) return a `String` literal — rmcp's `IntoCallToolResult` for
+    // `String` produces `{ "content": [{ "type": "text", "text": "ok" }] }`
+    // which IS a valid object root. (b) is fewer types and equally clear
+    // to Claude. If rmcp ever changes how `String` results are encoded
+    // in a way that breaks the object-root guarantee, switch to (a).
     #[tool(
         description = "更新条目的 wiki markdown 内容。**完全覆盖**,不是 append。若是更新而非新写,先用 get_entry 拿到现有内容再合并。Wiki 内容应为中文 Markdown。"
     )]
