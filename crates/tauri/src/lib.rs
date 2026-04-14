@@ -423,6 +423,14 @@ pub fn run() {
             commands::skill::skill_bridge_stop,
         ])
         .on_window_event(|window, event| {
+            // Only act on the main window — closing the player popout
+            // or a waveform/subtitle viewer should NOT tear down the
+            // skill bridge. Tauri assigns the label "main" to the
+            // first unlabeled window in tauri.conf.json, which matches
+            // the existing get_webview_window("main") calls in setup.
+            if window.label() != "main" {
+                return;
+            }
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 if let Some(state) = window
                     .try_state::<crate::skill_bridge::state::SkillBridgeState>()

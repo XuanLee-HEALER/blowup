@@ -122,8 +122,8 @@ pub async fn skill_bridge_start(
 }
 
 /// Stop the skill bridge server. Idempotent — no-op if already stopped.
-/// Sends the shutdown signal, waits up to 2 s for the serve task to
-/// exit, then unlinks the socket file (Unix only).
+/// Sends the shutdown signal, waits up to 5 s for the serve task to
+/// drain in-flight requests, then unlinks the socket file (Unix only).
 #[tauri::command]
 pub async fn skill_bridge_stop(
     state: tauri::State<'_, SkillBridgeState>,
@@ -133,9 +133,13 @@ pub async fn skill_bridge_stop(
         return Ok(()); // already stopped, idempotent
     };
     let _ = h.shutdown_tx.send(());
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(2), h.task).await;
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(5), h.task).await;
     #[cfg(unix)]
     let _ = std::fs::remove_file(&h.socket_path);
+    tracing::info!(
+        path = %h.socket_path.display(),
+        "skill bridge stopped via command"
+    );
     Ok(())
 }
 

@@ -41,6 +41,10 @@ impl SkillBridgeState {
             let _ = h.shutdown_tx.send(());
             #[cfg(unix)]
             let _ = std::fs::remove_file(&h.socket_path);
+            tracing::info!(
+                path = %h.socket_path.display(),
+                "skill bridge stopped via window close hook"
+            );
         }
     }
 }
