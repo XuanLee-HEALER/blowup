@@ -215,7 +215,7 @@ pub async fn skill_bridge_get_install_snippets(
     let json_block = serde_json::json!({
         "mcpServers": {
             "blowup-skill": {
-                "command": bin_str.clone(),
+                "command": &bin_str,
                 "args": []
             }
         }
@@ -235,19 +235,32 @@ pub async fn skill_bridge_get_install_snippets(
 /// The path where `skill_bridge_install_to_claude_code` will copy the
 /// binary. Same function used by both commands so the snippets and the
 /// install action agree on the target.
+///
+/// Resolved via Tauri's `local_data_dir` so the location is
+/// platform-correct out of the box: on macOS it returns
+/// `~/Library/Application Support/blowup/blowup-mcp` (the Apple
+/// convention, visible in Finder), and on Linux it returns
+/// `~/.local/share/blowup/blowup-mcp` (XDG).
 fn installed_binary_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    let _ = app; // unused on unix today, kept for Windows future
-    #[cfg(unix)]
-    {
-        let home = dirs::home_dir().ok_or_else(|| "no home dir".to_string())?;
-        Ok(home.join(".local").join("share").join("blowup").join("blowup-mcp"))
-    }
-    #[cfg(not(unix))]
-    {
-        Err("Windows 暂不支持".to_string())
-    }
+    use tauri::Manager;
+    let dir = app
+        .path()
+        .local_data_dir()
+        .map_err(|e| format!("local_data_dir: {e}"))?;
+    Ok(dir.join("blowup").join("blowup-mcp"))
 }
 
+/// Wrap a path in a single-quoted POSIX shell literal, escaping any
+/// embedded single quotes the canonical way (`'\''`). Returns the
+/// input unchanged if every character is in the safe set
+/// (`a-z A-Z 0-9 / - . _`).
+///
+/// Known edge cases (acceptable for the install snippet use case):
+/// - Newlines in the path break out of the single-quote span. Don't
+///   put your installer in a directory whose name has a newline.
+/// - In an interactive bash shell, `!` triggers history expansion
+///   even inside single quotes. Paths containing `!` will produce a
+///   `bash: event not found` error when the user pastes the snippet.
 fn shell_escape(s: &str) -> String {
     if s.chars().all(|c| c.is_alphanumeric() || "/-._".contains(c)) {
         s.to_string()
