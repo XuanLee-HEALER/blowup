@@ -6,12 +6,15 @@ import {
   Box,
   Button,
   Checkbox,
+  Code,
+  Collapse,
   Group,
   NumberInput,
   PasswordInput,
   ScrollArea,
   Select,
   Stack,
+  Switch,
   Text,
   TextInput,
   Textarea,
@@ -20,9 +23,12 @@ import {
 import {
   config,
   dataIO,
+  skillBridge,
   tracker,
   type AppConfig,
+  type InstallSnippets,
   type MusicTrack,
+  type SkillBridgeStatus,
   type TrackerStatus,
 } from "../lib/tauri";
 import { BackendEvent, useBackendEvent } from "../lib/useBackendEvent";
@@ -493,6 +499,8 @@ export default function Settings() {
           </Field>
         </Section>
 
+        <SkillBridgeSection />
+
         <Section title="数据管理">
           <DataIORow
             label="知识库"
@@ -615,6 +623,148 @@ function DataIORow({
         )}
       </Box>
     </Group>
+  );
+}
+
+function SkillBridgeSection() {
+  const [status, setStatus] = useState<SkillBridgeStatus | null>(null);
+  const [snippets, setSnippets] = useState<InstallSnippets | null>(null);
+  const [snippetsOpen, setSnippetsOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [installMsg, setInstallMsg] = useState<string | null>(null);
+
+  const refresh = async () => {
+    try {
+      setStatus(await skillBridge.status());
+    } catch (e) {
+      console.error("skill bridge status failed:", e);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+    skillBridge.getInstallSnippets().then(setSnippets).catch(() => {});
+  }, []);
+
+  const toggle = async (on: boolean) => {
+    setBusy(true);
+    try {
+      if (on) await skillBridge.start();
+      else await skillBridge.stop();
+      await refresh();
+    } catch (e) {
+      alert(`Skill Bridge 操作失败: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const install = async () => {
+    setBusy(true);
+    setInstallMsg(null);
+    try {
+      const report = await skillBridge.installToClaudeCode();
+      if (report.claude_added) {
+        setInstallMsg(
+          `已安装。二进制: ${report.binary_path}；Skill: ${report.skill_path}`,
+        );
+      } else {
+        setInstallMsg(
+          `二进制已就位，但 'claude mcp add' 未运行（可能未安装 claude CLI）。请手动运行：\n${report.manual_command ?? ""}`,
+        );
+      }
+    } catch (e) {
+      setInstallMsg(`安装失败: ${e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (status && !status.supported) {
+    return (
+      <Section title="Skill Bridge">
+        <Text size="sm" c="dimmed">
+          Skill Bridge 在 Windows 上暂未支持。
+        </Text>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Skill Bridge">
+      <Text size="xs" c="dimmed" mb="xs">
+        启用后，本机的 MCP 客户端（Claude Code、Cursor、Cline 等）可以通过 Unix
+        域套接字调用 blowup 的知识库 API。开关关闭时不暴露任何端口或服务。
+      </Text>
+      <Field label="启用">
+        <Group gap="md" align="center" wrap="nowrap">
+          <Switch
+            checked={status?.running ?? false}
+            disabled={busy}
+            onChange={(e) => toggle(e.currentTarget.checked)}
+          />
+          <Text size="xs" c="var(--color-label-tertiary)">
+            {status?.running
+              ? `运行中 — ${status.socket_path ?? ""}`
+              : "已停止"}
+          </Text>
+        </Group>
+      </Field>
+      <Field label="安装">
+        <Group gap="0.5rem">
+          <Button size="xs" variant="default" onClick={install} loading={busy}>
+            安装到 Claude Code
+          </Button>
+          <Button
+            size="xs"
+            variant="subtle"
+            onClick={() => setSnippetsOpen(!snippetsOpen)}
+          >
+            {snippetsOpen ? "隐藏" : "显示"}其他客户端配置
+          </Button>
+        </Group>
+      </Field>
+      {installMsg && (
+        <Field label="">
+          <Text size="xs" c="dimmed" style={{ whiteSpace: "pre-wrap" }}>
+            {installMsg}
+          </Text>
+        </Field>
+      )}
+      <Collapse expanded={snippetsOpen}>
+        {snippets && (
+          <Stack gap="0.5rem" mt="xs">
+            <SnippetBlock title="Claude Code (CLI)" body={snippets.claude_code} />
+            <SnippetBlock title="Claude Desktop" body={snippets.claude_desktop} />
+            <SnippetBlock title="Cursor" body={snippets.cursor} />
+            <SnippetBlock title="Cline / Continue / Zed" body={snippets.cline} />
+          </Stack>
+        )}
+      </Collapse>
+    </Section>
+  );
+}
+
+function SnippetBlock({ title, body }: { title: string; body: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Box>
+      <Group justify="space-between" mb={4}>
+        <Text size="xs" fw={500}>{title}</Text>
+        <ActionIcon
+          size="xs"
+          variant="subtle"
+          onClick={() => {
+            navigator.clipboard.writeText(body);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? "✓" : "复制"}
+        </ActionIcon>
+      </Group>
+      <Code block>{body}</Code>
+    </Box>
   );
 }
 
