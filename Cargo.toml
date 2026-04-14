@@ -3,5 +3,6 @@ members = [
     "crates/core",
     "crates/server",
     "crates/tauri",
+    "crates/mcp",
 ]
 resolver = "2"
