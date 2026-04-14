@@ -302,4 +302,35 @@ CI 集成: U1 + U2 + U3 进 `just check` 跑的 `cargo test`。
 
 ## 验证记录
 
-(实现完成后填写 U4 手动测试结果)
+**Date:** 2026-04-14
+**Platform:** macOS 25.4.0 (Darwin)
+**Implementation:** 37 commits on `main`, T1 → T20 complete
+
+### 自动验证(已完成)
+
+| Step | Result | Notes |
+|------|--------|-------|
+| `cargo test --workspace` | ✅ 148 tests pass | 121 core + 11 server smoke + 10 mcp lib + 3 socket + 1 server unix + 1 mcp smoke + 1 server smoke breakdown |
+| `cargo build -p blowup-mcp` (release) | ✅ Clean | 4.8 MB binary at `crates/tauri/resources/blowup-mcp` |
+| `cargo build -p blowup-tauri` | ✅ Clean | Only pre-existing `ar -D` build script warnings unrelated to this work |
+| `bunx tsc --noEmit` | ✅ Clean | All TS bindings + Settings.tsx type-check |
+| `crates/mcp/tests/smoke.rs` | ✅ Pass | Full JSON-RPC handshake (initialize → tools/list → tools/call list_entries → tools/call create_entry) against a tempdir Unix socket router; verifies all 9 tools appear in tools/list and the rmcp 1.4 wiring is correct |
+| `crates/server/tests/serve_unix.rs` | ✅ Pass | Real HTTP-over-Unix-socket request through the bridged blowup-server router with bearer token |
+
+### 待手动验证(由用户在桌面环境中跑完)
+
+| Step | Notes |
+|------|-------|
+| 1. `just build-mcp && just build` produces an installable Tauri bundle | Run on the developer machine; the bundler step takes several minutes |
+| 2. `just dev` opens the desktop app, Settings → "Skill Bridge" section renders | Verify the section appears at the bottom of Settings, with a Switch + Install button + collapsible snippets panel |
+| 3. Click "安装到 Claude Code" | Verify `~/Library/Application Support/blowup/blowup-mcp` exists and is executable; `~/.claude/skills/blowup-wiki-writer/SKILL.md` exists; install message shows success or the manual `claude mcp add` fallback |
+| 4. Toggle the Switch ON | Verify status flips to `运行中`; verify socket file exists at `~/Library/Application Support/blowup/skill.sock` with `srw-------` (0600) perms |
+| 5. Direct JSON-RPC test from terminal | `echo '{"jsonrpc":"2.0","id":1,"method":"initialize",...}' \| timeout 3 ~/Library/Application\ Support/blowup/blowup-mcp` should produce a JSON-RPC response on stdout |
+| 6. Real Claude Code test | In a fresh `claude` session: "列出 blowup 知识库现有的所有标签" — should call `mcp__blowup-skill__list_all_tags` and return the existing tags |
+| 7. End-to-end wiki write test | "帮我写一个 blowup wiki 条目: 岩井俊二, 按导演的角度写" — should walk through the SKILL.md workflow (查重 → 上下文 → web search → write → tags → relations → done). Switch to the desktop's 知识库 tab and verify the new entry appears with correct content (event bus auto-refresh) |
+| 8. Toggle the Switch OFF | Verify socket file gone; retry the JSON-RPC echo from step 5 → expect `[FATAL] blowup app 未启用 skill bridge` error; retry the Claude prompt → expect Claude to surface the FATAL message and stop |
+| 9. Stale socket recovery | Toggle ON → force-kill desktop with `pkill -9 blowup-tauri` → confirm orphan socket file remains → restart `just dev` → toggle ON → verify success (the `handle_stale_socket` connect-probe should detect and unlink the orphan) |
+| 10. Window-close cleanup | Toggle ON → close the main window via the red traffic-light button → verify socket file is gone (the `on_window_event` hook gated on `window.label() == "main"` should run `shutdown_blocking`) |
+| 11. Multi-window non-interference | Toggle ON → open the player popout window → close the player → verify the bridge is STILL running (the main-window guard from T14 review fix should prevent the player close from triggering shutdown) |
+
+When all manual steps pass, mark each row ✅ and commit.
