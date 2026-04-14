@@ -15,6 +15,8 @@ pkg-config = "0.3"
 [dependencies]
 blowup-core        = { path = "../core" }
 blowup-server      = { path = "../server" }
+blowup-mcp         = { path = "../mcp" }
+axum               = "0.8"
 tauri              = { version = "2.10", features = ["protocol-asset", "macos-private-api"] }
 tauri-plugin-dialog = "2.7"
 tauri-plugin-opener = "2.5"
