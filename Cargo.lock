@@ -507,9 +507,19 @@ name = "blowup-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "dirs 5.0.1",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "hyperlocal",
+ "serde",
+ "serde_json",
  "serial_test",
  "tempfile",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

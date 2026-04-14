@@ -5,5 +5,6 @@
 //! to agree on the socket location, and so the test harness can
 //! exercise the modules in-process.
 
+pub mod client;
 pub mod error;
 pub mod socket;
