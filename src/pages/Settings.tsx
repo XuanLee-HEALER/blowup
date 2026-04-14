@@ -1,9 +1,30 @@
 import { useState, useEffect } from "react";
 import type { ReactNode } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { TextInput } from "../components/ui/TextInput";
-import { Button } from "../components/ui/Button";
-import { config, dataIO, tracker, type AppConfig, type MusicTrack, type TrackerStatus } from "../lib/tauri";
+import {
+  ActionIcon,
+  Box,
+  Button,
+  Checkbox,
+  Group,
+  NumberInput,
+  Paper,
+  ScrollArea,
+  Select,
+  Stack,
+  Text,
+  TextInput,
+  Textarea,
+  Title,
+} from "@mantine/core";
+import {
+  config,
+  dataIO,
+  tracker,
+  type AppConfig,
+  type MusicTrack,
+  type TrackerStatus,
+} from "../lib/tauri";
 
 const LANG_OPTIONS = [
   { value: "zh", label: "中文 (zh)" },
@@ -38,449 +59,521 @@ export default function Settings() {
   const pickDir = async () => {
     const dir = await open({ directory: true, multiple: false });
     if (typeof dir === "string") {
-      update((c) => { c.library.root_dir = dir; });
+      update((c) => {
+        c.library.root_dir = dir;
+      });
     }
   };
 
   if (!cfg) {
     return (
-      <div style={{ padding: "2rem", color: "var(--color-label-tertiary)", fontSize: "0.82rem" }}>
-        加载中...
-      </div>
+      <Box p="2rem">
+        <Text size="sm" c="var(--color-label-tertiary)">
+          加载中...
+        </Text>
+      </Box>
     );
   }
 
   const updatePlaylist = (newPlaylist: MusicTrack[]) => {
-    update((c) => { c.music.playlist = newPlaylist; });
+    update((c) => {
+      c.music.playlist = newPlaylist;
+    });
   };
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", padding: "1.4rem 1.75rem 3rem" }}>
-      <h1
-        style={{
-          fontSize: "1.6rem",
-          fontWeight: 700,
-          letterSpacing: "-0.035em",
-          marginBottom: "2rem",
-        }}
-      >
-        设置
-      </h1>
+    <ScrollArea style={{ flex: 1 }}>
+      <Box px="1.75rem" pt="1.4rem" pb="3rem">
+        <Title order={1} mb="2rem" fz="1.6rem" fw={700} style={{ letterSpacing: "-0.035em" }}>
+          设置
+        </Title>
 
-      <Section title="TMDB">
-        <Field label="API Key">
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+        <Section title="TMDB">
+          <Field label="API Key">
+            <Group gap="0.5rem">
+              <TextInput
+                type={showKey ? "text" : "password"}
+                defaultValue={cfg.tmdb.api_key}
+                placeholder="在 themoviedb.org 免费申请"
+                style={{ flex: 1 }}
+                onBlur={(e) => {
+                  const v = e.currentTarget.value;
+                  update((c) => {
+                    c.tmdb.api_key = v;
+                  });
+                }}
+              />
+              <Button variant="default" size="xs" onClick={() => setShowKey((v) => !v)}>
+                {showKey ? "隐藏" : "显示"}
+              </Button>
+            </Group>
+          </Field>
+        </Section>
+
+        <Section title="OpenSubtitles">
+          <Field label="API Key">
             <TextInput
-              type={showKey ? "text" : "password"}
-              defaultValue={cfg.tmdb.api_key}
-              placeholder="在 themoviedb.org 免费申请"
-              style={{ flex: 1 }}
-              onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.tmdb.api_key = v; }); }}
+              type="password"
+              defaultValue={cfg.opensubtitles.api_key}
+              placeholder="必填"
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.opensubtitles.api_key = v;
+                });
+              }}
             />
-            <Button onClick={() => setShowKey((v) => !v)}>
-              {showKey ? "隐藏" : "显示"}
-            </Button>
-          </div>
-        </Field>
-      </Section>
+          </Field>
+          <Field label="用户名">
+            <TextInput
+              defaultValue={cfg.opensubtitles.username}
+              placeholder="可选，填写后下载配额更高"
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.opensubtitles.username = v;
+                });
+              }}
+            />
+          </Field>
+          <Field label="密码">
+            <TextInput
+              type="password"
+              defaultValue={cfg.opensubtitles.password}
+              placeholder="可选"
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.opensubtitles.password = v;
+                });
+              }}
+            />
+          </Field>
+        </Section>
 
-      <Section title="OpenSubtitles">
-        <Field label="API Key">
-          <TextInput
-            type="password"
-            defaultValue={cfg.opensubtitles.api_key}
-            placeholder="必填"
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.opensubtitles.api_key = v; }); }}
-          />
-        </Field>
-        <Field label="用户名">
-          <TextInput
-            defaultValue={cfg.opensubtitles.username}
-            placeholder="可选，填写后下载配额更高"
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.opensubtitles.username = v; }); }}
-          />
-        </Field>
-        <Field label="密码">
-          <TextInput
-            type="password"
-            defaultValue={cfg.opensubtitles.password}
-            placeholder="可选"
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.opensubtitles.password = v; }); }}
-          />
-        </Field>
-      </Section>
+        <Section title="ASSRT（射手网）">
+          <Field label="Token">
+            <TextInput
+              type="password"
+              defaultValue={cfg.assrt?.token ?? ""}
+              placeholder="从 assrt.net 获取"
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.assrt = { token: v };
+                });
+              }}
+            />
+          </Field>
+        </Section>
 
-      <Section title="ASSRT（射手网）">
-        <Field label="Token">
-          <TextInput
-            type="password"
-            defaultValue={cfg.assrt?.token ?? ""}
-            placeholder="从 assrt.net 获取"
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.assrt = { token: v }; }); }}
-          />
-        </Field>
-      </Section>
+        <Section title="字幕">
+          <Field label="默认语言">
+            <Select
+              data={LANG_OPTIONS}
+              value={cfg.subtitle.default_lang}
+              onChange={(v) => {
+                if (!v) return;
+                update((c) => {
+                  c.subtitle.default_lang = v;
+                });
+              }}
+              w={180}
+            />
+          </Field>
+        </Section>
 
-      <Section title="字幕">
-        <Field label="默认语言">
-          <select
-            value={cfg.subtitle.default_lang}
-            onChange={(e) => update((c) => { c.subtitle.default_lang = e.target.value; })}
-            style={{
-              background: "var(--color-bg-control)",
-              border: "1px solid var(--color-separator)",
-              borderRadius: 8,
-              padding: "0 0.75rem",
-              height: 34,
-              color: "var(--color-label-primary)",
-              fontSize: "0.85rem",
-              fontFamily: "inherit",
-              colorScheme: "dark",
-            }}
-          >
-            {LANG_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </Section>
+        <Section title="工具路径">
+          <Field label="ffmpeg">
+            <TextInput
+              defaultValue={cfg.tools.ffmpeg}
+              placeholder="ffmpeg"
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.tools.ffmpeg = v;
+                });
+              }}
+            />
+          </Field>
+        </Section>
 
-      <Section title="工具路径">
-        <Field label="ffmpeg">
-          <TextInput
-            defaultValue={cfg.tools.ffmpeg}
-            placeholder="ffmpeg"
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.tools.ffmpeg = v; }); }}
-          />
-        </Field>
-      </Section>
-
-      <Section title="下载">
-        <Field label="最大并发数">
-          <TextInput
-            type="number"
-            defaultValue={String(cfg.download?.max_concurrent ?? 3)}
-            onBlur={(e) => {
-              const v = parseInt(e.currentTarget.value, 10);
-              if (!isNaN(v) && v >= 1 && v <= 10) { const n = v; update((c) => { c.download.max_concurrent = n; }); }
-            }}
-            style={{ width: 80 }}
-          />
-        </Field>
-        <Field label="启用 DHT">
-          <input
-            type="checkbox"
-            checked={cfg.download?.enable_dht ?? true}
-            onChange={(e) => update((c) => { c.download.enable_dht = e.target.checked; })}
-            style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
-          />
-        </Field>
-        <Field label="会话持久化">
-          <input
-            type="checkbox"
-            checked={cfg.download?.persist_session ?? false}
-            onChange={(e) => update((c) => { c.download.persist_session = e.target.checked; })}
-            style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
-          />
-        </Field>
-      </Section>
-
-      <Section title="TRACKER 服务器">
-        <Field label="自动维护">
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <span style={{ fontSize: "0.82rem", color: "var(--color-label-tertiary)" }}>
-              {trackerStatus
-                ? `${trackerStatus.auto_count} 个服务器` +
-                  (trackerStatus.last_updated
-                    ? `，最后更新于 ${new Date(trackerStatus.last_updated).toLocaleString("zh-CN")}`
-                    : "，从未更新")
-                : "加载中..."}
-            </span>
-            <Button
-              disabled={refreshing}
-              onClick={async () => {
-                setRefreshing(true);
-                try {
-                  const s = await tracker.refresh();
-                  setTrackerStatus(s);
-                } catch (e) {
-                  alert("更新失败: " + e);
-                } finally {
-                  setRefreshing(false);
+        <Section title="下载">
+          <Field label="最大并发数">
+            <NumberInput
+              w={100}
+              min={1}
+              max={10}
+              defaultValue={cfg.download?.max_concurrent ?? 3}
+              onBlur={(e) => {
+                const v = parseInt(e.currentTarget.value, 10);
+                if (!isNaN(v) && v >= 1 && v <= 10) {
+                  update((c) => {
+                    c.download.max_concurrent = v;
+                  });
                 }
               }}
-            >
-              {refreshing ? "更新中..." : "立即更新"}
-            </Button>
-          </div>
-        </Field>
-        <Field label="自定义服务器">
-          <div>
-            <textarea
-              value={trackerInput}
-              onChange={(e) => setTrackerInput(e.target.value)}
-              placeholder={"每行一个 tracker 地址\nudp://tracker.example.com:1337/announce\nhttps://tracker.example.com/announce"}
-              rows={4}
-              style={{
-                width: "100%",
-                background: "var(--color-bg-control)",
-                border: "1px solid var(--color-separator)",
-                borderRadius: 8,
-                padding: "0.5rem 0.75rem",
-                color: "var(--color-label-primary)",
-                fontSize: "0.85rem",
-                fontFamily: "inherit",
-                resize: "vertical",
-                boxSizing: "border-box",
-              }}
             />
-            <div style={{ marginTop: "0.5rem" }}>
+          </Field>
+          <Field label="启用 DHT">
+            <Checkbox
+              checked={cfg.download?.enable_dht ?? true}
+              onChange={(e) =>
+                update((c) => {
+                  c.download.enable_dht = e.currentTarget.checked;
+                })
+              }
+            />
+          </Field>
+          <Field label="会话持久化">
+            <Checkbox
+              checked={cfg.download?.persist_session ?? false}
+              onChange={(e) =>
+                update((c) => {
+                  c.download.persist_session = e.currentTarget.checked;
+                })
+              }
+            />
+          </Field>
+        </Section>
+
+        <Section title="TRACKER 服务器">
+          <Field label="自动维护">
+            <Group gap="0.75rem">
+              <Text size="sm" c="var(--color-label-tertiary)">
+                {trackerStatus
+                  ? `${trackerStatus.auto_count} 个服务器` +
+                    (trackerStatus.last_updated
+                      ? `，最后更新于 ${new Date(trackerStatus.last_updated).toLocaleString("zh-CN")}`
+                      : "，从未更新")
+                  : "加载中..."}
+              </Text>
               <Button
+                variant="default"
+                size="xs"
+                disabled={refreshing}
+                loading={refreshing}
                 onClick={async () => {
-                  if (!trackerInput.trim()) return;
+                  setRefreshing(true);
                   try {
-                    const s = await tracker.addUserTrackers(trackerInput);
+                    const s = await tracker.refresh();
                     setTrackerStatus(s);
-                    setTrackerInput("");
                   } catch (e) {
-                    alert("添加失败: " + e);
+                    alert("更新失败: " + e);
+                  } finally {
+                    setRefreshing(false);
                   }
                 }}
               >
-                添加
+                立即更新
               </Button>
-            </div>
-          </div>
-        </Field>
-      </Section>
-
-      <Section title="库目录">
-        <Field label="本地库根目录">
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <TextInput value={cfg.library.root_dir} readOnly style={{ flex: 1 }} onChange={() => {}} />
-            <Button onClick={pickDir}>选择...</Button>
-          </div>
-        </Field>
-      </Section>
-
-      <Section title="搜索">
-        <Field label="请求间隔（秒）">
-          <TextInput
-            type="number"
-            defaultValue={String(cfg.search.rate_limit_secs)}
-            onBlur={(e) => {
-              const v = parseInt(e.currentTarget.value, 10);
-              if (!isNaN(v) && v >= 0) { const n = v; update((c) => { c.search.rate_limit_secs = n; }); }
-            }}
-            style={{ width: 80 }}
-          />
-        </Field>
-      </Section>
-
-      <Section title="缓存">
-        <Field label="缓存文件路径">
-          <TextInput
-            value={cachePath}
-            readOnly
-            style={{ flex: 1, color: "var(--color-label-tertiary)" }}
-            onChange={() => {}}
-          />
-        </Field>
-        <Field label="最大缓存条目">
-          <TextInput
-            type="number"
-            defaultValue={String(cfg.cache?.max_entries ?? 200)}
-            onBlur={(e) => {
-              const v = parseInt(e.currentTarget.value, 10);
-              if (!isNaN(v) && v > 0) { const n = v; update((c) => { c.cache.max_entries = n; }); }
-            }}
-            style={{ width: 100 }}
-          />
-        </Field>
-      </Section>
-
-      <Section title="背景音乐">
-        <Field label="启用">
-          <input
-            type="checkbox"
-            checked={!!cfg.music?.enabled}
-            onChange={(e) => update((c) => { c.music.enabled = e.target.checked; })}
-            style={{ accentColor: "var(--color-accent)", cursor: "pointer" }}
-          />
-        </Field>
-        <Field label="播放模式">
-          <select
-            value={cfg.music?.mode ?? "sequential"}
-            onChange={(e) => {
-              const mode = e.target.value === "random" ? "random" as const : "sequential" as const;
-              update((c) => { c.music.mode = mode; });
-            }}
-            style={{
-              background: "var(--color-bg-control)",
-              border: "1px solid var(--color-separator)",
-              borderRadius: 8,
-              padding: "0 0.75rem",
-              height: 34,
-              color: "var(--color-label-primary)",
-              fontSize: "0.85rem",
-              fontFamily: "inherit",
-            }}
-          >
-            <option value="sequential">顺序播放</option>
-            <option value="random">随机播放</option>
-          </select>
-        </Field>
-        <Field label="播放列表">
-          <div>
-            {(cfg.music?.playlist ?? []).map((track, i) => (
-              <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.4rem", alignItems: "center" }}>
-                <TextInput
-                  placeholder="曲目名称"
-                  defaultValue={track.name}
-                  style={{ width: 120, flexShrink: 0 }}
-                  onBlur={(e) => {
-                    const v = e.currentTarget.value;
-                    const pl = [...(cfg.music?.playlist ?? [])];
-                    pl[i] = { ...pl[i], name: v };
-                    updatePlaylist(pl);
+            </Group>
+          </Field>
+          <Field label="自定义服务器">
+            <Stack gap="0.5rem">
+              <Textarea
+                value={trackerInput}
+                onChange={(e) => setTrackerInput(e.currentTarget.value)}
+                placeholder={"每行一个 tracker 地址\nudp://tracker.example.com:1337/announce\nhttps://tracker.example.com/announce"}
+                minRows={4}
+                autosize
+              />
+              <Box>
+                <Button
+                  variant="default"
+                  size="xs"
+                  onClick={async () => {
+                    if (!trackerInput.trim()) return;
+                    try {
+                      const s = await tracker.addUserTrackers(trackerInput);
+                      setTrackerStatus(s);
+                      setTrackerInput("");
+                    } catch (e) {
+                      alert("添加失败: " + e);
+                    }
                   }}
-                />
-                <TextInput
-                  placeholder="文件路径或 URL"
-                  defaultValue={track.src}
-                  style={{ flex: 1 }}
-                  onBlur={(e) => {
-                    const v = e.currentTarget.value;
-                    const pl = [...(cfg.music?.playlist ?? [])];
-                    pl[i] = { ...pl[i], src: v };
-                    updatePlaylist(pl);
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    const pl = (cfg.music?.playlist ?? []).filter((_, idx) => idx !== i);
-                    updatePlaylist(pl);
-                  }}
-                  style={{ background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.8rem" }}
                 >
-                  ✕
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => {
-                const pl = [...(cfg.music?.playlist ?? []), { name: "", src: "" }];
-                updatePlaylist(pl);
+                  添加
+                </Button>
+              </Box>
+            </Stack>
+          </Field>
+        </Section>
+
+        <Section title="库目录">
+          <Field label="本地库根目录">
+            <Group gap="0.5rem">
+              <TextInput value={cfg.library.root_dir} readOnly style={{ flex: 1 }} />
+              <Button variant="default" size="xs" onClick={pickDir}>
+                选择...
+              </Button>
+            </Group>
+          </Field>
+        </Section>
+
+        <Section title="搜索">
+          <Field label="请求间隔（秒）">
+            <NumberInput
+              w={100}
+              min={0}
+              defaultValue={cfg.search.rate_limit_secs}
+              onBlur={(e) => {
+                const v = parseInt(e.currentTarget.value, 10);
+                if (!isNaN(v) && v >= 0) {
+                  update((c) => {
+                    c.search.rate_limit_secs = v;
+                  });
+                }
               }}
-              style={{ background: "none", border: "1px dashed var(--color-separator)", borderRadius: 5, padding: "0.3rem 0.75rem", color: "var(--color-label-tertiary)", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", marginTop: "0.25rem" }}
+            />
+          </Field>
+        </Section>
+
+        <Section title="缓存">
+          <Field label="缓存文件路径">
+            <TextInput value={cachePath} readOnly style={{ flex: 1 }} />
+          </Field>
+          <Field label="最大缓存条目">
+            <NumberInput
+              w={120}
+              min={1}
+              defaultValue={cfg.cache?.max_entries ?? 200}
+              onBlur={(e) => {
+                const v = parseInt(e.currentTarget.value, 10);
+                if (!isNaN(v) && v > 0) {
+                  update((c) => {
+                    c.cache.max_entries = v;
+                  });
+                }
+              }}
+            />
+          </Field>
+        </Section>
+
+        <Section title="背景音乐">
+          <Field label="启用">
+            <Checkbox
+              checked={!!cfg.music?.enabled}
+              onChange={(e) =>
+                update((c) => {
+                  c.music.enabled = e.currentTarget.checked;
+                })
+              }
+            />
+          </Field>
+          <Field label="播放模式">
+            <Select
+              data={[
+                { value: "sequential", label: "顺序播放" },
+                { value: "random", label: "随机播放" },
+              ]}
+              value={cfg.music?.mode ?? "sequential"}
+              onChange={(v) => {
+                if (!v) return;
+                const mode = v === "random" ? ("random" as const) : ("sequential" as const);
+                update((c) => {
+                  c.music.mode = mode;
+                });
+              }}
+              w={180}
+            />
+          </Field>
+          <Field label="播放列表">
+            <Stack gap="0.4rem">
+              {(cfg.music?.playlist ?? []).map((track, i) => (
+                <Group key={i} gap="0.5rem" wrap="nowrap">
+                  <TextInput
+                    placeholder="曲目名称"
+                    defaultValue={track.name}
+                    w={140}
+                    onBlur={(e) => {
+                      const v = e.currentTarget.value;
+                      const pl = [...(cfg.music?.playlist ?? [])];
+                      pl[i] = { ...pl[i], name: v };
+                      updatePlaylist(pl);
+                    }}
+                  />
+                  <TextInput
+                    placeholder="文件路径或 URL"
+                    defaultValue={track.src}
+                    style={{ flex: 1 }}
+                    onBlur={(e) => {
+                      const v = e.currentTarget.value;
+                      const pl = [...(cfg.music?.playlist ?? [])];
+                      pl[i] = { ...pl[i], src: v };
+                      updatePlaylist(pl);
+                    }}
+                  />
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    onClick={() => {
+                      const pl = (cfg.music?.playlist ?? []).filter((_, idx) => idx !== i);
+                      updatePlaylist(pl);
+                    }}
+                  >
+                    ✕
+                  </ActionIcon>
+                </Group>
+              ))}
+              <Button
+                variant="default"
+                size="xs"
+                style={{ borderStyle: "dashed", alignSelf: "flex-start" }}
+                onClick={() => {
+                  const pl = [...(cfg.music?.playlist ?? []), { name: "", src: "" }];
+                  updatePlaylist(pl);
+                }}
+              >
+                + 添加曲目
+              </Button>
+            </Stack>
+          </Field>
+        </Section>
+
+        <Section title="云同步">
+          <Field label="Endpoint">
+            <TextInput
+              defaultValue={cfg.sync?.endpoint ?? ""}
+              placeholder="http://192.168.1.x:3900"
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.sync.endpoint = v;
+                });
+              }}
+            />
+          </Field>
+          <Field label="Bucket">
+            <TextInput
+              defaultValue={cfg.sync?.bucket ?? ""}
+              placeholder="blowup"
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.sync.bucket = v;
+                });
+              }}
+            />
+          </Field>
+          <Field label="Access Key">
+            <TextInput
+              type="password"
+              defaultValue={cfg.sync?.access_key ?? ""}
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.sync.access_key = v;
+                });
+              }}
+            />
+          </Field>
+          <Field label="Secret Key">
+            <TextInput
+              type="password"
+              defaultValue={cfg.sync?.secret_key ?? ""}
+              onBlur={(e) => {
+                const v = e.currentTarget.value;
+                update((c) => {
+                  c.sync.secret_key = v;
+                });
+              }}
+            />
+          </Field>
+          <Field label="连接测试">
+            <Button
+              variant="default"
+              size="xs"
+              onClick={async () => {
+                try {
+                  const msg = await dataIO.testS3Connection();
+                  alert(msg);
+                } catch (e) {
+                  alert("连接失败: " + e);
+                }
+              }}
             >
-              + 添加曲目
-            </button>
-          </div>
-        </Field>
-      </Section>
+              测试连接
+            </Button>
+          </Field>
+        </Section>
 
-      <Section title="云同步">
-        <Field label="Endpoint">
-          <TextInput
-            defaultValue={cfg.sync?.endpoint ?? ""}
-            placeholder="http://192.168.1.x:3900"
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.sync.endpoint = v; }); }}
-          />
-        </Field>
-        <Field label="Bucket">
-          <TextInput
-            defaultValue={cfg.sync?.bucket ?? ""}
-            placeholder="blowup"
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.sync.bucket = v; }); }}
-          />
-        </Field>
-        <Field label="Access Key">
-          <TextInput
-            type="password"
-            defaultValue={cfg.sync?.access_key ?? ""}
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.sync.access_key = v; }); }}
-          />
-        </Field>
-        <Field label="Secret Key">
-          <TextInput
-            type="password"
-            defaultValue={cfg.sync?.secret_key ?? ""}
-            onBlur={(e) => { const v = e.currentTarget.value; update((c) => { c.sync.secret_key = v; }); }}
-          />
-        </Field>
-        <Field label="连接测试">
-          <Button onClick={async () => {
-            try {
-              const msg = await dataIO.testS3Connection();
-              alert(msg);
-            } catch (e) { alert("连接失败: " + e); }
-          }}>测试连接</Button>
-        </Field>
-      </Section>
-
-      <Section title="数据管理">
-        <DataIORow
-          label="知识库"
-          onLocal={async (dir) => {
-            if (dir === "export") {
-              const path = await save({ defaultPath: "blowup-knowledge-base.json", filters: [{ name: "JSON", extensions: ["json"] }] });
-              if (path) { await dataIO.exportKnowledgeBase(path); alert("知识库导出成功"); }
-            } else {
-              const path = await open({ filters: [{ name: "JSON", extensions: ["json"] }] });
-              if (path) {
-                const msg = await dataIO.importKnowledgeBase(path as string);
+        <Section title="数据管理">
+          <DataIORow
+            label="知识库"
+            onLocal={async (dir) => {
+              if (dir === "export") {
+                const path = await save({
+                  defaultPath: "blowup-knowledge-base.json",
+                  filters: [{ name: "JSON", extensions: ["json"] }],
+                });
+                if (path) {
+                  await dataIO.exportKnowledgeBase(path);
+                  alert("知识库导出成功");
+                }
+              } else {
+                const path = await open({ filters: [{ name: "JSON", extensions: ["json"] }] });
+                if (path) {
+                  const msg = await dataIO.importKnowledgeBase(path as string);
+                  alert(msg);
+                  config.get().then(setCfg);
+                }
+              }
+            }}
+            onCloud={async (dir) => {
+              if (dir === "export") {
+                await dataIO.exportKnowledgeBaseS3();
+                alert("知识库已导出到云端");
+              } else {
+                const msg = await dataIO.importKnowledgeBaseS3();
                 alert(msg);
                 config.get().then(setCfg);
               }
-            }
-          }}
-          onCloud={async (dir) => {
-            if (dir === "export") {
-              await dataIO.exportKnowledgeBaseS3();
-              alert("知识库已导出到云端");
-            } else {
-              const msg = await dataIO.importKnowledgeBaseS3();
-              alert(msg);
-              config.get().then(setCfg);
-            }
-          }}
-        />
-        <DataIORow
-          label="配置文件"
-          onLocal={async (dir) => {
-            if (dir === "export") {
-              const path = await save({ defaultPath: "blowup-config.toml", filters: [{ name: "TOML", extensions: ["toml"] }] });
-              if (path) { await config.exportConfig(path); alert("配置导出成功"); }
-            } else {
-              const path = await open({ filters: [{ name: "TOML", extensions: ["toml"] }] });
-              if (path) {
-                await config.importConfig(path as string);
-                config.get().then(setCfg);
-                alert("配置导入成功，部分设置需重启生效");
+            }}
+          />
+          <DataIORow
+            label="配置文件"
+            onLocal={async (dir) => {
+              if (dir === "export") {
+                const path = await save({
+                  defaultPath: "blowup-config.toml",
+                  filters: [{ name: "TOML", extensions: ["toml"] }],
+                });
+                if (path) {
+                  await config.exportConfig(path);
+                  alert("配置导出成功");
+                }
+              } else {
+                const path = await open({ filters: [{ name: "TOML", extensions: ["toml"] }] });
+                if (path) {
+                  await config.importConfig(path as string);
+                  config.get().then(setCfg);
+                  alert("配置导入成功，部分设置需重启生效");
+                }
               }
-            }
-          }}
-          onCloud={async (dir) => {
-            if (dir === "export") {
-              await dataIO.exportConfigS3();
-              alert("配置已导出到云端");
-            } else {
-              await dataIO.importConfigS3();
-              config.get().then(setCfg);
-              alert("云端配置导入成功，部分设置需重启生效");
-            }
-          }}
-        />
-      </Section>
-
-    </div>
+            }}
+            onCloud={async (dir) => {
+              if (dir === "export") {
+                await dataIO.exportConfigS3();
+                alert("配置已导出到云端");
+              } else {
+                await dataIO.importConfigS3();
+                config.get().then(setCfg);
+                alert("云端配置导入成功，部分设置需重启生效");
+              }
+            }}
+          />
+        </Section>
+      </Box>
+    </ScrollArea>
   );
 }
 
-function DataIORow({ label, onLocal, onCloud }: {
+function DataIORow({
+  label,
+  onLocal,
+  onCloud,
+}: {
   label: string;
   onLocal: (dir: "export" | "import") => Promise<void>;
   onCloud: (dir: "export" | "import") => Promise<void>;
@@ -499,95 +592,87 @@ function DataIORow({ label, onLocal, onCloud }: {
   };
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "1rem",
-        padding: "0.65rem 0",
-        borderBottom: "1px solid var(--color-separator)",
-      }}
+    <Group
+      gap="1rem"
+      py="0.65rem"
+      style={{ borderBottom: "1px solid var(--color-separator)" }}
+      wrap="nowrap"
     >
-      <span style={{ width: 120, flexShrink: 0, fontSize: "0.82rem", color: "var(--color-label-secondary)" }}>
+      <Text size="sm" c="var(--color-label-secondary)" w={120} style={{ flexShrink: 0 }}>
         {label}
-      </span>
-      <div style={{ flex: 1 }}>
+      </Text>
+      <Box style={{ flex: 1 }}>
         {pending === null ? (
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <Button onClick={() => setPending("export")}>导出</Button>
-            <Button onClick={() => setPending("import")}>导入</Button>
-          </div>
+          <Group gap="0.5rem">
+            <Button variant="default" size="xs" onClick={() => setPending("export")}>
+              导出
+            </Button>
+            <Button variant="default" size="xs" onClick={() => setPending("import")}>
+              导入
+            </Button>
+          </Group>
         ) : (
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <span style={{ fontSize: "0.78rem", color: "var(--color-label-tertiary)" }}>
+          <Group gap="0.5rem">
+            <Text size="xs" c="var(--color-label-tertiary)">
               {pending === "export" ? "导出到" : "导入自"}:
-            </span>
-            <Button onClick={() => execute("local")}>本地文件</Button>
-            <Button onClick={() => execute("cloud")}>云端</Button>
-            <button
-              onClick={() => setPending(null)}
-              style={{ background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.8rem" }}
-            >
-              取消
-            </button>
-          </div>
+            </Text>
+            <Button variant="default" size="xs" onClick={() => execute("local")}>
+              本地文件
+            </Button>
+            <Button variant="default" size="xs" onClick={() => execute("cloud")}>
+              云端
+            </Button>
+            <ActionIcon variant="subtle" color="gray" onClick={() => setPending(null)}>
+              ✕
+            </ActionIcon>
+          </Group>
         )}
-      </div>
-    </div>
+      </Box>
+    </Group>
   );
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={{ marginBottom: "2rem" }}>
-      <p
-        style={{
-          margin: "0 0 0.75rem",
-          fontSize: "0.7rem",
-          color: "var(--color-label-quaternary)",
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-        }}
+    <Box mb="2rem">
+      <Text
+        size="xs"
+        tt="uppercase"
+        c="var(--color-label-quaternary)"
+        mb="0.75rem"
+        style={{ letterSpacing: "0.08em", fontSize: "0.7rem" }}
       >
         {title}
-      </p>
-      <div
-        className="settings-fields"
-        style={{
-          background: "var(--color-bg-secondary)",
-          border: "1px solid var(--color-separator)",
-          borderRadius: 10,
-          padding: "0.1rem 1rem",
-        }}
+      </Text>
+      <Paper
+        withBorder
+        radius="md"
+        bg="var(--color-bg-secondary)"
+        px="1rem"
+        py="0.1rem"
+        style={{ borderColor: "var(--color-separator)" }}
       >
-        {children}
-      </div>
-    </div>
+        <Stack gap={0}>{children}</Stack>
+      </Paper>
+    </Box>
   );
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div
+    <Group
+      gap="1rem"
+      py="0.65rem"
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "1rem",
-        padding: "0.65rem 0",
         borderBottom: "1px solid var(--color-separator)",
       }}
+      align="center"
+      wrap="nowrap"
     >
-      <span
-        style={{
-          width: 120,
-          flexShrink: 0,
-          fontSize: "0.82rem",
-          color: "var(--color-label-secondary)",
-        }}
-      >
+      <Text size="sm" c="var(--color-label-secondary)" w={120} style={{ flexShrink: 0 }}>
         {label}
-      </span>
-      <div style={{ flex: 1 }}>{children}</div>
-    </div>
+      </Text>
+      <Box style={{ flex: 1 }}>{children}</Box>
+    </Group>
   );
 }

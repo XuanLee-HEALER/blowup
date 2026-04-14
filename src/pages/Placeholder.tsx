@@ -1,4 +1,5 @@
-// src/pages/Placeholder.tsx
+import { Center, Stack, Text } from "@mantine/core";
+
 interface PlaceholderProps {
   title: string;
   milestone: string;
@@ -6,22 +7,15 @@ interface PlaceholderProps {
 
 export default function Placeholder({ title, milestone }: PlaceholderProps) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        gap: "0.5rem",
-      }}
-    >
-      <p style={{ color: "var(--color-label-tertiary)", fontSize: "1rem", fontWeight: 600 }}>
-        {title}
-      </p>
-      <p style={{ color: "var(--color-label-quaternary)", fontSize: "0.78rem" }}>
-        {milestone} 中实现
-      </p>
-    </div>
+    <Center h="100%">
+      <Stack gap="xs" align="center">
+        <Text fw={600} c="var(--color-label-tertiary)">
+          {title}
+        </Text>
+        <Text size="sm" c="var(--color-label-quaternary)">
+          {milestone} 中实现
+        </Text>
+      </Stack>
+    </Center>
   );
 }

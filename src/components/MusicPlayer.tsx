@@ -1,6 +1,7 @@
 // src/components/MusicPlayer.tsx
 import { useEffect, useRef, useState, useCallback } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { ActionIcon, Box, Group, Paper, Progress, Text } from "@mantine/core";
 import type { MusicTrack } from "../lib/tauri";
 
 interface MusicPlayerProps {
@@ -24,14 +25,16 @@ export function MusicPlayer({ enabled, mode, playlist, active }: MusicPlayerProp
 
   useEffect(() => {
     audioRef.current = new Audio();
-    return () => { audioRef.current?.pause(); audioRef.current = null; };
+    return () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
     if (!audioRef.current) return;
     if (!active || !enabled || playlist.length === 0) {
       audioRef.current.pause();
-      // Defer state update to avoid synchronous setState in effect body
       queueMicrotask(() => setIsPlaying(false));
     }
   }, [active, enabled, playlist.length]);
@@ -48,7 +51,10 @@ export function MusicPlayer({ enabled, mode, playlist, active }: MusicPlayerProp
         setCurrentIndex((i) => (i + 1) % playlist.length);
       }
     };
-    const onTimeUpdate = () => { setProgress(audio.currentTime); setDuration(audio.duration || 0); };
+    const onTimeUpdate = () => {
+      setProgress(audio.currentTime);
+      setDuration(audio.duration || 0);
+    };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
 
@@ -73,48 +79,88 @@ export function MusicPlayer({ enabled, mode, playlist, active }: MusicPlayerProp
     const newSrc = getTrackSrc(track);
     if (wasSrc !== newSrc) {
       audio.src = newSrc;
-      audio.play().then(() => setIsPlaying(true)).catch(() => {});
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {});
     }
   }, [currentIndex, active, enabled, playlist, getTrackSrc]);
 
   if (!enabled || playlist.length === 0 || !active) return null;
 
   const currentTrack = playlist[currentIndex];
-  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-  const next = () => setCurrentIndex(mode === "random" ? Math.floor(Math.random() * playlist.length) : (currentIndex + 1) % playlist.length);
+  const fmt = (s: number) =>
+    `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const next = () =>
+    setCurrentIndex(
+      mode === "random"
+        ? Math.floor(Math.random() * playlist.length)
+        : (currentIndex + 1) % playlist.length
+    );
   const togglePlay = () => {
     const a = audioRef.current;
     if (!a) return;
-    if (isPlaying) { a.pause(); } else { a.play().catch(() => {}); }
+    if (isPlaying) {
+      a.pause();
+    } else {
+      a.play().catch(() => {});
+    }
   };
 
-  const btnStyle: React.CSSProperties = { background: "none", border: "none", color: "var(--color-label-secondary)", cursor: "pointer", fontSize: "0.8rem", padding: "0.1rem 0.2rem", lineHeight: 1 };
+  const percent = duration > 0 ? (progress / duration) * 100 : 0;
 
   return (
-    <div style={{ position: "fixed", bottom: "1.25rem", right: "1.25rem", zIndex: 50, background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)", borderRadius: 10, padding: "0.6rem 0.85rem", width: 240, boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.4rem" }}>
-        <span style={{ fontSize: "0.78rem", color: "var(--color-accent)" }}>♪</span>
-        <span style={{ flex: 1, fontSize: "0.75rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--color-label-secondary)" }}>
+    <Paper
+      withBorder
+      shadow="lg"
+      radius="md"
+      bg="var(--color-bg-elevated)"
+      px="0.85rem"
+      py="0.6rem"
+      w={240}
+      style={{
+        position: "fixed",
+        bottom: "1.25rem",
+        right: "1.25rem",
+        zIndex: 50,
+        borderColor: "var(--color-separator)",
+      }}
+    >
+      <Group gap="0.5rem" mb="0.4rem" wrap="nowrap" align="center">
+        <Text fz="0.78rem" c="var(--color-accent)">
+          ♪
+        </Text>
+        <Text fz="0.75rem" c="var(--color-label-secondary)" truncate style={{ flex: 1 }}>
           {currentTrack?.name ?? "未知曲目"}
-        </span>
-        <button onClick={togglePlay} style={btnStyle}>{isPlaying ? "⏸" : "▶"}</button>
-        <button onClick={next} style={btnStyle}>⏭</button>
-        {mode === "random" && <span style={{ fontSize: "0.65rem", color: "var(--color-label-quaternary)" }}>🔀</span>}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-        <div style={{ flex: 1, height: 3, background: "var(--color-bg-secondary)", borderRadius: 2, overflow: "hidden", cursor: "pointer" }}
+        </Text>
+        <ActionIcon variant="subtle" color="gray" size="sm" onClick={togglePlay}>
+          {isPlaying ? "⏸" : "▶"}
+        </ActionIcon>
+        <ActionIcon variant="subtle" color="gray" size="sm" onClick={next}>
+          ⏭
+        </ActionIcon>
+        {mode === "random" && (
+          <Text fz="0.65rem" c="var(--color-label-quaternary)">
+            🔀
+          </Text>
+        )}
+      </Group>
+      <Group gap="0.4rem" align="center">
+        <Box
+          style={{ flex: 1, cursor: "pointer" }}
           onClick={(e) => {
             const a = audioRef.current;
             if (!a || !duration) return;
             const rect = e.currentTarget.getBoundingClientRect();
             a.currentTime = ((e.clientX - rect.left) / rect.width) * duration;
-          }}>
-          <div style={{ height: "100%", width: duration > 0 ? `${(progress / duration) * 100}%` : "0%", background: "var(--color-accent)", borderRadius: 2, transition: "width 0.5s linear" }} />
-        </div>
-        <span style={{ fontSize: "0.62rem", color: "var(--color-label-quaternary)", whiteSpace: "nowrap" }}>
+          }}
+        >
+          <Progress value={percent} size="xs" color="accent" transitionDuration={500} />
+        </Box>
+        <Text fz="0.62rem" c="var(--color-label-quaternary)" style={{ whiteSpace: "nowrap" }}>
           {fmt(progress)} / {fmt(duration)}
-        </span>
-      </div>
-    </div>
+        </Text>
+      </Group>
+    </Paper>
   );
 }

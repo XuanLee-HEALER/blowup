@@ -1,6 +1,7 @@
 // src/pages/Graph.tsx
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as d3 from "d3";
+import { ActionIcon, Box, CloseButton, Flex, Paper, Text } from "@mantine/core";
 import { kb } from "../lib/tauri";
 import type { GraphData, GraphNode } from "../lib/tauri";
 import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
@@ -231,46 +232,86 @@ export default function Graph() {
     });
   }, [hoveredId, data]);
 
-  const toolbarBtnStyle: React.CSSProperties = {
-    background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)",
-    borderRadius: 6, padding: "0.35rem 0.65rem",
-    color: "var(--color-label-secondary)", fontSize: "0.73rem",
-    cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
-  };
-
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--color-bg-primary)", ...gridBg }}>
+    <Box
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        background: "var(--color-bg-primary)",
+        ...gridBg,
+      }}
+    >
       {data === null ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>
-          加载图谱数据…
-        </div>
+        <Flex align="center" justify="center" h="100%">
+          <Text size="sm" c="var(--color-label-tertiary)">
+            加载图谱数据…
+          </Text>
+        </Flex>
       ) : data.nodes.length === 0 ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>
-          知识库为空。先在 Wiki 中添加条目和关系。
-        </div>
+        <Flex align="center" justify="center" h="100%">
+          <Text size="sm" c="var(--color-label-tertiary)">
+            知识库为空。先在 Wiki 中添加条目和关系。
+          </Text>
+        </Flex>
       ) : (
         <svg ref={svgRef} width="100%" height="100%" />
       )}
 
       {/* Toolbar */}
-      <div style={{ position: "absolute", top: "1rem", right: "1rem", display: "flex", flexDirection: "column", gap: "0.4rem", zIndex: 10 }}>
-        <button onClick={() => {
-          if (!svgRef.current || !zoomRef.current) return;
-          d3.select(svgRef.current).transition().duration(500)
-            .call(zoomRef.current.transform, d3.zoomIdentity);
-        }} style={toolbarBtnStyle}>重置视角</button>
-      </div>
+      <Box
+        style={{
+          position: "absolute",
+          top: "1rem",
+          right: "1rem",
+          zIndex: 10,
+        }}
+      >
+        <ActionIcon
+          variant="default"
+          size="md"
+          onClick={() => {
+            if (!svgRef.current || !zoomRef.current) return;
+            d3.select(svgRef.current)
+              .transition()
+              .duration(500)
+              .call(zoomRef.current.transform, d3.zoomIdentity);
+          }}
+          title="重置视角"
+        >
+          ⌂
+        </ActionIcon>
+      </Box>
 
       {/* Selected node mini card */}
       {selectedNode && (
-        <div style={{ position: "absolute", bottom: "1.5rem", right: "1rem", background: "var(--color-bg-secondary)", border: "1px solid var(--color-separator)", borderRadius: 8, padding: "0.85rem 1rem", width: 200, zIndex: 10 }}>
-          <button onClick={() => setSelectedNode(null)} style={{ position: "absolute", top: "0.4rem", right: "0.5rem", background: "none", border: "none", color: "var(--color-label-quaternary)", cursor: "pointer", fontSize: "0.8rem" }}>✕</button>
-          <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: 600 }}>{selectedNode.label}</p>
-          <p style={{ margin: "0.15rem 0 0", fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>
+        <Paper
+          withBorder
+          radius="md"
+          p="0.85rem 1rem"
+          w={200}
+          bg="var(--color-bg-secondary)"
+          style={{
+            position: "absolute",
+            bottom: "1.5rem",
+            right: "1rem",
+            zIndex: 10,
+            borderColor: "var(--color-separator)",
+          }}
+        >
+          <CloseButton
+            size="xs"
+            onClick={() => setSelectedNode(null)}
+            style={{ position: "absolute", top: 4, right: 4 }}
+          />
+          <Text fz="0.85rem" fw={600}>
+            {selectedNode.label}
+          </Text>
+          <Text fz="0.68rem" c="var(--color-label-quaternary)" mt={2}>
             关系数 {selectedNode.weight.toFixed(1)}
-          </p>
-        </div>
+          </Text>
+        </Paper>
       )}
-    </div>
+    </Box>
   );
 }

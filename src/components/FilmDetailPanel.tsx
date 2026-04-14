@@ -1,23 +1,32 @@
 // src/components/FilmDetailPanel.tsx
 import { useState, useEffect } from "react";
+import {
+  Box,
+  Button,
+  Checkbox,
+  CloseButton,
+  Divider,
+  Group,
+  Image,
+  Loader,
+  Modal,
+  Paper,
+  ScrollArea,
+  Stack,
+  Text,
+  Title,
+} from "@mantine/core";
 import { yts, download } from "../lib/tauri";
 import { formatSize } from "../lib/format";
 import type { MovieListItem, MovieResult, TorrentFileInfo } from "../lib/tauri";
 
-function ensurePulseAnimation() {
-  if (!document.head.querySelector("[data-blowup-pulse]")) {
-    const style = document.createElement("style");
-    style.textContent = `@keyframes pulse{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}`;
-    style.setAttribute("data-blowup-pulse", "");
-    document.head.appendChild(style);
-  }
-}
-
 function TorrentSearchModal({
   film,
+  opened,
   onClose,
 }: {
   film: MovieListItem;
+  opened: boolean;
   onClose: () => void;
 }) {
   const [results, setResults] = useState<MovieResult[]>([]);
@@ -25,7 +34,6 @@ function TorrentSearchModal({
   const [error, setError] = useState("");
   const [fetching, setFetching] = useState<Set<string>>(new Set());
   const [started, setStarted] = useState<Set<string>>(new Set());
-  // File selection modal state
   const [filePickResult, setFilePickResult] = useState<MovieResult | null>(null);
   const [fileList, setFileList] = useState<TorrentFileInfo[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
@@ -33,17 +41,17 @@ function TorrentSearchModal({
 
   const year = film.year ? parseInt(film.year) : undefined;
 
-  useEffect(() => { ensurePulseAnimation(); }, []);
-
   useEffect(() => {
+    if (!opened) return;
+    setLoading(true);
+    setError("");
     yts
       .search(film.title, year, film.id)
       .then(setResults)
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [film.title, year, film.id]);
+  }, [opened, film.title, year, film.id]);
 
-  // Step 1: fetch torrent file list
   const handleFetchFiles = async (r: MovieResult) => {
     const target = r.magnet ?? r.torrent_url;
     if (!target) return;
@@ -56,19 +64,18 @@ function TorrentSearchModal({
     } catch (e) {
       console.error("fetch torrent files failed:", e);
     } finally {
-      setFetching((prev) => { const next = new Set(prev); next.delete(target); return next; });
+      setFetching((prev) => {
+        const next = new Set(prev);
+        next.delete(target);
+        return next;
+      });
     }
   };
 
-  // Step 2: confirm and start download
   const handleConfirmDownload = async () => {
     if (!filePickResult) return;
     const target = filePickResult.magnet ?? filePickResult.torrent_url;
     if (!target) return;
-    // Require a resolved director before starting the torrent — the
-    // backend computes the on-disk path from this string, so falling
-    // back to "Unknown" silently would create a bogus library directory
-    // (see: GATAO bug fix).
     if (!film.director || !film.director.trim()) {
       setError("无法确定导演，请重试或稍后再试 (TMDB credits 未就绪)");
       return;
@@ -95,244 +102,145 @@ function TorrentSearchModal({
   };
 
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: "var(--color-bg-primary)",
-          borderRadius: 12,
-          padding: 24,
-          width: 480,
-          maxHeight: "70vh",
-          overflowY: "auto",
-        }}
+    <>
+      <Modal
+        opened={opened}
+        onClose={onClose}
+        title={`搜索资源: ${film.title}`}
+        size="md"
+        centered
       >
-        <h3 style={{ margin: "0 0 12px" }}>搜索资源: {film.title}</h3>
-
         {loading && (
-          <div style={{ color: "var(--color-label-secondary)", fontSize: 13 }}>
-            搜索中...
-          </div>
+          <Group gap="xs">
+            <Loader size="xs" />
+            <Text size="sm" c="var(--color-label-secondary)">
+              搜索中...
+            </Text>
+          </Group>
         )}
 
         {error && (
-          <div style={{ color: "var(--color-danger)", fontSize: 13 }}>
+          <Text size="sm" c="var(--color-danger)">
             {error.includes("NoResults") ? "未找到资源" : `搜索失败: ${error}`}
-          </div>
+          </Text>
         )}
 
         {!loading && !error && results.length === 0 && (
-          <div style={{ color: "var(--color-label-tertiary)", fontSize: 13 }}>
+          <Text size="sm" c="var(--color-label-tertiary)">
             未找到资源
-          </div>
+          </Text>
         )}
 
-        {results.map((r, i) => {
-          const target = r.magnet ?? r.torrent_url ?? "";
-          const isStarted = started.has(target);
-          return (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "8px 0",
-                borderBottom: "1px solid var(--color-separator)",
-                fontSize: 13,
-              }}
-            >
-              <div>
-                <span style={{ fontWeight: 500 }}>{r.quality}</span>
-                <span style={{ color: "var(--color-label-secondary)", marginLeft: 12 }}>
-                  {r.seeds} seeds
-                </span>
-              </div>
-              {isStarted ? (
-                <span style={{ color: "var(--color-accent)", fontSize: 12 }}>
-                  下载中
-                </span>
-              ) : fetching.has(target) ? (
-                <span style={{ fontSize: 12, display: "inline-flex", gap: 3 }}>
-                  {[0, 1, 2].map((j) => (
-                    <span key={j} style={{
-                      width: 4, height: 4, borderRadius: "50%", background: "var(--color-accent)",
-                      animation: "pulse 1.2s ease-in-out infinite",
-                      animationDelay: `${j * 0.2}s`,
-                    }} />
-                  ))}
-                </span>
-              ) : (
-                <button
-                  onClick={() => handleFetchFiles(r)}
-                  disabled={!target}
-                  style={{
-                    background: "var(--color-accent)",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 4,
-                    padding: "3px 12px",
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  下载
-                </button>
-              )}
-            </div>
-          );
-        })}
+        <Stack gap={0}>
+          {results.map((r, i) => {
+            const target = r.magnet ?? r.torrent_url ?? "";
+            const isStarted = started.has(target);
+            return (
+              <Group
+                key={i}
+                justify="space-between"
+                py="8px"
+                style={{ borderBottom: "1px solid var(--color-separator)" }}
+                wrap="nowrap"
+              >
+                <Group gap="md">
+                  <Text size="sm" fw={500}>
+                    {r.quality}
+                  </Text>
+                  <Text size="sm" c="var(--color-label-secondary)">
+                    {r.seeds} seeds
+                  </Text>
+                </Group>
+                {isStarted ? (
+                  <Text size="xs" c="var(--color-accent)">
+                    下载中
+                  </Text>
+                ) : fetching.has(target) ? (
+                  <Loader size="xs" />
+                ) : (
+                  <Button size="compact-xs" disabled={!target} onClick={() => handleFetchFiles(r)}>
+                    下载
+                  </Button>
+                )}
+              </Group>
+            );
+          })}
+        </Stack>
 
-        <button
-          onClick={onClose}
-          style={{
-            marginTop: 16,
-            background: "var(--color-bg-control)",
-            border: "1px solid var(--color-separator)",
-            borderRadius: 6,
-            padding: "6px 16px",
-            color: "var(--color-label-primary)",
-            cursor: "pointer",
-            fontSize: 13,
-            width: "100%",
-          }}
-        >
+        <Button variant="default" fullWidth mt="md" onClick={onClose}>
           关闭
-        </button>
-      </div>
+        </Button>
+      </Modal>
 
       {/* File selection modal */}
-      {filePickResult && (
-        <div
-          onClick={() => !submitting && setFilePickResult(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1100,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--color-bg-primary)",
-              borderRadius: 12,
-              padding: 24,
-              width: 520,
-              maxHeight: "70vh",
-              display: "flex",
-              flexDirection: "column",
+      <Modal
+        opened={!!filePickResult}
+        onClose={() => !submitting && setFilePickResult(null)}
+        title="选择下载文件"
+        size="lg"
+        centered
+      >
+        <Text size="xs" c="var(--color-label-secondary)" mb="md">
+          {filePickResult?.quality} · 共 {fileList.length} 个文件
+        </Text>
+        <ScrollArea.Autosize mah={400} mb="md">
+          <Stack gap={0}>
+            {fileList.map((f) => (
+              <Group
+                key={f.index}
+                gap="xs"
+                py="6px"
+                wrap="nowrap"
+                style={{ borderBottom: "1px solid var(--color-separator)" }}
+              >
+                <Checkbox
+                  checked={selectedFiles.has(f.index)}
+                  onChange={() => {
+                    setSelectedFiles((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(f.index)) next.delete(f.index);
+                      else next.add(f.index);
+                      return next;
+                    });
+                  }}
+                />
+                <Text size="sm" truncate style={{ flex: 1 }}>
+                  {f.name}
+                </Text>
+                <Text size="sm" c="var(--color-label-tertiary)" style={{ flexShrink: 0 }}>
+                  {formatSize(f.size)}
+                </Text>
+              </Group>
+            ))}
+          </Stack>
+        </ScrollArea.Autosize>
+
+        <Group justify="space-between">
+          <Button
+            variant="default"
+            size="xs"
+            onClick={() => {
+              if (selectedFiles.size === fileList.length) setSelectedFiles(new Set());
+              else setSelectedFiles(new Set(fileList.map((f) => f.index)));
             }}
           >
-            <h3 style={{ margin: "0 0 4px" }}>选择下载文件</h3>
-            <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--color-label-secondary)" }}>
-              {filePickResult.quality} · 共 {fileList.length} 个文件
-            </p>
-
-            <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
-              {fileList.map((f) => (
-                <label
-                  key={f.index}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "6px 0",
-                    borderBottom: "1px solid var(--color-separator)",
-                    fontSize: 13,
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedFiles.has(f.index)}
-                    onChange={() => {
-                      setSelectedFiles((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(f.index)) next.delete(f.index);
-                        else next.add(f.index);
-                        return next;
-                      });
-                    }}
-                  />
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {f.name}
-                  </span>
-                  <span style={{ color: "var(--color-label-tertiary)", flexShrink: 0 }}>
-                    {formatSize(f.size)}
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => {
-                  if (selectedFiles.size === fileList.length) setSelectedFiles(new Set());
-                  else setSelectedFiles(new Set(fileList.map((f) => f.index)));
-                }}
-                style={{
-                  background: "var(--color-bg-control)",
-                  border: "1px solid var(--color-separator)",
-                  borderRadius: 6,
-                  padding: "6px 16px",
-                  color: "var(--color-label-primary)",
-                  cursor: "pointer",
-                  fontSize: 13,
-                }}
-              >
-                {selectedFiles.size === fileList.length ? "取消全选" : "全选"}
-              </button>
-              <div style={{ flex: 1 }} />
-              <button
-                onClick={() => setFilePickResult(null)}
-                disabled={submitting}
-                style={{
-                  background: "var(--color-bg-control)",
-                  border: "1px solid var(--color-separator)",
-                  borderRadius: 6,
-                  padding: "6px 16px",
-                  color: "var(--color-label-primary)",
-                  cursor: "pointer",
-                  fontSize: 13,
-                }}
-              >
-                取消
-              </button>
-              <button
-                onClick={handleConfirmDownload}
-                disabled={selectedFiles.size === 0 || submitting}
-                style={{
-                  background: selectedFiles.size === 0 ? "var(--color-bg-control)" : "var(--color-accent)",
-                  color: selectedFiles.size === 0 ? "var(--color-label-tertiary)" : "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  padding: "6px 16px",
-                  cursor: selectedFiles.size === 0 ? "not-allowed" : "pointer",
-                  fontSize: 13,
-                }}
-              >
-                {submitting ? "开始中..." : `确认下载 (${selectedFiles.size})`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+            {selectedFiles.size === fileList.length ? "取消全选" : "全选"}
+          </Button>
+          <Group gap="xs">
+            <Button variant="default" disabled={submitting} onClick={() => setFilePickResult(null)}>
+              取消
+            </Button>
+            <Button
+              disabled={selectedFiles.size === 0}
+              loading={submitting}
+              onClick={handleConfirmDownload}
+            >
+              确认下载 ({selectedFiles.size})
+            </Button>
+          </Group>
+        </Group>
+      </Modal>
+    </>
   );
 }
 
@@ -346,63 +254,87 @@ export function FilmDetailPanel({ film, onClose }: FilmDetailPanelProps) {
 
   return (
     <>
-      <div style={{ width: "100%", background: "var(--color-bg-secondary)", overflowY: "auto", padding: "1.25rem 1.25rem 2rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--color-label-tertiary)", cursor: "pointer", fontSize: "1rem", lineHeight: 1, padding: 0 }}>✕</button>
-        </div>
+      <Box
+        w="100%"
+        bg="var(--color-bg-secondary)"
+        px="1.25rem"
+        pt="1.25rem"
+        pb="2rem"
+      >
+        <Stack gap="0.75rem">
+          <Group justify="flex-end">
+            <CloseButton onClick={onClose} />
+          </Group>
 
-        {film.poster_path && (
-          <img src={`https://image.tmdb.org/t/p/w300${film.poster_path}`} alt={film.title} style={{ width: "100%", borderRadius: 6 }} />
-        )}
-
-        <div>
-          <h2 style={{ margin: 0, fontSize: "1rem", fontWeight: 700, letterSpacing: "-0.02em" }}>{film.title}</h2>
-          {film.original_title !== film.title && (
-            <p style={{ margin: "0.15rem 0 0", fontSize: "0.72rem", color: "var(--color-label-tertiary)" }}>{film.original_title}</p>
+          {film.poster_path && (
+            <Image
+              src={`https://image.tmdb.org/t/p/w300${film.poster_path}`}
+              alt={film.title}
+              radius="md"
+              w="100%"
+              fit="contain"
+            />
           )}
-        </div>
 
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          {film.year && <span style={{ fontSize: "0.75rem", color: "var(--color-label-secondary)" }}>{film.year}</span>}
-          <span style={{ fontSize: "0.75rem", color: "var(--color-label-tertiary)" }}>·</span>
-          <span style={{ fontSize: "0.75rem", color: "var(--color-accent)", fontWeight: 500 }}>★ {film.vote_average.toFixed(1)}</span>
-        </div>
+          <Box>
+            <Title order={2} fz="1rem" fw={700} style={{ letterSpacing: "-0.02em" }}>
+              {film.title}
+            </Title>
+            {film.original_title !== film.title && (
+              <Text size="xs" c="var(--color-label-tertiary)" mt={2}>
+                {film.original_title}
+              </Text>
+            )}
+          </Box>
 
-        {(film.director || (film.cast && film.cast.length > 0)) && (
-          <div style={{ fontSize: "0.75rem", color: "var(--color-label-secondary)", lineHeight: 1.5 }}>
-            {film.director && <div>导演: {film.director}</div>}
-            {film.cast && film.cast.length > 0 && <div>主演: {film.cast.join(", ")}</div>}
-          </div>
-        )}
+          <Group gap="0.5rem">
+            {film.year && (
+              <Text size="xs" c="var(--color-label-secondary)">
+                {film.year}
+              </Text>
+            )}
+            <Text size="xs" c="var(--color-label-tertiary)">
+              ·
+            </Text>
+            <Text size="xs" c="var(--color-accent)" fw={500}>
+              ★ {film.vote_average.toFixed(1)}
+            </Text>
+          </Group>
 
-        <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--color-label-secondary)", lineHeight: 1.6 }}>
-          {film.overview || "暂无简介。"}
-        </p>
+          {(film.director || (film.cast && film.cast.length > 0)) && (
+            <Box>
+              {film.director && (
+                <Text size="xs" c="var(--color-label-secondary)" lh={1.5}>
+                  导演: {film.director}
+                </Text>
+              )}
+              {film.cast && film.cast.length > 0 && (
+                <Text size="xs" c="var(--color-label-secondary)" lh={1.5}>
+                  主演: {film.cast.join(", ")}
+                </Text>
+              )}
+            </Box>
+          )}
 
-        <div style={{ borderTop: "1px solid var(--color-separator)", paddingTop: "0.75rem" }}>
-          <button
-            onClick={() => setShowTorrentModal(true)}
-            style={{
-              background: "var(--color-bg-control)",
-              border: "1px solid var(--color-separator)",
-              borderRadius: 8,
-              padding: "0.4rem 0.75rem",
-              color: "var(--color-label-primary)",
-              cursor: "pointer",
-              fontSize: "0.78rem",
-            }}
-          >
-            搜索资源
-          </button>
-        </div>
-      </div>
+          <Text size="sm" c="var(--color-label-secondary)" lh={1.6}>
+            {film.overview || "暂无简介。"}
+          </Text>
 
-      {showTorrentModal && (
-        <TorrentSearchModal
-          film={film}
-          onClose={() => setShowTorrentModal(false)}
-        />
-      )}
+          <Divider />
+
+          <Paper>
+            <Button variant="default" size="xs" onClick={() => setShowTorrentModal(true)}>
+              搜索资源
+            </Button>
+          </Paper>
+        </Stack>
+      </Box>
+
+      <TorrentSearchModal
+        film={film}
+        opened={showTorrentModal}
+        onClose={() => setShowTorrentModal(false)}
+      />
     </>
   );
 }

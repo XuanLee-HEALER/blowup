@@ -1,7 +1,7 @@
 // src/App.tsx
 import { useEffect, useState, useCallback } from "react";
 import { Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import { NavItem } from "./components/ui/NavItem";
+import { AppShell, Box, NavLink, Stack, Text } from "@mantine/core";
 import Search from "./pages/Search";
 import Settings from "./pages/Settings";
 import Wiki from "./pages/Wiki";
@@ -13,7 +13,18 @@ import { MusicPlayer } from "./components/MusicPlayer";
 import { config, type MusicTrack } from "./lib/tauri";
 import { useBackendEvent, BackendEvent } from "./lib/useBackendEvent";
 
-const NAV_SECTIONS = [
+interface NavEntry {
+  icon: string;
+  label: string;
+  path: string;
+}
+
+interface NavSection {
+  label: string | null;
+  items: NavEntry[];
+}
+
+const NAV_SECTIONS: NavSection[] = [
   {
     label: null,
     items: [{ icon: "⌕", label: "搜索", path: "/" }],
@@ -36,6 +47,14 @@ const NAV_SECTIONS = [
 ];
 
 const KB_PATHS = ["/", "/wiki", "/graph", "/library"];
+
+function NavIcon({ children }: { children: string }) {
+  return (
+    <Text component="span" ta="center" w={15} fz="sm">
+      {children}
+    </Text>
+  );
+}
 
 export default function App() {
   const navigate = useNavigate();
@@ -67,69 +86,86 @@ export default function App() {
   useBackendEvent(BackendEvent.CONFIG_CHANGED, loadMusicConfig);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Sidebar */}
-        <aside
-          style={{
-            width: 188,
-            flexShrink: 0,
-            background: "var(--color-bg-secondary)",
-            borderRight: "1px solid var(--color-separator)",
-            display: "flex",
-            flexDirection: "column",
-            padding: "1rem 0.5rem",
-            gap: 1,
-          }}
-        >
+    <AppShell
+      navbar={{ width: 188, breakpoint: 0 }}
+      padding={0}
+      styles={{
+        navbar: {
+          background: "var(--color-bg-secondary)",
+          borderRight: "1px solid var(--color-separator)",
+          padding: "1rem 0.5rem",
+        },
+        main: {
+          background: "var(--color-bg-primary)",
+        },
+      }}
+    >
+      <AppShell.Navbar>
+        <Stack gap={1} h="100%">
           {NAV_SECTIONS.map((section, si) => (
-            <div key={si}>
+            <Box key={si}>
               {section.label && (
-                <p
-                  style={{
-                    fontSize: "0.62rem",
-                    color: "var(--color-label-quaternary)",
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                    padding: "0.85rem 0.75rem 0.3rem",
-                    margin: 0,
-                  }}
+                <Text
+                  size="xs"
+                  fw={500}
+                  tt="uppercase"
+                  c="var(--color-label-quaternary)"
+                  pt="0.85rem"
+                  pb="0.3rem"
+                  px="0.75rem"
+                  style={{ letterSpacing: "0.08em", fontSize: "0.62rem" }}
                 >
                   {section.label}
-                </p>
+                </Text>
               )}
               {section.items.map((item) => (
-                <NavItem
+                <NavLink
                   key={item.path}
-                  icon={item.icon}
-                  label={item.label}
                   active={pathname === item.path}
-                  disabled={"disabled" in item && (item.disabled as boolean)}
+                  label={item.label}
+                  leftSection={<NavIcon>{item.icon}</NavIcon>}
                   onClick={() => navigate(item.path)}
+                  variant="subtle"
+                  styles={{
+                    root: {
+                      borderRadius: 6,
+                      padding: "0.42rem 0.75rem",
+                      fontSize: "0.82rem",
+                    },
+                    label: { fontSize: "0.82rem" },
+                  }}
                 />
               ))}
-            </div>
+            </Box>
           ))}
 
           {/* Bottom: Settings */}
-          <div
-            style={{
-              marginTop: "auto",
-              borderTop: "1px solid var(--color-separator)",
-              paddingTop: "0.5rem",
-            }}
+          <Box
+            mt="auto"
+            pt="0.5rem"
+            style={{ borderTop: "1px solid var(--color-separator)" }}
           >
-            <NavItem
-              icon="⚙"
-              label="设置"
+            <NavLink
               active={pathname === "/settings"}
+              label="设置"
+              leftSection={<NavIcon>⚙</NavIcon>}
               onClick={() => navigate("/settings")}
+              variant="subtle"
+              styles={{
+                root: {
+                  borderRadius: 6,
+                  padding: "0.42rem 0.75rem",
+                  fontSize: "0.82rem",
+                },
+                label: { fontSize: "0.82rem" },
+              }}
             />
-          </div>
-        </aside>
+          </Box>
+        </Stack>
+      </AppShell.Navbar>
 
-        {/* Content */}
-        <main style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+      <AppShell.Main h="100vh" style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <Box style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <Routes>
             <Route path="/" element={<Search />} />
             <Route path="/settings" element={<Settings />} />
@@ -139,15 +175,15 @@ export default function App() {
             <Route path="/download" element={<Download />} />
             <Route path="/darkroom" element={<Darkroom />} />
           </Routes>
-        </main>
-      </div>
+        </Box>
 
-      <MusicPlayer
-        active={isKbActive}
-        enabled={musicEnabled}
-        mode={musicMode}
-        playlist={musicPlaylist}
-      />
-    </div>
+        <MusicPlayer
+          active={isKbActive}
+          enabled={musicEnabled}
+          mode={musicMode}
+          playlist={musicPlaylist}
+        />
+      </AppShell.Main>
+    </AppShell>
   );
 }

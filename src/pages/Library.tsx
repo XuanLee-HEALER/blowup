@@ -1,7 +1,30 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  ActionIcon,
+  Box,
+  Button,
+  Checkbox,
+  ColorInput,
+  Flex,
+  Group,
+  Image,
+  Menu,
+  NumberInput,
+  Paper,
+  ScrollArea,
+  Slider,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+  UnstyledButton,
+} from "@mantine/core";
 import { library, media, config, player } from "../lib/tauri";
-import type { IndexEntry, SubtitleOverlayConfig, SubtitleDisplayConfig } from "../lib/tauri";
-import { TextInput } from "../components/ui/TextInput";
+import type {
+  IndexEntry,
+  SubtitleOverlayConfig,
+  SubtitleDisplayConfig,
+} from "../lib/tauri";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
 
@@ -10,6 +33,15 @@ const SUB_EXTS = ["srt", "ass", "sub", "idx"];
 const CREDIT_ORDER = ["导演", "主演", "编剧", "摄影", "配乐", "剪辑", "制片"];
 const getExt = (f: string) => f.split(".").pop()?.toLowerCase() ?? "";
 
+interface SubConfig {
+  enabled: boolean;
+  y_position: number;
+  color: string;
+  font_size: number;
+}
+
+const DEFAULT_SUB_COLORS = ["#FFFFFF", "#FFFF00", "#00FF00", "#00FFFF"];
+
 export default function Library() {
   const [directorMap, setDirectorMap] = useState<Record<string, IndexEntry[]>>({});
   const [selectedDirector, setSelectedDirector] = useState<string | null>(null);
@@ -17,9 +49,12 @@ export default function Library() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<IndexEntry[] | null>(null);
   const [enriching, setEnriching] = useState(false);
-  interface SubConfig { enabled: boolean; y_position: number; color: string; font_size: number; }
   const [subConfigs, setSubConfigs] = useState<Map<string, SubConfig>>(new Map());
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; entry: IndexEntry } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    entry: IndexEntry;
+  } | null>(null);
   const rootDir = useRef("");
 
   const refresh = useCallback(async () => {
@@ -29,38 +64,38 @@ export default function Library() {
 
   useEffect(() => {
     library.listIndexByDirector().then(setDirectorMap);
-    config.get().then((c) => { rootDir.current = c.library.root_dir; });
+    config.get().then((c) => {
+      rootDir.current = c.library.root_dir;
+    });
   }, []);
 
   useBackendEvent(BackendEvent.LIBRARY_CHANGED, refresh);
 
   const selectEntry = useCallback((entry: IndexEntry) => {
     setSelectedEntry(entry);
-    // Restore saved subtitle display configs
     const saved = entry.subtitle_configs ?? {};
     const restored = new Map<string, SubConfig>();
     for (const [name, cfg] of Object.entries(saved)) {
       restored.set(name, { enabled: false, ...cfg });
     }
     setSubConfigs(restored);
-    if (entry.poster_url) {
-      const resolved = entry.poster_url.startsWith("http") ? entry.poster_url : convertFileSrc(entry.poster_url);
-      console.log("[blowup] poster_url:", entry.poster_url, "→ resolved:", resolved);
-    }
     if (!entry.poster_url) {
       setEnriching(true);
-      library.enrichIndexEntry(entry.tmdb_id)
+      library
+        .enrichIndexEntry(entry.tmdb_id)
         .then((enriched) => {
-          console.log("[blowup] enriched poster_url:", enriched.poster_url);
           setSelectedEntry(enriched);
         })
-        .catch(() => { /* TMDB unavailable, show basic info */ })
+        .catch(() => {})
         .finally(() => setEnriching(false));
     }
   }, []);
 
   const doSearch = async () => {
-    if (!searchQuery.trim()) { setSearchResults(null); return; }
+    if (!searchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
     const results = await library.searchIndex(searchQuery.trim());
     setSearchResults(results);
   };
@@ -77,7 +112,9 @@ export default function Library() {
         color: c.color,
         font_size: c.font_size,
       }));
-      setTimeout(() => { player.loadOverlaySubs(configs).catch(console.error); }, 500);
+      setTimeout(() => {
+        player.loadOverlaySubs(configs).catch(console.error);
+      }, 500);
     }
   };
 
@@ -91,10 +128,15 @@ export default function Library() {
       setDirectorMap(map);
       for (const entries of Object.values(map)) {
         const updated = entries.find((e) => e.tmdb_id === entry.tmdb_id);
-        if (updated) { setSelectedEntry(updated); return; }
+        if (updated) {
+          setSelectedEntry(updated);
+          return;
+        }
       }
       setSelectedEntry(null);
-    } catch (e) { alert(`删除失败: ${e}`); }
+    } catch (e) {
+      alert(`删除失败: ${e}`);
+    }
   };
 
   const handleDeleteFilm = async (entry: IndexEntry) => {
@@ -106,13 +148,16 @@ export default function Library() {
       if (selectedEntry?.tmdb_id === entry.tmdb_id) {
         setSelectedEntry(null);
       }
-    } catch (e) { alert(`删除失败: ${e}`); }
+    } catch (e) {
+      alert(`删除失败: ${e}`);
+    }
   };
 
   const handleRefreshDetail = async () => {
     if (!selectedEntry) return;
     setEnriching(true);
-    library.enrichIndexEntry(selectedEntry.tmdb_id, true)
+    library
+      .enrichIndexEntry(selectedEntry.tmdb_id, true)
       .then((enriched) => setSelectedEntry(enriched))
       .catch((e) => alert(`刷新失败: ${e}`))
       .finally(() => setEnriching(false));
@@ -123,7 +168,19 @@ export default function Library() {
     await refresh();
   };
 
-  const DEFAULT_SUB_COLORS = ["#FFFFFF", "#FFFF00", "#00FF00", "#00FFFF"];
+  const persistSubConfigs = (configs: Map<string, SubConfig>) => {
+    if (!selectedEntry) return;
+    const toSave: Record<string, SubtitleDisplayConfig> = {};
+    for (const [name, cfg] of configs) {
+      toSave[name] = {
+        y_position: cfg.y_position,
+        color: cfg.color,
+        font_size: cfg.font_size,
+      };
+    }
+    library.saveSubtitleConfigs(selectedEntry.tmdb_id, toSave).catch(console.error);
+  };
+
   const toggleSub = (file: string) => {
     setSubConfigs((prev) => {
       const next = new Map(prev);
@@ -144,15 +201,6 @@ export default function Library() {
     });
   };
 
-  const persistSubConfigs = (configs: Map<string, SubConfig>) => {
-    if (!selectedEntry) return;
-    const toSave: Record<string, SubtitleDisplayConfig> = {};
-    for (const [name, cfg] of configs) {
-      toSave[name] = { y_position: cfg.y_position, color: cfg.color, font_size: cfg.font_size };
-    }
-    library.saveSubtitleConfigs(selectedEntry.tmdb_id, toSave).catch(console.error);
-  };
-
   const updateSubConfig = (file: string, patch: Partial<SubConfig>) => {
     setSubConfigs((prev) => {
       const next = new Map(prev);
@@ -164,8 +212,10 @@ export default function Library() {
   };
 
   const directors = Object.keys(directorMap).sort();
-  const videoFiles = selectedEntry?.files.filter((f) => VIDEO_EXTS.includes(getExt(f))) ?? [];
-  const subtitleFiles = selectedEntry?.files.filter((f) => SUB_EXTS.includes(getExt(f))) ?? [];
+  const videoFiles =
+    selectedEntry?.files.filter((f) => VIDEO_EXTS.includes(getExt(f))) ?? [];
+  const subtitleFiles =
+    selectedEntry?.files.filter((f) => SUB_EXTS.includes(getExt(f))) ?? [];
 
   const credits = selectedEntry?.credits ?? {};
 
@@ -175,329 +225,446 @@ export default function Library() {
   };
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {/* ── Left: director list + search ── */}
-      <div style={{ width: 240, flexShrink: 0, borderRight: "1px solid var(--color-separator)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ padding: "1.4rem 1rem 0" }}>
-          <h1 style={{ fontSize: "1.3rem", fontWeight: 700, letterSpacing: "-0.035em", marginBottom: "0.8rem" }}>
+    <Flex h="100%" style={{ overflow: "hidden" }}>
+      {/* Left: director list + search */}
+      <Flex
+        direction="column"
+        w={240}
+        style={{
+          flexShrink: 0,
+          borderRight: "1px solid var(--color-separator)",
+          overflow: "hidden",
+        }}
+      >
+        <Box px="1rem" pt="1.4rem">
+          <Title order={1} mb="0.8rem" fz="1.3rem" fw={700} style={{ letterSpacing: "-0.035em" }}>
             影片
-          </h1>
+          </Title>
           <TextInput
-            leadingIcon="⌕"
+            leftSection={<span>⌕</span>}
             placeholder="搜索标题或导演…"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) doSearch(); }}
-            style={{ marginBottom: "0.5rem" }}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.nativeEvent.isComposing) doSearch();
+            }}
+            mb="0.5rem"
+            size="xs"
           />
-          <div style={{ display: "flex", gap: "0.3rem", marginBottom: "0.6rem" }}>
-            <button onClick={handleRebuild} style={smallBtnStyle}>重建索引</button>
+          <Group gap="0.3rem" mb="0.6rem">
+            <Button variant="default" size="compact-xs" onClick={handleRebuild}>
+              重建索引
+            </Button>
             {searchResults && (
-              <button onClick={() => { setSearchResults(null); setSearchQuery(""); }} style={smallBtnStyle}>清除搜索</button>
-            )}
-          </div>
-        </div>
-
-        <div style={{ height: 1, background: "var(--color-separator)", margin: "0 1rem" }} />
-
-        <div style={{ flex: 1, overflowY: "auto", padding: "0.5rem 0", userSelect: "none", WebkitUserSelect: "none" }}>
-          {searchResults ? (
-            searchResults.map((e) => (
-              <div
-                key={e.tmdb_id}
-                onClick={() => selectEntry(e)}
-                onContextMenu={(ev) => onEntryContextMenu(ev, e)}
-                style={{
-                  padding: "0.5rem 1rem", cursor: "pointer", fontSize: "0.82rem",
-                  background: selectedEntry?.tmdb_id === e.tmdb_id ? "var(--color-bg-elevated)" : "transparent",
+              <Button
+                variant="default"
+                size="compact-xs"
+                onClick={() => {
+                  setSearchResults(null);
+                  setSearchQuery("");
                 }}
               >
-                <div style={{ fontWeight: 500 }}>{e.title}</div>
-                <div style={{ fontSize: "0.7rem", color: "var(--color-label-tertiary)" }}>
-                  {e.director_display}{e.year ? ` · ${e.year}` : ""}
-                </div>
-              </div>
-            ))
-          ) : (
-            directors.map((dir) => (
-              <div key={dir}>
-                <div
-                  onClick={() => { setSelectedDirector(selectedDirector === dir ? null : dir); setSelectedEntry(null); setSubConfigs(new Map()); }}
-                  style={{
-                    padding: "0.45rem 1rem", cursor: "pointer", fontSize: "0.82rem",
-                    fontWeight: 600, display: "flex", justifyContent: "space-between",
-                    background: selectedDirector === dir ? "var(--color-bg-elevated)" : "transparent",
-                  }}
-                >
-                  <span>{dir}</span>
-                  <span style={{ fontSize: "0.7rem", color: "var(--color-label-quaternary)" }}>
-                    {directorMap[dir].length}
-                  </span>
-                </div>
-                {selectedDirector === dir && directorMap[dir].map((e) => (
-                  <div
+                清除搜索
+              </Button>
+            )}
+          </Group>
+        </Box>
+
+        <Box style={{ height: 1, background: "var(--color-separator)", margin: "0 1rem" }} />
+
+        <ScrollArea style={{ flex: 1, userSelect: "none", WebkitUserSelect: "none" }}>
+          <Box py="0.5rem">
+            {searchResults
+              ? searchResults.map((e) => (
+                  <UnstyledButton
                     key={e.tmdb_id}
                     onClick={() => selectEntry(e)}
                     onContextMenu={(ev) => onEntryContextMenu(ev, e)}
+                    px="1rem"
+                    py="0.5rem"
+                    w="100%"
                     style={{
-                      padding: "0.35rem 1rem 0.35rem 1.8rem", cursor: "pointer", fontSize: "0.78rem",
-                      background: selectedEntry?.tmdb_id === e.tmdb_id ? "var(--color-hover)" : "transparent",
+                      background:
+                        selectedEntry?.tmdb_id === e.tmdb_id
+                          ? "var(--color-bg-elevated)"
+                          : "transparent",
                     }}
                   >
-                    <span>{e.title}</span>
-                    <span style={{ marginLeft: "0.4rem", fontSize: "0.68rem", color: "var(--color-label-quaternary)" }}>
-                      {e.year ?? ""}
-                    </span>
-                  </div>
+                    <Text fz="0.82rem" fw={500}>
+                      {e.title}
+                    </Text>
+                    <Text fz="0.7rem" c="var(--color-label-tertiary)">
+                      {e.director_display}
+                      {e.year ? ` · ${e.year}` : ""}
+                    </Text>
+                  </UnstyledButton>
+                ))
+              : directors.map((dir) => (
+                  <Box key={dir}>
+                    <UnstyledButton
+                      onClick={() => {
+                        setSelectedDirector(selectedDirector === dir ? null : dir);
+                        setSelectedEntry(null);
+                        setSubConfigs(new Map());
+                      }}
+                      w="100%"
+                      px="1rem"
+                      py="0.45rem"
+                      style={{
+                        background:
+                          selectedDirector === dir ? "var(--color-bg-elevated)" : "transparent",
+                      }}
+                    >
+                      <Group justify="space-between">
+                        <Text fz="0.82rem" fw={600}>
+                          {dir}
+                        </Text>
+                        <Text fz="0.7rem" c="var(--color-label-quaternary)">
+                          {directorMap[dir].length}
+                        </Text>
+                      </Group>
+                    </UnstyledButton>
+                    {selectedDirector === dir &&
+                      directorMap[dir].map((e) => (
+                        <UnstyledButton
+                          key={e.tmdb_id}
+                          onClick={() => selectEntry(e)}
+                          onContextMenu={(ev) => onEntryContextMenu(ev, e)}
+                          w="100%"
+                          py="0.35rem"
+                          pl="1.8rem"
+                          pr="1rem"
+                          style={{
+                            background:
+                              selectedEntry?.tmdb_id === e.tmdb_id
+                                ? "var(--color-hover)"
+                                : "transparent",
+                          }}
+                        >
+                          <Text fz="0.78rem" component="span">
+                            {e.title}
+                          </Text>
+                          <Text
+                            fz="0.68rem"
+                            c="var(--color-label-quaternary)"
+                            component="span"
+                            ml="0.4rem"
+                          >
+                            {e.year ?? ""}
+                          </Text>
+                        </UnstyledButton>
+                      ))}
+                  </Box>
                 ))}
-              </div>
-            ))
-          )}
-          {!searchResults && directors.length === 0 && (
-            <p style={{ padding: "1rem", color: "var(--color-label-tertiary)", fontSize: "0.82rem" }}>
-              暂无影片。通过搜索页下载电影后会自动添加到此处。
-            </p>
-          )}
-        </div>
-      </div>
+            {!searchResults && directors.length === 0 && (
+              <Text px="1rem" size="sm" c="var(--color-label-tertiary)">
+                暂无影片。通过搜索页下载电影后会自动添加到此处。
+              </Text>
+            )}
+          </Box>
+        </ScrollArea>
+      </Flex>
 
-      {/* ── Right: detail panel ── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "1.4rem 1.75rem" }}>
-        {selectedEntry ? (
-          <div>
-            {/* Refresh button */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
-              <button
-                onClick={handleRefreshDetail}
-                disabled={enriching}
-                style={{
-                  ...smallBtnStyle,
-                  opacity: enriching ? 0.5 : 1,
-                }}
-              >
-                ↻
-              </button>
-            </div>
-            {/* ── Section 1: Film info (poster left, credits right) ── */}
-            <div style={{ display: "flex", gap: "1.2rem", marginBottom: "1.5rem" }}>
-              {/* Poster */}
-              {selectedEntry.poster_url ? (
-                <img
-                  src={selectedEntry.poster_url.startsWith("http") ? selectedEntry.poster_url : convertFileSrc(selectedEntry.poster_url)}
-                  alt=""
-                  style={{ width: 140, borderRadius: 8, objectFit: "cover", flexShrink: 0, background: "var(--color-bg-secondary)" }}
-                />
-              ) : (
-                <div style={{
-                  width: 140, height: 200, borderRadius: 8, flexShrink: 0,
-                  background: "var(--color-bg-secondary)", display: "flex",
-                  alignItems: "center", justifyContent: "center",
-                  color: "var(--color-label-quaternary)", fontSize: "0.75rem",
-                }}>
-                  {enriching ? "加载中…" : "无海报"}
-                </div>
-              )}
-              {/* Credits */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <h2 style={{ margin: "0 0 0.2rem", fontSize: "1.2rem", fontWeight: 700, letterSpacing: "-0.02em" }}>
-                  {selectedEntry.title}
-                </h2>
-                {selectedEntry.original_title && selectedEntry.original_title !== selectedEntry.title && (
-                  <div style={{ fontSize: "0.78rem", color: "var(--color-label-tertiary)", marginBottom: "0.3rem" }}>
-                    {selectedEntry.original_title}
-                  </div>
-                )}
-                <div style={{ fontSize: "0.82rem", color: "var(--color-label-secondary)", marginBottom: "0.6rem" }}>
-                  {selectedEntry.year}
-                  {selectedEntry.year && selectedEntry.rating != null && " · "}
-                  {selectedEntry.rating != null && <span>★ {selectedEntry.rating.toFixed(1)}</span>}
-                </div>
-                {/* Credits: show each role that has data */}
-                {Object.keys(credits).length > 0 ? (
-                  CREDIT_ORDER
-                    .filter((role) => credits[role]?.length)
-                    .map((role) => (
-                      <div key={role} style={{ fontSize: "0.82rem", marginBottom: "0.3rem" }}>
-                        <span style={{ color: "var(--color-label-tertiary)" }}>{role}: </span>
-                        {credits[role].join(", ")}
-                      </div>
-                    ))
+      {/* Right: detail panel */}
+      <ScrollArea style={{ flex: 1 }}>
+        <Box px="1.75rem" py="1.4rem">
+          {selectedEntry ? (
+            <Stack gap="md">
+              <Group justify="flex-end">
+                <ActionIcon
+                  variant="default"
+                  disabled={enriching}
+                  loading={enriching}
+                  onClick={handleRefreshDetail}
+                >
+                  ↻
+                </ActionIcon>
+              </Group>
+
+              <Group gap="1.2rem" align="flex-start" wrap="nowrap">
+                {selectedEntry.poster_url ? (
+                  <Image
+                    src={
+                      selectedEntry.poster_url.startsWith("http")
+                        ? selectedEntry.poster_url
+                        : convertFileSrc(selectedEntry.poster_url)
+                    }
+                    alt=""
+                    w={140}
+                    radius="md"
+                    fit="cover"
+                    bg="var(--color-bg-secondary)"
+                    style={{ flexShrink: 0 }}
+                  />
                 ) : (
-                  selectedEntry.director_display && (
-                    <div style={{ fontSize: "0.82rem", marginBottom: "0.3rem" }}>
-                      <span style={{ color: "var(--color-label-tertiary)" }}>导演: </span>
-                      {selectedEntry.director_display}
-                    </div>
-                  )
-                )}
-                {selectedEntry.genres.length > 0 && (
-                  <div style={{ fontSize: "0.78rem", color: "var(--color-label-tertiary)", marginTop: "0.4rem" }}>
-                    {selectedEntry.genres.join(" / ")}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ── Section 2: Video files ── */}
-            <SectionHeader>视频文件</SectionHeader>
-            {videoFiles.length === 0 ? (
-              <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.82rem" }}>无视频文件</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", marginBottom: "1.2rem" }}>
-                {videoFiles.map((file) => (
-                  <div
-                    key={file}
+                  <Box
+                    w={140}
+                    h={200}
+                    bg="var(--color-bg-secondary)"
                     style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "0.5rem 0.75rem", background: "var(--color-bg-secondary)",
-                      border: "1px solid var(--color-separator)", borderRadius: 6,
+                      borderRadius: 8,
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
                   >
-                    <span style={{ fontSize: "0.82rem", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {file}
-                    </span>
-                    <div style={{ display: "flex", gap: "0.3rem", flexShrink: 0, marginLeft: "0.5rem" }}>
-                      <button onClick={() => handlePlay(selectedEntry, file)} style={accentBtnStyle}>
-                        ▶ 播放
-                      </button>
-                      <button onClick={() => handleDeleteResource(selectedEntry, file)} style={dangerBtnStyle}>
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* ── Section 3: Subtitle library ── */}
-            <SectionHeader>字幕文件</SectionHeader>
-            {subtitleFiles.length === 0 ? (
-              <p style={{ color: "var(--color-label-tertiary)", fontSize: "0.82rem" }}>目录中未发现字幕文件</p>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginBottom: "1.2rem" }}>
-                {subtitleFiles.map((file) => {
-                  const cfg = subConfigs.get(file);
-                  const enabled = cfg?.enabled ?? false;
-                  return (
-                    <div key={file} style={{
-                      padding: "0.5rem 0.75rem", background: "var(--color-bg-secondary)",
-                      border: `1px solid ${enabled ? "var(--color-accent)" : "var(--color-separator)"}`,
-                      borderRadius: 6, fontSize: "0.82rem",
-                    }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer" }}>
-                        <input type="checkbox" checked={enabled} onChange={() => toggleSub(file)}
-                          style={{ accentColor: "var(--color-accent)" }} />
-                        <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {file}
-                        </span>
-                      </label>
-                      {enabled && cfg && (
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginTop: "0.4rem", paddingLeft: "1.5rem" }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.72rem", color: "var(--color-label-tertiary)" }}>
-                            颜色
-                            <input type="color" value={cfg.color}
-                              onChange={(e) => updateSubConfig(file, { color: e.target.value })}
-                              style={{ width: 22, height: 22, border: "none", padding: 0, cursor: "pointer" }} />
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.72rem", color: "var(--color-label-tertiary)" }}>
-                            字号
-                            <input type="number" value={cfg.font_size} min={16} max={80} step={2}
-                              onChange={(e) => updateSubConfig(file, { font_size: parseInt(e.target.value) || 48 })}
-                              style={{ width: 44, fontSize: "0.72rem", background: "var(--color-bg-control)",
-                                border: "1px solid var(--color-separator)", borderRadius: 4, padding: "0.15rem 0.3rem",
-                                textAlign: "center", color: "inherit", fontFamily: "inherit" }} />
-                          </label>
-                          <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.72rem", color: "var(--color-label-tertiary)", flex: 1 }}>
-                            位置
-                            <input type="range" min={0} max={100} value={Math.round(cfg.y_position * 100)}
-                              onChange={(e) => updateSubConfig(file, { y_position: parseInt(e.target.value) / 100 })}
-                              style={{ flex: 1, accentColor: "var(--color-accent)" }} />
-                            <span style={{ width: 28, textAlign: "right", fontSize: "0.68rem" }}>{Math.round(cfg.y_position * 100)}%</span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {[...subConfigs.values()].some((c) => c.enabled) && (
-                  <div style={{ fontSize: "0.72rem", color: "var(--color-label-tertiary)", marginTop: "0.2rem" }}>
-                    已选 {[...subConfigs.values()].filter((c) => c.enabled).length} 条字幕，播放视频时将自动叠加显示
-                  </div>
+                    <Text size="xs" c="var(--color-label-quaternary)">
+                      {enriching ? "加载中…" : "无海报"}
+                    </Text>
+                  </Box>
                 )}
-              </div>
-            )}
 
-            {/* Meta */}
-            <div style={{ marginTop: "0.5rem", fontSize: "0.7rem", color: "var(--color-label-quaternary)" }}>
-              路径: {selectedEntry.path}
-              <br />
-              添加时间: {new Date(selectedEntry.added_at).toLocaleString("zh-CN")}
-            </div>
-          </div>
-        ) : (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--color-label-tertiary)", fontSize: "0.85rem" }}>
-            {directors.length > 0 ? "选择一部电影查看详情" : ""}
-          </div>
-        )}
-      </div>
+                <Box style={{ flex: 1, minWidth: 0 }}>
+                  <Title order={2} fz="1.2rem" fw={700} mb={4} style={{ letterSpacing: "-0.02em" }}>
+                    {selectedEntry.title}
+                  </Title>
+                  {selectedEntry.original_title &&
+                    selectedEntry.original_title !== selectedEntry.title && (
+                      <Text fz="0.78rem" c="var(--color-label-tertiary)" mb="0.3rem">
+                        {selectedEntry.original_title}
+                      </Text>
+                    )}
+                  <Text fz="0.82rem" c="var(--color-label-secondary)" mb="0.6rem">
+                    {selectedEntry.year}
+                    {selectedEntry.year && selectedEntry.rating != null && " · "}
+                    {selectedEntry.rating != null && (
+                      <Text component="span">★ {selectedEntry.rating.toFixed(1)}</Text>
+                    )}
+                  </Text>
 
-      {/* ── Context menu overlay ── */}
-      {contextMenu && (
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setContextMenu(null)}
-            onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
-          />
-          <div style={{
-            position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 1000,
-            background: "var(--color-bg-elevated)", border: "1px solid var(--color-separator)",
-            borderRadius: 6, padding: "4px 0", boxShadow: "0 4px 16px rgba(0,0,0,0.35)", minWidth: 120,
-          }}>
-            <div
-              onClick={() => handleDeleteFilm(contextMenu.entry)}
-              style={{
-                padding: "6px 14px", fontSize: "0.78rem", cursor: "pointer", color: "var(--color-danger)",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-danger-soft)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  {Object.keys(credits).length > 0
+                    ? CREDIT_ORDER.filter((role) => credits[role]?.length).map((role) => (
+                        <Text key={role} fz="0.82rem" mb="0.3rem">
+                          <Text component="span" c="var(--color-label-tertiary)">
+                            {role}:{" "}
+                          </Text>
+                          {credits[role].join(", ")}
+                        </Text>
+                      ))
+                    : selectedEntry.director_display && (
+                        <Text fz="0.82rem" mb="0.3rem">
+                          <Text component="span" c="var(--color-label-tertiary)">
+                            导演:{" "}
+                          </Text>
+                          {selectedEntry.director_display}
+                        </Text>
+                      )}
+
+                  {selectedEntry.genres.length > 0 && (
+                    <Text fz="0.78rem" c="var(--color-label-tertiary)" mt="0.4rem">
+                      {selectedEntry.genres.join(" / ")}
+                    </Text>
+                  )}
+                </Box>
+              </Group>
+
+              {/* Video files */}
+              <Box>
+                <SectionHeader>视频文件</SectionHeader>
+                {videoFiles.length === 0 ? (
+                  <Text size="sm" c="var(--color-label-tertiary)">
+                    无视频文件
+                  </Text>
+                ) : (
+                  <Stack gap="0.3rem">
+                    {videoFiles.map((file) => (
+                      <Paper
+                        key={file}
+                        withBorder
+                        px="0.75rem"
+                        py="0.5rem"
+                        bg="var(--color-bg-secondary)"
+                        style={{ borderColor: "var(--color-separator)" }}
+                      >
+                        <Group justify="space-between" wrap="nowrap">
+                          <Text fz="0.82rem" truncate style={{ flex: 1 }}>
+                            {file}
+                          </Text>
+                          <Group gap="0.3rem" wrap="nowrap">
+                            <Button
+                              size="compact-xs"
+                              onClick={() => handlePlay(selectedEntry, file)}
+                            >
+                              ▶ 播放
+                            </Button>
+                            <ActionIcon
+                              variant="subtle"
+                              color="danger"
+                              onClick={() => handleDeleteResource(selectedEntry, file)}
+                            >
+                              ✕
+                            </ActionIcon>
+                          </Group>
+                        </Group>
+                      </Paper>
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+
+              {/* Subtitle library */}
+              <Box>
+                <SectionHeader>字幕文件</SectionHeader>
+                {subtitleFiles.length === 0 ? (
+                  <Text size="sm" c="var(--color-label-tertiary)">
+                    目录中未发现字幕文件
+                  </Text>
+                ) : (
+                  <Stack gap="0.4rem">
+                    {subtitleFiles.map((file) => {
+                      const cfg = subConfigs.get(file);
+                      const enabled = cfg?.enabled ?? false;
+                      return (
+                        <Paper
+                          key={file}
+                          withBorder
+                          px="0.75rem"
+                          py="0.5rem"
+                          bg="var(--color-bg-secondary)"
+                          style={{
+                            borderColor: enabled
+                              ? "var(--color-accent)"
+                              : "var(--color-separator)",
+                          }}
+                        >
+                          <Stack gap="0.4rem">
+                            <Checkbox
+                              checked={enabled}
+                              onChange={() => toggleSub(file)}
+                              label={
+                                <Text fz="0.82rem" truncate>
+                                  {file}
+                                </Text>
+                              }
+                              styles={{ label: { flex: 1, minWidth: 0, overflow: "hidden" } }}
+                            />
+                            {enabled && cfg && (
+                              <Group gap="0.6rem" pl="1.5rem" wrap="nowrap">
+                                <Group gap="0.25rem" wrap="nowrap">
+                                  <Text fz="0.72rem" c="var(--color-label-tertiary)">
+                                    颜色
+                                  </Text>
+                                  <ColorInput
+                                    size="xs"
+                                    value={cfg.color}
+                                    onChange={(c) => updateSubConfig(file, { color: c })}
+                                    w={120}
+                                    withEyeDropper={false}
+                                    format="hex"
+                                  />
+                                </Group>
+                                <Group gap="0.25rem" wrap="nowrap">
+                                  <Text fz="0.72rem" c="var(--color-label-tertiary)">
+                                    字号
+                                  </Text>
+                                  <NumberInput
+                                    size="xs"
+                                    w={70}
+                                    min={16}
+                                    max={80}
+                                    step={2}
+                                    value={cfg.font_size}
+                                    onChange={(v) =>
+                                      updateSubConfig(file, {
+                                        font_size: typeof v === "number" ? v : 48,
+                                      })
+                                    }
+                                    hideControls
+                                  />
+                                </Group>
+                                <Group gap="0.25rem" wrap="nowrap" style={{ flex: 1 }}>
+                                  <Text fz="0.72rem" c="var(--color-label-tertiary)">
+                                    位置
+                                  </Text>
+                                  <Slider
+                                    style={{ flex: 1 }}
+                                    min={0}
+                                    max={100}
+                                    value={Math.round(cfg.y_position * 100)}
+                                    onChange={(v) =>
+                                      updateSubConfig(file, { y_position: v / 100 })
+                                    }
+                                    label={(v) => `${v}%`}
+                                  />
+                                </Group>
+                              </Group>
+                            )}
+                          </Stack>
+                        </Paper>
+                      );
+                    })}
+                    {[...subConfigs.values()].some((c) => c.enabled) && (
+                      <Text fz="0.72rem" c="var(--color-label-tertiary)">
+                        已选 {[...subConfigs.values()].filter((c) => c.enabled).length} 条字幕，播放视频时将自动叠加显示
+                      </Text>
+                    )}
+                  </Stack>
+                )}
+              </Box>
+
+              <Text fz="0.7rem" c="var(--color-label-quaternary)">
+                路径: {selectedEntry.path}
+                <br />
+                添加时间: {new Date(selectedEntry.added_at).toLocaleString("zh-CN")}
+              </Text>
+            </Stack>
+          ) : (
+            <Flex
+              align="center"
+              justify="center"
+              h="100%"
+              style={{ minHeight: "60vh" }}
             >
+              <Text size="sm" c="var(--color-label-tertiary)">
+                {directors.length > 0 ? "选择一部电影查看详情" : ""}
+              </Text>
+            </Flex>
+          )}
+        </Box>
+      </ScrollArea>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <Menu
+          opened
+          onClose={() => setContextMenu(null)}
+          position="bottom-start"
+          withinPortal
+          shadow="md"
+        >
+          <Menu.Target>
+            <Box
+              style={{
+                position: "fixed",
+                left: contextMenu.x,
+                top: contextMenu.y,
+                width: 1,
+                height: 1,
+              }}
+            />
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item color="danger" onClick={() => handleDeleteFilm(contextMenu.entry)}>
               删除电影
-            </div>
-          </div>
-        </>
+            </Menu.Item>
+          </Menu.Dropdown>
+        </Menu>
       )}
-    </div>
+    </Flex>
   );
 }
-
-// ── Shared styles & components ──
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{
-      margin: "0 0 0.5rem", fontSize: "0.7rem", color: "var(--color-label-quaternary)",
-      letterSpacing: "0.08em", textTransform: "uppercase",
-    }}>
+    <Text
+      size="xs"
+      tt="uppercase"
+      c="var(--color-label-quaternary)"
+      mb="0.5rem"
+      style={{ letterSpacing: "0.08em", fontSize: "0.7rem" }}
+    >
       {children}
-    </p>
+    </Text>
   );
 }
-
-const smallBtnStyle: React.CSSProperties = {
-  background: "none", border: "1px solid var(--color-separator)", borderRadius: 4,
-  padding: "0.2rem 0.5rem", color: "var(--color-label-tertiary)", cursor: "pointer",
-  fontSize: "0.65rem", fontFamily: "inherit",
-};
-
-const accentBtnStyle: React.CSSProperties = {
-  background: "var(--color-accent)", border: "none", borderRadius: 4,
-  padding: "0.2rem 0.6rem", color: "#fff", cursor: "pointer",
-  fontSize: "0.72rem", fontWeight: 600,
-};
-
-const dangerBtnStyle: React.CSSProperties = {
-  background: "none", border: "1px solid var(--color-danger-soft)", borderRadius: 4,
-  padding: "0.2rem 0.45rem", color: "var(--color-danger)", cursor: "pointer",
-  fontSize: "0.72rem", fontWeight: 600,
-};

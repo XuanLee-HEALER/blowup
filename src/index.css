@@ -65,8 +65,3 @@ select option {
   background: var(--color-bg-primary);
   color: var(--color-label-primary);
 }
-
-/* Settings field separator: hide on last child */
-.settings-fields > :last-child {
-  border-bottom: none !important;
-}
