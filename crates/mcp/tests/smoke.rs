@@ -91,6 +91,19 @@ async fn read_response<R: AsyncBufReadExt + Unpin>(
     serde_json::from_str(buf.trim()).expect("invalid JSON from bridge")
 }
 
+/// Drop guard so a panicking assertion mid-test still kills the
+/// bridge subprocess. Without this an `assert!` failure would leave
+/// the child as a zombie until cargo test exits the whole binary.
+struct KillOnDrop(Option<tokio::process::Child>);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            let _ = child.start_kill();
+        }
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn end_to_end_list_entries_through_bridge() {
     let tmp = tempfile::tempdir().unwrap();
@@ -109,6 +122,10 @@ async fn end_to_end_list_entries_through_bridge() {
     let mut stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
     let mut reader = BufReader::new(stdout);
+    // Wrap the child in a kill-on-drop guard AFTER we steal stdin/stdout.
+    // If any assertion below panics, the Drop impl ensures the bridge
+    // process is reaped instead of becoming a zombie.
+    let _guard = KillOnDrop(Some(child));
 
     // 1. initialize
     send_request(
@@ -227,5 +244,5 @@ async fn end_to_end_list_entries_through_bridge() {
         "tools/call create_entry returned isError: {create_resp}"
     );
 
-    let _ = child.kill().await;
+    // The Drop impl on `_guard` reaps the child when this scope ends.
 }
