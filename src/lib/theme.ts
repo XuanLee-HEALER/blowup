@@ -15,8 +15,10 @@ import { createTheme, rem } from "@mantine/core";
  * - **spacing**: tightened — `md` 16→12, `lg` 20→16. Mantine's default
  *   scale is comfortable for marketing pages but feels airy in a
  *   dense desktop form.
- * - **defaultRadius**: 4px (Mantine `xs`) instead of the default 8px,
- *   to make controls feel more like macOS rather than web.
+ * - **defaultRadius**: 0 — flat rectangular controls. We deliberately
+ *   avoid mixing rounded and square corners; everything in the main UI
+ *   is square. (Independent windows like the floating mini-player keep
+ *   their own glass-style radius.)
  * - **components.{Input,TextInput,…}.defaultProps**: every text-like
  *   input defaults to `size="sm"` (~30px tall) and `variant="filled"`
  *   so forms render flat-tinted instead of bordered. Buttons default
@@ -47,7 +49,7 @@ export const theme = createTheme({
     lg: rem(16),
     xl: rem(24),
   },
-  defaultRadius: "xs",
+  defaultRadius: 0,
   cursorType: "pointer",
   focusRing: "auto",
   components: {

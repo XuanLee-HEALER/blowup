@@ -50,7 +50,6 @@ export function IconSidebar() {
                 variant={isActive ? "light" : "subtle"}
                 color={isActive ? "accent" : "gray"}
                 size={40}
-                radius="md"
                 onClick={() => navigate(space.route)}
                 aria-label={space.label}
               >
@@ -70,7 +69,6 @@ export function IconSidebar() {
             variant={settingsActive ? "light" : "subtle"}
             color={settingsActive ? "accent" : "gray"}
             size={40}
-            radius="md"
             onClick={() => navigate("/settings")}
             aria-label="设置"
           >

@@ -113,7 +113,6 @@ export function MusicPlayer({ enabled, mode, playlist, active }: MusicPlayerProp
     <Paper
       withBorder
       shadow="lg"
-      radius="md"
       bg="var(--color-bg-elevated)"
       px="0.85rem"
       py="0.6rem"

@@ -270,7 +270,6 @@ export function FilmDetailPanel({ film, onClose }: FilmDetailPanelProps) {
             <Image
               src={`https://image.tmdb.org/t/p/w300${film.poster_path}`}
               alt={film.title}
-              radius="md"
               w="100%"
               fit="contain"
             />

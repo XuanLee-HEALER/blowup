@@ -216,7 +216,6 @@ const styles: Record<string, React.CSSProperties> = {
   btn: {
     background: "none",
     border: "1px solid #555",
-    borderRadius: 4,
     color: "#ccc",
     padding: "4px 10px",
     cursor: "pointer",

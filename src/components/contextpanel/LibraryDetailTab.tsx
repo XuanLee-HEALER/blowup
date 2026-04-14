@@ -81,7 +81,6 @@ export function LibraryDetailTab({
                 }
                 alt=""
                 w={120}
-                radius="md"
                 fit="cover"
                 bg="var(--color-bg-secondary)"
                 style={{ flexShrink: 0 }}
@@ -92,7 +91,6 @@ export function LibraryDetailTab({
                 h={170}
                 bg="var(--color-bg-secondary)"
                 style={{
-                  borderRadius: 8,
                   flexShrink: 0,
                   display: "flex",
                   alignItems: "center",

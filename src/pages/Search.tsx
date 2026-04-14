@@ -452,7 +452,6 @@ export default function Search() {
                   }}
                   p="0.65rem 0.5rem"
                   style={{
-                    borderRadius: 6,
                     background:
                       selected?.id === m.id ? "var(--color-bg-elevated)" : "transparent",
                   }}
@@ -464,7 +463,6 @@ export default function Search() {
                         alt=""
                         w={46}
                         h={69}
-                        radius={4}
                         fit="cover"
                       />
                     )}

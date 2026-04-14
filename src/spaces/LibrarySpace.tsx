@@ -402,7 +402,6 @@ export function LibrarySpace() {
                     border: isSelected
                       ? "2px solid var(--color-accent)"
                       : "1px solid var(--color-separator)",
-                    borderRadius: 6,
                     overflow: "hidden",
                     background: "var(--color-bg-secondary)",
                   }}

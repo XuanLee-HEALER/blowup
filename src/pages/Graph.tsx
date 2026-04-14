@@ -287,7 +287,6 @@ export default function Graph() {
       {selectedNode && (
         <Paper
           withBorder
-          radius="md"
           p="0.85rem 1rem"
           w={200}
           bg="var(--color-bg-secondary)"

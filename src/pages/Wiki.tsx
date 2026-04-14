@@ -243,7 +243,6 @@ function EntryDetailView({
             placeholder="+ 标签"
             size="xs"
             w={100}
-            radius="xl"
           />
         </Group>
       </Box>
@@ -436,7 +435,6 @@ export default function Wiki() {
                 px="0.75rem"
                 py="0.5rem"
                 style={{
-                  borderRadius: 5,
                   background:
                     selectedId === entry.id
                       ? "var(--color-bg-elevated)"
@@ -454,7 +452,6 @@ export default function Wiki() {
                         size="xs"
                         variant="light"
                         color="gray"
-                        radius="xl"
                       >
                         {t}
                       </Badge>
