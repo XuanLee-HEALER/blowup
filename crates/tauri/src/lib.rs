@@ -422,6 +422,7 @@ pub fn run() {
             commands::skill::skill_bridge_start,
             commands::skill::skill_bridge_stop,
             commands::skill::skill_bridge_get_install_snippets,
+            commands::skill::skill_bridge_install_to_claude_code,
         ])
         .on_window_event(|window, event| {
             // Only act on the main window — closing the player popout
