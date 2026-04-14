@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod common;
 pub mod player;
+pub mod skill_bridge;
 
 use blowup_core::AppContext;
 use blowup_core::config;
@@ -230,6 +231,7 @@ pub fn run() {
                 auth_token,
             ));
             handle.manage(ctx.clone());
+            handle.manage(crate::skill_bridge::state::SkillBridgeState::new());
 
             tracing::debug!(
                 "[timing] setup complete: {}ms",
