@@ -60,3 +60,34 @@ pub fn build_router(state: AppState) -> Router {
         .nest("/api/v1", api)
         .layer(TraceLayer::new_for_http())
 }
+
+/// Bind + serve the axum router on a Unix domain socket. Used by the
+/// desktop app's "Skill bridge" feature: the same router as TCP, but
+/// reachable only by processes that can open the socket file (which
+/// is `chmod 0600` by the caller, gated by file system permissions
+/// instead of a bearer token).
+///
+/// The caller is responsible for:
+/// - creating the parent directory
+/// - chmod 0600 on the socket file after bind
+/// - removing any stale socket file before calling this
+/// - removing the socket file after shutdown
+///
+/// The function exits cleanly when `shutdown` resolves (the caller
+/// drops the sender or sends `()`).
+#[cfg(unix)]
+pub async fn serve_unix(
+    socket_path: &std::path::Path,
+    state: AppState,
+    shutdown: tokio::sync::oneshot::Receiver<()>,
+) -> std::io::Result<()> {
+    use tokio::net::UnixListener;
+    let listener = UnixListener::bind(socket_path)?;
+    let router = build_router(state);
+    axum::serve(listener, router)
+        .with_graceful_shutdown(async move {
+            let _ = shutdown.await;
+        })
+        .await
+        .map_err(std::io::Error::other)
+}
