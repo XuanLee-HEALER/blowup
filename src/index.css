@@ -65,3 +65,39 @@ select option {
   background: var(--color-bg-primary);
   color: var(--color-label-primary);
 }
+
+/* ── Window drag regions ─────────────────────────────────────────
+   Tauri 2 with `decorations: true` + `titleBarStyle: Overlay` lets the
+   macOS traffic-light buttons draw on top of the frontend; we still
+   need explicit drag regions so the user can move the window from any
+   chrome surface. The convention:
+
+     - data-app-drag       → opt the element (and its descendants) IN
+     - interactive children → automatically opted OUT via the selector
+       list below
+
+   This is more maintainable than sprinkling `WebkitAppRegion` inline
+   styles on every Mantine control. */
+
+[data-app-drag] {
+  -webkit-app-region: drag;
+}
+
+[data-app-drag] button,
+[data-app-drag] a,
+[data-app-drag] input,
+[data-app-drag] select,
+[data-app-drag] textarea,
+[data-app-drag] [role="button"],
+[data-app-drag] [role="menuitem"],
+[data-app-drag] [role="combobox"],
+[data-app-drag] [role="textbox"],
+[data-app-drag] [role="searchbox"],
+[data-app-drag] [role="tab"],
+[data-app-drag] [role="radio"],
+[data-app-drag] [role="checkbox"],
+[data-app-drag] [role="slider"],
+[data-app-drag] [role="switch"],
+[data-app-drag] [data-no-drag] {
+  -webkit-app-region: no-drag;
+}

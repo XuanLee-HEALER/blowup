@@ -7,7 +7,7 @@ import { SPACES, activeSpaceFor } from "../lib/space";
  * Fixed 48px-wide vertical sidebar with three space icons + settings cog.
  *
  *   - Top 40px is reserved as a drag region so macOS traffic-light buttons
- *     (decorations: false + titleBarStyle: Overlay) sit on top without
+ *     (decorations: true + titleBarStyle: Overlay) sit on top without
  *     overlapping any interactive element.
  *   - First space icon is offset 40px from the top for the same reason.
  *   - Settings cog at the bottom is pinned via flex spacer.
@@ -30,22 +30,17 @@ export function IconSidebar() {
         borderRight: "0.5px solid var(--color-separator)",
         display: "flex",
         flexDirection: "column",
-        // The top 40px is the drag region for the traffic-light area.
-        // We can't put it on the whole sidebar because the icons need
-        // pointer events; instead the first icon is pushed down 40px and
-        // a sibling drag-region div sits at the top.
         position: "relative",
       }}
-      data-tauri-drag-region
     >
-      {/* Drag region overlay for the top 40px (where traffic lights live). */}
+      {/* Top 40px drag region — sits behind the macOS traffic lights. */}
       <Box
+        data-app-drag
         style={{
           height: 40,
           width: "100%",
           flexShrink: 0,
         }}
-        data-tauri-drag-region
       />
 
       <Stack gap={8} align="center" style={{ flexShrink: 0 }}>
@@ -66,7 +61,6 @@ export function IconSidebar() {
                 radius="md"
                 onClick={() => navigate(space.route)}
                 aria-label={space.label}
-                data-tauri-drag-region={false}
               >
                 <space.Icon size={20} stroke={1.5} />
               </ActionIcon>
