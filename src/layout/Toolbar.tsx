@@ -11,18 +11,21 @@ interface ToolbarProps {
 /**
  * 40px tall horizontal toolbar pinned to the top of every space's main area.
  *
- * The whole bar is marked as a window drag region via `data-app-drag` (see
- * the global CSS in src/index.css). All interactive descendants — buttons,
- * inputs, selects, segmented controls, etc. — are automatically opted out
- * via the role-based selector list there, so the empty space between the
- * left and right clusters becomes the actual drag handle without each
- * caller having to think about it.
+ * Window dragging is provided by a dedicated empty <div> placed BETWEEN
+ * the left and right clusters with `data-tauri-drag-region`. Tauri 2's
+ * drag-region attribute does NOT bubble to descendants and CSS
+ * `-webkit-app-region` is not honoured under `titleBarStyle: Overlay`,
+ * so the spacer is a hard requirement — we cannot just mark the whole
+ * toolbar bar.
+ *
+ * The spacer takes `flex: 1` to consume all space between the two
+ * clusters, so wherever the user tries to grab the toolbar background
+ * (anywhere not covered by an actual control) the drag works.
  */
 export function Toolbar({ left, right }: ToolbarProps) {
   return (
     <Box
       component="header"
-      data-app-drag
       style={{
         height: 40,
         flexShrink: 0,
@@ -34,9 +37,13 @@ export function Toolbar({ left, right }: ToolbarProps) {
         gap: "0.5rem",
       }}
     >
-      <Group gap="0.5rem" style={{ flex: 1, minWidth: 0 }} wrap="nowrap">
+      <Group gap="0.5rem" style={{ flexShrink: 0, minWidth: 0 }} wrap="nowrap">
         {left}
       </Group>
+
+      {/* Drag handle — fills the gap between clusters. */}
+      <div data-tauri-drag-region style={{ flex: 1, alignSelf: "stretch" }} />
+
       <Group gap="0.5rem" style={{ flexShrink: 0 }} wrap="nowrap">
         {right}
       </Group>

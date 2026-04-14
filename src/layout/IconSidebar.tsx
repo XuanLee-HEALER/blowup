@@ -4,9 +4,13 @@ import { IconSettings } from "@tabler/icons-react";
 import { SPACES, activeSpaceFor } from "../lib/space";
 
 /**
- * Fixed 48px-wide vertical sidebar with three space icons + settings cog.
+ * Fixed 74px-wide vertical sidebar with three space icons + settings cog.
  *
- *   - Top 40px is reserved as a drag region so macOS traffic-light buttons
+ *   - 74px = 8px (system left margin, measured) + 58px (traffic-light
+ *     cluster: 3 buttons × 14px + 2 gaps × 8px) + 8px (right margin,
+ *     symmetric with the left). The cluster is horizontally centered
+ *     and never leaks into the main content area.
+ *   - Top 40px is reserved as a drag region so the traffic-light buttons
  *     (decorations: true + titleBarStyle: Overlay) sit on top without
  *     overlapping any interactive element.
  *   - First space icon is offset 40px from the top for the same reason.
@@ -24,7 +28,7 @@ export function IconSidebar() {
     <Box
       component="nav"
       style={{
-        width: 48,
+        width: 78,
         flexShrink: 0,
         background: "var(--color-bg-secondary)",
         borderRight: "0.5px solid var(--color-separator)",
@@ -33,9 +37,13 @@ export function IconSidebar() {
         position: "relative",
       }}
     >
-      {/* Top 40px drag region — sits behind the macOS traffic lights. */}
-      <Box
-        data-app-drag
+      {/* Top 40px drag region — sits behind the macOS traffic lights.
+          Must be a plain <div> with `data-tauri-drag-region` (Tauri 2's
+          attribute, not a CSS rule). The attribute does not bubble to
+          descendants, so we use a dedicated empty element rather than
+          marking the whole sidebar. */}
+      <div
+        data-tauri-drag-region
         style={{
           height: 40,
           width: "100%",

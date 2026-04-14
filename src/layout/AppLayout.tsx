@@ -4,25 +4,32 @@ import { IconSidebar } from "./IconSidebar";
 import { useGlobalHotkeys } from "../lib/useGlobalHotkeys";
 
 /**
- * Root window shell — three vertical regions side by side:
+ * Root window shell — two vertical regions side by side:
  *
- *   [ 48px IconSidebar ] [ flex: 1 main column ]
- *                        ┌─ 40px top drag region (avoids traffic lights) ─┐
- *                        ├──────────── Outlet → SpaceShell ───────────────┤
- *                        │  Toolbar (40px)                                │
- *                        │  main + ContextPanel (row)                     │
- *                        └────────────────────────────────────────────────┘
+ *   [ 74px IconSidebar ] [ flex: 1 main column ]
+ *                        ┌──────── Outlet → SpaceShell ──────┐
+ *                        │  Toolbar (40px, y=0)              │
+ *                        │  main + ContextPanel (row)        │
+ *                        └───────────────────────────────────┘
  *
- * The 40px top stripe in the right column is critical: macOS draws the
- * traffic-light buttons (titleBarStyle: Overlay + decorations: true) over
- * the top-left of the window, and they extend ~78px to the right —
- * past the 48px IconSidebar and into the main content area. Without
- * the top stripe, the toolbar would render directly under the traffic
- * lights and any search box / button there would be visually clipped.
+ * The 74px IconSidebar fully contains the macOS traffic-light cluster
+ * (8px left margin + 58px buttons + 8px symmetric right margin), so
+ * the buttons are horizontally centered and never leak into the main
+ * content area. This means the right column can start at y=0 — the
+ * toolbar sits flush with the window top edge, like Finder or VS Code.
  *
- * The IconSidebar handles its own 40px traffic-light gap internally, so
- * both columns are vertically aligned (sidebar's first space icon and
- * the right column's Toolbar both start at y=40).
+ * Vertical alignment between the toolbar and the sidebar's first space
+ * icon is intentionally NOT enforced here; the sidebar's first icon is
+ * offset 40px from the top for the traffic lights, while the toolbar
+ * occupies the right column's top 40px directly. This is the same
+ * asymmetry every native macOS document app uses.
+ *
+ * Window dragging is provided by:
+ *   - the IconSidebar's top 40px gap (above the first space icon)
+ *   - the Toolbar's middle spacer (between left and right clusters)
+ * Both are dedicated empty <div>s with `data-tauri-drag-region`, since
+ * Tauri 2 with `titleBarStyle: Overlay` does not honour the CSS
+ * `-webkit-app-region` contract and the attribute does not bubble.
  */
 export function AppLayout() {
   useGlobalHotkeys();
@@ -47,21 +54,7 @@ export function AppLayout() {
           overflow: "hidden",
         }}
       >
-        {/* Top 40px stripe: covers the macOS traffic-light overlay area
-            and acts as a drag handle. Every space below renders from
-            y=40, vertically aligned with the IconSidebar's first icon. */}
-        <Box data-app-drag style={{ height: 40, flexShrink: 0 }} />
-        <Box
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
-            overflow: "hidden",
-          }}
-        >
-          <Outlet />
-        </Box>
+        <Outlet />
       </Box>
     </Box>
   );
