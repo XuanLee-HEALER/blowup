@@ -19,6 +19,8 @@
     "withGlobalTauri": false,
     "windows": [
       {
+        "label": "main",
+        "url": "index.html",
         "title": "blowup",
         "width": 1200,
         "height": 800,
@@ -26,7 +28,22 @@
         "minHeight": 600,
         "decorations": true,
         "titleBarStyle": "Overlay",
-        "hiddenTitle": true
+        "hiddenTitle": true,
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "url": "splash.html",
+        "title": "Loading",
+        "width": 560,
+        "height": 340,
+        "center": true,
+        "decorations": false,
+        "resizable": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false
       }
     ]
   },

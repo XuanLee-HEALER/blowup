@@ -7,6 +7,7 @@ pub mod library;
 pub mod media;
 pub mod search;
 pub mod skill;
+pub mod splash;
 pub mod subtitle;
 pub mod tasks;
 pub mod tmdb;

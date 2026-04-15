@@ -238,10 +238,13 @@ pub fn run() {
                 app_start.elapsed().as_millis()
             );
 
-            #[cfg(debug_assertions)]
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
-            }
+            // NOTE: no `window.open_devtools()` here. The main window
+            // starts hidden (`visible:false` in tauri.conf.json) and
+            // only becomes visible via `close_splashscreen`. Opening
+            // devtools on a hidden WKWebView races with the later
+            // `show()` call and crashes the app on macOS. Open
+            // devtools manually with the shortcut (⌘⌥I) once the
+            // main window is up.
 
             // Init torrent manager in background — don't block window.
             // On success, also start the embedded HTTP server for LAN clients.
@@ -423,6 +426,8 @@ pub fn run() {
             commands::skill::skill_bridge_stop,
             commands::skill::skill_bridge_get_install_snippets,
             commands::skill::skill_bridge_install_to_claude_code,
+            // Splash
+            commands::splash::close_splashscreen,
         ])
         .on_window_event(|window, event| {
             // Only act on the main window — closing the player popout

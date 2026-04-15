@@ -7,12 +7,3 @@ mountReactRoot(
     <App />
   </HashRouter>
 );
-
-// Fade out splash screen once React has rendered
-requestAnimationFrame(() => {
-  const splash = document.getElementById("splash");
-  if (splash) {
-    splash.classList.add("fade");
-    setTimeout(() => splash.remove(), 350);
-  }
-});
