@@ -1,8 +1,11 @@
 use axum::{Json, Router, routing::post};
-use blowup_core::torrent::search::{self, MovieResult};
+use blowup_core::torrent::search::{
+    search_movie,
+    types::{ScoredTorrent, SearchQuery},
+};
 use serde::Deserialize;
 
-use crate::error::{ApiError, ApiResult};
+use crate::error::ApiResult;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -19,16 +22,13 @@ pub struct YifySearchRequest {
 async fn search_yify(
     axum::extract::State(state): axum::extract::State<AppState>,
     Json(req): Json<YifySearchRequest>,
-) -> ApiResult<Json<Vec<MovieResult>>> {
+) -> ApiResult<Json<Vec<ScoredTorrent>>> {
     let cfg = blowup_core::config::load_config();
-    let results = search::search_yify(
-        &state.http,
-        &cfg.tmdb.api_key,
-        &req.query,
-        req.year,
-        req.tmdb_id,
-    )
-    .await
-    .map_err(|e| ApiError::Internal(e.to_string()))?;
-    Ok(Json(results))
+    let q = SearchQuery {
+        title: req.query,
+        year: req.year,
+        tmdb_id: req.tmdb_id,
+        tmdb_api_key: cfg.tmdb.api_key,
+    };
+    Ok(Json(search_movie(&state.http, &state.tracker, q).await))
 }

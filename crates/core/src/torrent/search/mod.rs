@@ -1,10 +1,6 @@
-//! YTS / yify torrent search — stateless external API client.
-//! Uses the `movies-api.accel.li` mirror because the original
-//! `yts.torrentbay.st` now returns HTML instead of JSON.
+//! Multi-source torrent search orchestrator.
 //!
-//! No DB, no file IO, no state. The only runtime dependency besides
-//! `reqwest::Client` is the TMDB API key (optional fallback for
-//! resolving an IMDB id from a TMDB id).
+//! See docs/superpowers/specs/2026-04-15-multi-source-torrent-search-design.md
 
 pub mod dedup;
 pub mod parser;
@@ -13,73 +9,132 @@ pub mod providers;
 pub mod scorer;
 pub mod types;
 
-use crate::error::SearchError;
-use regex::Regex;
-use serde::{Deserialize, Serialize};
-use std::sync::LazyLock;
+use crate::torrent::tracker::TrackerManager;
+use serde::Deserialize;
+use std::sync::Arc;
+use std::time::Instant;
+use types::{RawTorrent, ScoredTorrent, SearchContext, SearchQuery};
 
-#[derive(Debug, Clone, Serialize)]
-pub struct MovieResult {
-    pub title: String,
-    pub year: u32,
-    pub quality: String,
-    pub magnet: Option<String>,
-    pub torrent_url: Option<String>,
-    pub seeds: u32,
+/// Main entry point. Runs all enabled providers concurrently, merges
+/// their results by info_hash, parses + scores each, and returns a
+/// list sorted by total score (descending).
+///
+/// Individual provider failures are logged via `tracing::warn!` and
+/// never bubble up; the caller sees only successful results. All
+/// providers failing returns an empty Vec.
+pub async fn search_movie(
+    http: &reqwest::Client,
+    tracker: &Arc<TrackerManager>,
+    query: SearchQuery,
+) -> Vec<ScoredTorrent> {
+    tracing::info!(
+        title = %query.title,
+        year = ?query.year,
+        tmdb_id = ?query.tmdb_id,
+        "search_movie started"
+    );
+    let total_t = Instant::now();
+
+    // Resolve IMDB id up-front (optional).
+    let imdb_id = if let Some(tmdb_id) = query.tmdb_id {
+        fetch_imdb_id(http, &query.tmdb_api_key, tmdb_id).await
+    } else {
+        None
+    };
+    tracing::debug!(imdb_id = ?imdb_id, "imdb id resolved");
+
+    // Snapshot tracker list.
+    let trackers = tracker.hot_trackers().await;
+
+    let ctx = SearchContext {
+        http,
+        title: &query.title,
+        year: query.year,
+        imdb_id: imdb_id.as_deref(),
+        tmdb_api_key: &query.tmdb_api_key,
+        trackers: &trackers,
+    };
+
+    let providers_list = providers::build_default_providers(query.tmdb_api_key.clone());
+
+    // Fan out. Each future resolves to (name, Result<Vec<RawTorrent>>).
+    let futs: Vec<_> = providers_list
+        .iter()
+        .map(|p| {
+            let p = p.clone();
+            async move {
+                let t = Instant::now();
+                let res = p.search(&ctx).await;
+                tracing::debug!(
+                    provider = p.name(),
+                    elapsed_ms = t.elapsed().as_millis() as u64,
+                    ok = res.is_ok(),
+                    "provider finished"
+                );
+                (p.name(), res)
+            }
+        })
+        .collect();
+    let results = futures::future::join_all(futs).await;
+
+    // Collect successes; log failures.
+    let mut all_raw: Vec<RawTorrent> = Vec::new();
+    for (name, res) in results {
+        match res {
+            Ok(items) => {
+                tracing::debug!(provider = name, count = items.len(), "provider returned");
+                all_raw.extend(items);
+            }
+            Err(e) => {
+                tracing::warn!(provider = name, error = %e, "provider failed");
+            }
+        }
+    }
+
+    // Drop entries with no downloadable entrypoint.
+    let usable: Vec<RawTorrent> = all_raw
+        .into_iter()
+        .filter(|r| r.magnet.is_some() || r.torrent_url.is_some())
+        .collect();
+
+    // Dedup, parse, score, sort.
+    let deduped = dedup::merge(usable);
+    let mut scored: Vec<ScoredTorrent> = deduped.into_iter().map(assemble_scored).collect();
+    scored.sort_by(|a, b| b.score.cmp(&a.score));
+
+    tracing::info!(
+        count = scored.len(),
+        total_ms = total_t.elapsed().as_millis() as u64,
+        "search_movie complete"
+    );
+    scored
 }
 
-pub async fn search_yify(
-    client: &reqwest::Client,
-    tmdb_api_key: &str,
-    query: &str,
-    year: Option<u32>,
-    tmdb_id: Option<u64>,
-) -> Result<Vec<MovieResult>, SearchError> {
-    tracing::info!(query, ?year, ?tmdb_id, "yify search started");
-
-    // 1. Try IMDB ID from TMDB (most reliable)
-    if let Some(id) = tmdb_id {
-        tracing::debug!(tmdb_id = id, "fetching IMDB ID from TMDB");
-        if let Some(imdb_id) = fetch_imdb_id(client, tmdb_api_key, id).await {
-            tracing::debug!(imdb_id = %imdb_id, "got IMDB ID, searching YTS");
-            if let Ok(results) = search_via_api(client, &imdb_id, None).await
-                && !results.is_empty()
-            {
-                tracing::info!(count = results.len(), "found via IMDB ID");
-                return Ok(results);
-            }
-            tracing::debug!("IMDB ID search returned no results");
-        } else {
-            tracing::debug!("could not resolve IMDB ID");
-        }
+fn assemble_scored(raw: RawTorrent) -> ScoredTorrent {
+    let parsed = parser::parse_release_title(&raw.raw_title);
+    let breakdown = scorer::score(&raw, &parsed);
+    let total = breakdown.total();
+    ScoredTorrent {
+        source: raw.source,
+        raw_title: raw.raw_title,
+        info_hash: raw.info_hash,
+        magnet: raw.magnet,
+        torrent_url: raw.torrent_url,
+        size_bytes: raw.size_bytes,
+        seeders: raw.seeders,
+        leechers: raw.leechers,
+        resolution: parsed.resolution,
+        source_kind: parsed.source_kind,
+        codec: parsed.codec,
+        release_group: parsed.release_group,
+        hdr: parsed.hdr,
+        score: total,
+        breakdown,
     }
-
-    // 2. Try original title
-    tracing::debug!(query, "searching by original title");
-    if let Ok(results) = search_via_api(client, query, year).await
-        && !results.is_empty()
-    {
-        tracing::info!(count = results.len(), "found via original title");
-        return Ok(results);
-    }
-
-    // 3. Fallback: strip special characters and retry
-    let sanitized = sanitize_query(query);
-    if sanitized != query {
-        tracing::debug!(sanitized, "retrying with sanitized title");
-        if let Ok(results) = search_via_api(client, &sanitized, year).await
-            && !results.is_empty()
-        {
-            tracing::info!(count = results.len(), "found via sanitized title");
-            return Ok(results);
-        }
-    }
-
-    tracing::warn!(query, "no results after all fallbacks");
-    Err(SearchError::NoResults(query.to_string()))
 }
 
 /// Fetch IMDB ID for a TMDB movie via the TMDB external_ids endpoint.
+/// Best-effort — returns None on any failure.
 async fn fetch_imdb_id(client: &reqwest::Client, api_key: &str, tmdb_id: u64) -> Option<String> {
     if api_key.is_empty() {
         return None;
@@ -104,139 +159,76 @@ async fn fetch_imdb_id(client: &reqwest::Client, api_key: &str, tmdb_id: u64) ->
     ids.imdb_id.filter(|s| !s.is_empty())
 }
 
-static SANITIZE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"[^\w\s]").expect("valid sanitize regex"));
-
-fn sanitize_query(query: &str) -> String {
-    let cleaned = SANITIZE_RE.replace_all(query, " ");
-    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-async fn search_via_api(
-    client: &reqwest::Client,
-    query: &str,
-    year: Option<u32>,
-) -> Result<Vec<MovieResult>, SearchError> {
-    tracing::debug!(query, ?year, "YTS API request");
-    let mut params = vec![
-        ("query_term", query.to_string()),
-        ("sort_by", "seeds".to_string()),
-        ("order_by", "desc".to_string()),
-    ];
-    if let Some(y) = year {
-        params.push(("year", y.to_string()));
-    }
-
-    let resp = client
-        .get("https://movies-api.accel.li/api/v2/list_movies.json")
-        .query(&params)
-        .header("User-Agent", "blowup/0.1")
-        .send()
-        .await?;
-
-    let body: YtsResponse = resp.json().await?;
-    parse_yts_response(body)
-}
-
-#[derive(Deserialize)]
-struct YtsResponse {
-    data: YtsData,
-}
-
-#[derive(Deserialize)]
-struct YtsData {
-    #[serde(default)]
-    movies: Vec<YtsMovie>,
-}
-
-#[derive(Deserialize)]
-struct YtsMovie {
-    title: String,
-    year: u32,
-    torrents: Vec<YtsTorrent>,
-}
-
-#[derive(Deserialize)]
-struct YtsTorrent {
-    quality: String,
-    #[serde(rename = "url")]
-    url: String,
-    seeds: u32,
-    #[serde(default)]
-    magnet_url: Option<String>,
-}
-
-fn parse_yts_response(resp: YtsResponse) -> Result<Vec<MovieResult>, SearchError> {
-    let mut results: Vec<MovieResult> = resp
-        .data
-        .movies
-        .into_iter()
-        .flat_map(|movie| {
-            let title = movie.title.clone();
-            let year = movie.year;
-            movie.torrents.into_iter().map(move |t| MovieResult {
-                title: title.clone(),
-                year,
-                quality: t.quality,
-                magnet: t.magnet_url,
-                torrent_url: Some(t.url),
-                seeds: t.seeds,
-            })
-        })
-        .collect();
-
-    results.sort_by(|a, b| {
-        quality_rank(&b.quality)
-            .cmp(&quality_rank(&a.quality))
-            .then(b.seeds.cmp(&a.seeds))
-    });
-
-    Ok(results)
-}
-
-fn quality_rank(q: &str) -> u8 {
-    match q {
-        "2160p" => 4,
-        "1080p" => 3,
-        "720p" => 2,
-        _ => 1,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
-    fn make_yts_response(movies: serde_json::Value) -> YtsResponse {
-        serde_json::from_value(json!({"data": {"movies": movies}})).unwrap()
+    fn raw(source: &'static str, title: &str, hash: &str, seeders: u32) -> RawTorrent {
+        RawTorrent {
+            source,
+            raw_title: title.to_string(),
+            info_hash: Some(hash.to_string()),
+            magnet: Some(format!("magnet:?xt=urn:btih:{hash}")),
+            torrent_url: None,
+            size_bytes: Some(5_000_000_000),
+            seeders,
+            leechers: 0,
+        }
+    }
+
+    /// Replicate the post-fetch pipeline (dedup + parse + score + sort)
+    /// so we can test it without reaching for network. Intentionally
+    /// duplicates the orchestrator steps verbatim — DRY would make the
+    /// test meaningless.
+    fn pipeline(all_raw: Vec<RawTorrent>) -> Vec<ScoredTorrent> {
+        let usable: Vec<_> = all_raw
+            .into_iter()
+            .filter(|r| r.magnet.is_some() || r.torrent_url.is_some())
+            .collect();
+        let deduped = dedup::merge(usable);
+        let mut scored: Vec<_> = deduped.into_iter().map(assemble_scored).collect();
+        scored.sort_by(|a, b| b.score.cmp(&a.score));
+        scored
     }
 
     #[test]
-    fn parse_single_movie() {
-        let resp = make_yts_response(json!([{
-            "title": "Blow-Up",
-            "year": 1966,
-            "torrents": [
-                {"quality": "1080p", "url": "http://x.com/a.torrent", "seeds": 100},
-                {"quality": "720p",  "url": "http://x.com/b.torrent", "seeds": 200}
-            ]
-        }]));
-        let results = parse_yts_response(resp).unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].quality, "1080p");
+    fn pipeline_dedups_same_hash_across_sources() {
+        let a = raw("yts", "Blow.Up.1966.1080p.BluRay.x265-FraMeSToR", "abc", 50);
+        let b = raw(
+            "nyaa",
+            "Blow.Up.1966.1080p.BluRay.x265-FraMeSToR",
+            "abc",
+            80,
+        );
+        let out = pipeline(vec![a, b]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].seeders, 80);
     }
 
     #[test]
-    fn quality_rank_order() {
-        assert!(quality_rank("1080p") > quality_rank("720p"));
-        assert!(quality_rank("2160p") > quality_rank("1080p"));
+    fn pipeline_sorts_by_total_score_desc() {
+        let high = raw(
+            "yts",
+            "Hero.2002.2160p.BluRay.REMUX.x265.HDR-GECKOS",
+            "aaa",
+            200,
+        );
+        let low = raw("nyaa", "Hero.2002.HDTV.XviD-X", "bbb", 3);
+        let out = pipeline(vec![low, high]);
+        assert_eq!(out[0].info_hash.as_deref(), Some("aaa"));
+        assert_eq!(out[1].info_hash.as_deref(), Some("bbb"));
     }
 
     #[test]
-    fn empty_movies_returns_empty_vec() {
-        let resp = make_yts_response(json!([]));
-        let results = parse_yts_response(resp).unwrap();
-        assert!(results.is_empty());
+    fn pipeline_drops_unusable_entries() {
+        let usable = raw("yts", "Blow.Up.1966.1080p.BluRay.x265-FraMeSToR", "abc", 50);
+        let unusable = RawTorrent {
+            magnet: None,
+            torrent_url: None,
+            ..raw("nyaa", "Useless", "def", 50)
+        };
+        let out = pipeline(vec![usable, unusable]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].info_hash.as_deref(), Some("abc"));
     }
 }
