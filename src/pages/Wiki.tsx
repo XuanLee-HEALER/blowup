@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
 import {
   ActionIcon,
   Anchor,
   Badge,
   Box,
   Button,
+  Divider,
   Flex,
   Group,
   Modal,
@@ -12,15 +16,225 @@ import {
   ScrollArea,
   Select,
   Stack,
+  Tabs,
   Text,
+  Textarea,
   TextInput,
   Title,
   UnstyledButton,
 } from "@mantine/core";
 import { kb } from "../lib/tauri";
 import type { EntrySummary, EntryDetail, RelationEntry } from "../lib/tauri";
-import { WikiDetailView } from "../components/WikiDetailView";
 import { useBackendEvent, BackendEvent } from "../lib/useBackendEvent";
+
+// ── Markdown renderer ───────────────────────────────────────────
+
+const mdComponents: Components = {
+  h1: ({ children, ...props }) => {
+    const id = "heading-" + String(children).replace(/\s+/g, "-");
+    return (
+      <h1
+        data-heading-id={id}
+        style={{
+          fontSize: "1.3rem",
+          fontWeight: 700,
+          margin: "2rem 0 0.75rem",
+          color: "var(--color-label-primary)",
+          letterSpacing: "-0.02em",
+        }}
+        {...props}
+      >
+        {children}
+      </h1>
+    );
+  },
+  h2: ({ children, ...props }) => {
+    const id = "heading-" + String(children).replace(/\s+/g, "-");
+    return (
+      <h2
+        data-heading-id={id}
+        style={{
+          fontSize: "1.1rem",
+          fontWeight: 600,
+          margin: "2rem 0 0.6rem",
+          paddingBottom: "0.35rem",
+          borderBottom: "1px solid var(--color-separator)",
+          color: "var(--color-label-primary)",
+        }}
+        {...props}
+      >
+        {children}
+      </h2>
+    );
+  },
+  h3: ({ children, ...props }) => {
+    const id = "heading-" + String(children).replace(/\s+/g, "-");
+    return (
+      <h3
+        data-heading-id={id}
+        style={{
+          fontSize: "0.95rem",
+          fontWeight: 600,
+          margin: "1.5rem 0 0.5rem",
+          color: "var(--color-label-primary)",
+        }}
+        {...props}
+      >
+        {children}
+      </h3>
+    );
+  },
+  p: ({ children, ...props }) => (
+    <p
+      style={{
+        margin: "0.6rem 0",
+        lineHeight: 1.85,
+        color: "var(--color-label-secondary)",
+        fontSize: "0.82rem",
+      }}
+      {...props}
+    >
+      {children}
+    </p>
+  ),
+  ul: ({ children, ...props }) => (
+    <ul style={{ margin: "0.5rem 0", paddingLeft: "1.5rem", lineHeight: 1.85 }} {...props}>
+      {children}
+    </ul>
+  ),
+  ol: ({ children, ...props }) => (
+    <ol style={{ margin: "0.5rem 0", paddingLeft: "1.5rem", lineHeight: 1.85 }} {...props}>
+      {children}
+    </ol>
+  ),
+  li: ({ children, ...props }) => (
+    <li
+      style={{
+        margin: "0.3rem 0",
+        fontSize: "0.82rem",
+        color: "var(--color-label-secondary)",
+      }}
+      {...props}
+    >
+      {children}
+    </li>
+  ),
+  strong: ({ children, ...props }) => (
+    <strong style={{ color: "var(--color-label-primary)", fontWeight: 600 }} {...props}>
+      {children}
+    </strong>
+  ),
+  blockquote: ({ children, ...props }) => (
+    <blockquote
+      style={{
+        margin: "0.75rem 0",
+        paddingLeft: "1rem",
+        borderLeft: "3px solid var(--color-accent)",
+        color: "var(--color-label-tertiary)",
+        fontStyle: "italic",
+      }}
+      {...props}
+    >
+      {children}
+    </blockquote>
+  ),
+  hr: (props) => (
+    <hr
+      style={{
+        border: "none",
+        borderTop: "1px solid var(--color-separator)",
+        margin: "1.5rem 0",
+      }}
+      {...props}
+    />
+  ),
+  a: ({ children, href, ...props }) => (
+    <a href={href} style={{ color: "var(--color-accent)", textDecoration: "none" }} {...props}>
+      {children}
+    </a>
+  ),
+};
+
+function WikiPreview({ content }: { content: string }) {
+  if (!content) {
+    return (
+      <Text c="var(--color-label-quaternary)" fs="italic" size="sm">
+        （暂无内容）
+      </Text>
+    );
+  }
+  return (
+    <Box px="1rem">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+        {content}
+      </ReactMarkdown>
+    </Box>
+  );
+}
+
+// ── Outline (markdown headings sidebar) ─────────────────────────
+
+function Outline({
+  content,
+  containerRef,
+}: {
+  content: string;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const headings = useMemo(() => {
+    const result: { level: number; text: string; id: string }[] = [];
+    for (const line of content.split("\n")) {
+      const match = line.match(/^(#{1,4})\s+(.+)/);
+      if (match) {
+        const text = match[2].trim();
+        result.push({
+          level: match[1].length,
+          text,
+          id: "heading-" + text.replace(/\s+/g, "-"),
+        });
+      }
+    }
+    return result;
+  }, [content]);
+
+  if (headings.length === 0) return null;
+
+  const handleClick = (id: string) => {
+    const el = containerRef.current?.querySelector(`[data-heading-id="${id}"]`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <Stack gap={2}>
+      <Text
+        size="xs"
+        tt="uppercase"
+        c="var(--color-label-quaternary)"
+        fw={600}
+        mb="0.5rem"
+        style={{ letterSpacing: "0.06em", fontSize: "0.68rem" }}
+      >
+        目录
+      </Text>
+      {headings.map((h, i) => (
+        <Text
+          key={i}
+          size="xs"
+          c="var(--color-label-secondary)"
+          truncate
+          onClick={() => handleClick(h.id)}
+          style={{
+            paddingLeft: `${(h.level - 1) * 12}px`,
+            cursor: "pointer",
+            lineHeight: 2,
+          }}
+        >
+          {h.text}
+        </Text>
+      ))}
+    </Stack>
+  );
+}
 
 // ── Add Entry Modal ─────────────────────────────────────────────
 
@@ -155,6 +369,24 @@ function EntryDetailView({
   const [newTag, setNewTag] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState(entry.name);
+  const [mode, setMode] = useState<"preview" | "edit">("preview");
+  const [currentLine, setCurrentLine] = useState(1);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const stats = useMemo(() => {
+    const lines = wiki.length === 0 ? 0 : wiki.split("\n").length;
+    const chars = wiki.length;
+    const headings = wiki.split("\n").filter((l) => /^#{1,6}\s/.test(l)).length;
+    return { lines, chars, headings };
+  }, [wiki]);
+
+  const updateCursorLine = () => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const pos = ta.selectionStart;
+    setCurrentLine(wiki.slice(0, pos).split("\n").length);
+  };
 
   const handleSaveWiki = async () => {
     await kb.updateEntryWiki(entry.id, wiki);
@@ -212,67 +444,215 @@ function EntryDetailView({
       }}
     />
   ) : (
-    <Text component="span" onDoubleClick={() => setEditingName(true)} style={{ cursor: "pointer" }} title="双击编辑名称">
+    <Text
+      component="span"
+      onDoubleClick={() => setEditingName(true)}
+      style={{ cursor: "pointer" }}
+      title="双击编辑名称"
+    >
       {entry.name}
     </Text>
   );
 
-  const footer = (
-    <Stack gap="0.75rem">
-      <Box>
-        <Text
-          size="xs"
-          tt="uppercase"
-          c="var(--color-label-quaternary)"
-          fw={600}
-          mb="0.4rem"
-          style={{ letterSpacing: "0.06em", fontSize: "0.7rem" }}
-        >
-          标签
-        </Text>
-        <Group gap="0.3rem" wrap="wrap" align="center">
-          {entry.tags.map((tag) => (
-            <Pill key={tag} withRemoveButton onRemove={() => handleRemoveTag(tag)} size="md">
-              {tag}
-            </Pill>
-          ))}
-          <TextInput
-            value={newTag}
-            onChange={(e) => setNewTag(e.currentTarget.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
-            placeholder="+ 标签"
-            size="xs"
-            w={100}
-          />
-        </Group>
+  return (
+    <Flex direction="column" style={{ flex: 1, minHeight: 0 }}>
+      {/* Header — title only */}
+      <Box
+        ta="center"
+        pt="1.5rem"
+        pb="1rem"
+        style={{
+          borderBottom: "1px solid var(--color-separator)",
+          flexShrink: 0,
+        }}
+      >
+        <Title order={2} fz="1.5rem" fw={700} style={{ letterSpacing: "-0.03em" }}>
+          {titleEl}
+        </Title>
       </Box>
 
-      <Box>
-        <Group gap="0.5rem" mb="0.4rem" align="center">
-          <Text
-            size="xs"
-            tt="uppercase"
-            c="var(--color-label-quaternary)"
-            fw={600}
-            style={{ letterSpacing: "0.06em", fontSize: "0.7rem" }}
+      {/* Body: left scroll column (content + tags/relations) + right outline.
+          `minHeight: 0` on the Flex breaks default min-height:auto so the
+          ScrollArea can actually overflow; `h="100%"` on the ScrollArea gives
+          it a definite height to compute against. */}
+      <Flex
+        ref={contentRef}
+        style={{ flex: 1, overflow: "hidden", minHeight: 0 }}
+      >
+        <ScrollArea h="100%" style={{ flex: 1, minHeight: 0 }}>
+          <Box py="2rem" pb="3rem">
+            <Box w="60%" mx="auto">
+              <Group justify="flex-end" gap="0.25rem" mb="1rem">
+                <Tabs
+                  value={mode}
+                  onChange={(v) => v && setMode(v as "preview" | "edit")}
+                  variant="default"
+                >
+                  <Tabs.List>
+                    <Tabs.Tab value="preview">预览</Tabs.Tab>
+                    <Tabs.Tab value="edit">编辑</Tabs.Tab>
+                  </Tabs.List>
+                </Tabs>
+                <Button
+                  variant="subtle"
+                  size="compact-xs"
+                  color="gray"
+                  onClick={handleDelete}
+                  ml="auto"
+                >
+                  删除条目
+                </Button>
+              </Group>
+
+              {mode === "edit" ? (
+                <Textarea
+                  ref={textareaRef}
+                  value={wiki}
+                  onChange={(e) => {
+                    setWiki(e.currentTarget.value);
+                    requestAnimationFrame(updateCursorLine);
+                  }}
+                  onBlur={handleSaveWiki}
+                  onSelect={updateCursorLine}
+                  onKeyUp={updateCursorLine}
+                  onClick={updateCursorLine}
+                  placeholder="支持 Markdown 格式..."
+                  autosize
+                  minRows={20}
+                  maxRows={40}
+                  styles={{
+                    input: {
+                      fontFamily: "monospace",
+                      fontSize: "0.8rem",
+                      lineHeight: 1.65,
+                    },
+                  }}
+                />
+              ) : (
+                <WikiPreview content={wiki} />
+              )}
+
+              {/* Metadata: tags + relations, scrolls with content */}
+              <Divider my="2rem" />
+
+              <Box mb="1.5rem">
+                <Text
+                  size="xs"
+                  tt="uppercase"
+                  c="var(--color-label-quaternary)"
+                  fw={600}
+                  mb="0.4rem"
+                  style={{ letterSpacing: "0.06em", fontSize: "0.7rem" }}
+                >
+                  标签
+                </Text>
+                <Group gap="0.3rem" wrap="wrap" align="center">
+                  {entry.tags.map((tag) => (
+                    <Pill
+                      key={tag}
+                      withRemoveButton
+                      onRemove={() => handleRemoveTag(tag)}
+                      size="md"
+                    >
+                      {tag}
+                    </Pill>
+                  ))}
+                  <TextInput
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.currentTarget.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddTag()}
+                    placeholder="+ 标签"
+                    size="xs"
+                    w={100}
+                  />
+                </Group>
+              </Box>
+
+              <Box>
+                <Group gap="0.5rem" mb="0.4rem" align="center">
+                  <Text
+                    size="xs"
+                    tt="uppercase"
+                    c="var(--color-label-quaternary)"
+                    fw={600}
+                    style={{ letterSpacing: "0.06em", fontSize: "0.7rem" }}
+                  >
+                    关系
+                  </Text>
+                  <Anchor
+                    size="xs"
+                    component="button"
+                    onClick={() => setShowRelModal(true)}
+                  >
+                    + 添加
+                  </Anchor>
+                </Group>
+                {entry.relations.length === 0 ? (
+                  <Text size="sm" c="var(--color-label-quaternary)" fs="italic">
+                    暂无关系
+                  </Text>
+                ) : (
+                  <Stack gap={4}>
+                    {entry.relations.map((rel) => (
+                      <RelationRow
+                        key={rel.id}
+                        rel={rel}
+                        onRemove={() => handleRemoveRelation(rel.id)}
+                      />
+                    ))}
+                  </Stack>
+                )}
+              </Box>
+            </Box>
+          </Box>
+        </ScrollArea>
+
+        {wiki && (
+          <ScrollArea
+            h="100%"
+            w={180}
+            style={{
+              flexShrink: 0,
+              borderLeft: "1px solid var(--color-separator)",
+            }}
           >
-            关系
-          </Text>
-          <Anchor size="xs" component="button" onClick={() => setShowRelModal(true)}>
-            + 添加
-          </Anchor>
-        </Group>
-        {entry.relations.length === 0 ? (
-          <Text size="sm" c="var(--color-label-quaternary)" fs="italic">
-            暂无关系
-          </Text>
-        ) : (
-          <Stack gap={4}>
-            {entry.relations.map((rel) => (
-              <RelationRow key={rel.id} rel={rel} onRemove={() => handleRemoveRelation(rel.id)} />
-            ))}
-          </Stack>
+            <Box px="0.75rem" py="1.25rem">
+              {mode === "preview" && (
+                <Outline content={wiki} containerRef={contentRef} />
+              )}
+            </Box>
+          </ScrollArea>
         )}
+      </Flex>
+
+      {/* Status bar — `mt={4}` is the "small gap" between content and statusbar */}
+      <Box
+        mt={4}
+        px="1.25rem"
+        py="0.35rem"
+        style={{
+          flexShrink: 0,
+          borderTop: "1px solid var(--color-separator)",
+          background: "var(--color-bg-elevated)",
+        }}
+      >
+        <Group gap="lg" wrap="nowrap">
+          <Text size="xs" c="var(--color-label-tertiary)">
+            {mode === "edit"
+              ? `行 ${currentLine}/${stats.lines}`
+              : `${stats.lines} 行`}
+          </Text>
+          <Text size="xs" c="var(--color-label-tertiary)">
+            {stats.chars} 字
+          </Text>
+          <Text size="xs" c="var(--color-label-tertiary)">
+            {stats.headings} 个标题
+          </Text>
+          <Box style={{ flex: 1 }} />
+          <Text size="xs" c="var(--color-label-quaternary)">
+            {mode === "edit" ? "编辑中" : "预览"}
+          </Text>
+        </Group>
       </Box>
 
       <AddRelationModal
@@ -285,19 +665,7 @@ function EntryDetailView({
           onUpdated();
         }}
       />
-    </Stack>
-  );
-
-  return (
-    <WikiDetailView
-      title={titleEl}
-      wikiContent={wiki}
-      onWikiChange={setWiki}
-      onWikiSave={handleSaveWiki}
-      onDelete={handleDelete}
-      deleteLabel="删除条目"
-      footer={footer}
-    />
+    </Flex>
   );
 }
 
@@ -369,13 +737,20 @@ export default function Wiki() {
   };
 
   return (
-    <Flex h="100%">
+    // `flex: 1 + minHeight: 0` instead of `h="100%"`. The parent Main
+    // (SpaceShell's <main>) is a flex column, so flex:1 gives this
+    // row a DEFINITE column-axis height — without it, h="100%" sees
+    // an "indefinite flex stretch height" in its parent and falls
+    // back to auto, which makes the row take max(left, right) =
+    // content height = thousands of pixels, overflowing everything.
+    <Flex style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
       {/* Left Panel */}
       <Flex
         direction="column"
         w={260}
         style={{
           flexShrink: 0,
+          minHeight: 0,
           borderRight: "1px solid var(--color-separator)",
         }}
       >
@@ -472,8 +847,21 @@ export default function Wiki() {
         </ScrollArea>
       </Flex>
 
-      {/* Right Panel: detail */}
-      <Box style={{ flex: 1, overflow: "hidden" }}>
+      {/* Right Panel: detail.
+          `display: flex, flexDirection: column, minHeight: 0` gives
+          EntryDetailView a definite height via flex layout instead
+          of the indefinite-height `align-items: stretch` that
+          prevents nested ScrollAreas from knowing their viewport. */}
+      <Box
+        style={{
+          flex: 1,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          minHeight: 0,
+        }}
+      >
         {detail ? (
           <EntryDetailView
             key={detail.id + "-" + detail.updated_at}
@@ -484,7 +872,7 @@ export default function Wiki() {
             onUpdated={handleUpdated}
           />
         ) : (
-          <Flex align="center" justify="center" h="100%">
+          <Flex align="center" justify="center" style={{ flex: 1 }}>
             <Text size="sm" c="var(--color-label-quaternary)">
               选择或创建一个条目
             </Text>
