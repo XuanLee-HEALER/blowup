@@ -9,6 +9,7 @@
 pub mod dedup;
 pub mod parser;
 pub mod provider;
+pub mod providers;
 pub mod scorer;
 pub mod types;
 
