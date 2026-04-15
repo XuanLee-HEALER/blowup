@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:nyaa="https://nyaa.si/xmlns/nyaa">
+  <channel>
+    <title>Nyaa - "blow up" - Torrent File RSS</title>
+    <description>RSS Feed for "blow up"</description>
+    <link>https://nyaa.si/?page=rss&amp;q=blow+up&amp;c=0_0&amp;f=0</link>
+    <item>
+      <title>Blow.Up.1966.1080p.BluRay.x265-FraMeSToR</title>
+      <link>https://nyaa.si/download/1234567.torrent</link>
+      <guid isPermaLink="true">https://nyaa.si/view/1234567</guid>
+      <pubDate>Sat, 12 Apr 2025 15:23:11 -0000</pubDate>
+      <nyaa:seeders>127</nyaa:seeders>
+      <nyaa:leechers>8</nyaa:leechers>
+      <nyaa:downloads>842</nyaa:downloads>
+      <nyaa:infoHash>aabbccddeeff0011223344556677889900aabbcc</nyaa:infoHash>
+      <nyaa:categoryId>4_2</nyaa:categoryId>
+      <nyaa:category>Live Action - English-translated</nyaa:category>
+      <nyaa:size>4.2 GiB</nyaa:size>
+      <nyaa:comments>3</nyaa:comments>
+      <nyaa:trusted>No</nyaa:trusted>
+      <nyaa:remake>No</nyaa:remake>
+    </item>
+    <item>
+      <title>[FansubGroup] Blow Up (1966) [720p][x264][Chinese Sub]</title>
+      <link>https://nyaa.si/download/2345678.torrent</link>
+      <guid isPermaLink="true">https://nyaa.si/view/2345678</guid>
+      <pubDate>Mon, 05 Mar 2024 08:00:00 -0000</pubDate>
+      <nyaa:seeders>43</nyaa:seeders>
+      <nyaa:leechers>2</nyaa:leechers>
+      <nyaa:downloads>128</nyaa:downloads>
+      <nyaa:infoHash>1122334455667788990011223344556677889900</nyaa:infoHash>
+      <nyaa:categoryId>4_2</nyaa:categoryId>
+      <nyaa:category>Live Action - English-translated</nyaa:category>
+      <nyaa:size>850 MiB</nyaa:size>
+      <nyaa:comments>0</nyaa:comments>
+      <nyaa:trusted>No</nyaa:trusted>
+      <nyaa:remake>No</nyaa:remake>
+    </item>
+  </channel>
+</rss>
