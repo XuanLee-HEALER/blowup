@@ -46,7 +46,6 @@ export interface MusicTrack { src: string; name: string; }
 export interface AppConfig {
   tools: { ffmpeg: string };
   download: { max_concurrent: number; enable_dht: boolean; persist_session: boolean };
-  search: { rate_limit_secs: number };
   subtitle: { default_lang: string };
   opensubtitles: { api_key: string; username: string; password: string };
   assrt: { token: string };
@@ -211,13 +210,39 @@ export interface SubtitleDisplayConfig {
   font_size: number;
 }
 
-export interface MovieResult {
-  title: string;
-  year: number;
-  quality: string;
+// ── Torrent search (multi-source) ─────────────────────────────────
+export type Resolution =
+  | "unknown" | "sd" | "p480" | "p720" | "p1080" | "p2160";
+export type SourceKind =
+  | "unknown" | "cam" | "ts" | "hdtv" | "webrip" | "webdl" | "bluray" | "remux";
+export type Codec = "unknown" | "x264" | "x265" | "av1";
+
+export interface ScoreBreakdown {
+  seeders: number;
+  resolution: number;
+  source: number;
+  codec: number;
+  size: number;
+  group: number;
+  hdr: number;
+}
+
+export interface ScoredTorrent {
+  source: string;              // "yts" | "1337x" | "nyaa"
+  raw_title: string;
+  info_hash: string | null;
   magnet: string | null;
   torrent_url: string | null;
-  seeds: number;
+  size_bytes: number | null;
+  seeders: number;
+  leechers: number;
+  resolution: Resolution;
+  source_kind: SourceKind;
+  codec: Codec;
+  release_group: string | null;
+  hdr: boolean;
+  score: number;
+  breakdown: ScoreBreakdown;
 }
 
 export interface SubtitleStreamInfo {
@@ -372,9 +397,9 @@ export const download = {
     invoke<string[]>("list_download_existing_files", { id }),
 };
 
-export const yts = {
-  search: (query: string, year?: number, tmdbId?: number) =>
-    invoke<MovieResult[]>("search_yify_cmd", { query, year, tmdbId }),
+export const search = {
+  movie: (query: string, year?: number, tmdbId?: number) =>
+    invoke<ScoredTorrent[]>("search_movie_cmd", { query, year, tmdbId }),
 };
 
 export interface TrackerStatus {

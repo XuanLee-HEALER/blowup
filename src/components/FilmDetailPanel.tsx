@@ -15,9 +15,66 @@ import {
   Text,
   Title,
 } from "@mantine/core";
-import { yts, download } from "../lib/tauri";
+import { search, download } from "../lib/tauri";
 import { formatSize } from "../lib/format";
-import type { MovieListItem, MovieResult, TorrentFileInfo } from "../lib/tauri";
+import type {
+  MovieListItem,
+  ScoredTorrent,
+  TorrentFileInfo,
+} from "../lib/tauri";
+
+const resolutionLabel = (r: ScoredTorrent["resolution"]): string =>
+  ({
+    p2160: "4K",
+    p1080: "1080p",
+    p720: "720p",
+    p480: "480p",
+    sd: "SD",
+    unknown: "",
+  }[r] ?? "");
+
+const sourceLabel = (s: ScoredTorrent["source_kind"]): string =>
+  ({
+    remux: "Remux",
+    bluray: "Bluray",
+    webdl: "WEB-DL",
+    webrip: "WEBRip",
+    hdtv: "HDTV",
+    ts: "TS",
+    cam: "CAM",
+    unknown: "",
+  }[s] ?? "");
+
+const codecLabel = (c: ScoredTorrent["codec"]): string =>
+  ({ x265: "x265", x264: "x264", av1: "AV1", unknown: "" }[c] ?? "");
+
+const qualityTags = (r: ScoredTorrent): string =>
+  [
+    resolutionLabel(r.resolution),
+    sourceLabel(r.source_kind),
+    codecLabel(r.codec),
+    r.hdr ? "HDR" : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+function renderBreakdownLine(label: string, value: number, note: string) {
+  const sign = value >= 0 ? "+" : "";
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between" }}>
+      <span>{label}</span>
+      <span>
+        {sign}
+        {value}
+        {note && (
+          <span style={{ marginLeft: 8, color: "var(--color-label-tertiary)" }}>
+            ({note})
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
 
 function TorrentSearchModal({
   film,
@@ -28,12 +85,13 @@ function TorrentSearchModal({
   opened: boolean;
   onClose: () => void;
 }) {
-  const [results, setResults] = useState<MovieResult[]>([]);
+  const [results, setResults] = useState<ScoredTorrent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [fetching, setFetching] = useState<Set<string>>(new Set());
   const [started, setStarted] = useState<Set<string>>(new Set());
-  const [filePickResult, setFilePickResult] = useState<MovieResult | null>(null);
+  const [filePickResult, setFilePickResult] = useState<ScoredTorrent | null>(null);
+  const [detailIndex, setDetailIndex] = useState<number | null>(null);
   const [fileList, setFileList] = useState<TorrentFileInfo[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
   const [submitting, setSubmitting] = useState(false);
@@ -44,14 +102,14 @@ function TorrentSearchModal({
     if (!opened) return;
     setLoading(true);
     setError("");
-    yts
-      .search(film.title, year, film.id)
+    search
+      .movie(film.title, year, film.id)
       .then(setResults)
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, [opened, film.title, year, film.id]);
 
-  const handleFetchFiles = async (r: MovieResult) => {
+  const handleFetchFiles = async (r: ScoredTorrent) => {
     const target = r.magnet ?? r.torrent_url;
     if (!target) return;
     setFetching((prev) => new Set(prev).add(target));
@@ -88,7 +146,7 @@ function TorrentSearchModal({
         tmdbId: film.id,
         year: year,
         genres: [],
-        quality: filePickResult.quality,
+        quality: resolutionLabel(filePickResult.resolution), // was filePickResult.quality
         onlyFiles: [...selectedFiles],
       });
       setStarted((prev) => new Set(prev).add(target));
@@ -113,7 +171,7 @@ function TorrentSearchModal({
           <Group gap="xs">
             <Loader size="xs" />
             <Text size="sm" c="var(--color-label-secondary)">
-              搜索中...
+              搜索中... (YTS · Nyaa · 1337x)
             </Text>
           </Group>
         )}
@@ -134,34 +192,108 @@ function TorrentSearchModal({
           {results.map((r, i) => {
             const target = r.magnet ?? r.torrent_url ?? "";
             const isStarted = started.has(target);
+            const showDetail = detailIndex === i;
             return (
-              <Group
+              <Box
                 key={i}
-                justify="space-between"
                 py="8px"
                 style={{ borderBottom: "1px solid var(--color-separator)" }}
-                wrap="nowrap"
               >
-                <Group gap="md">
-                  <Text size="sm" fw={500}>
-                    {r.quality}
-                  </Text>
-                  <Text size="sm" c="var(--color-label-secondary)">
-                    {r.seeds} seeds
-                  </Text>
+                <Group justify="space-between" wrap="nowrap" gap="md">
+                  <Group gap="sm" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                    <Text size="sm" fw={600} c="var(--color-accent)">
+                      ⭐ {r.score}
+                    </Text>
+                    <Text size="sm" truncate>
+                      {qualityTags(r)}
+                    </Text>
+                    {r.size_bytes != null && (
+                      <Text size="xs" c="var(--color-label-secondary)">
+                        {formatSize(r.size_bytes)}
+                      </Text>
+                    )}
+                    <Text size="xs" c="var(--color-label-secondary)">
+                      ▸ {r.seeders} seeds
+                    </Text>
+                  </Group>
+                  <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                    <Button
+                      size="compact-xs"
+                      variant="default"
+                      onClick={() => setDetailIndex(showDetail ? null : i)}
+                    >
+                      {showDetail ? "收起" : "详情"}
+                    </Button>
+                    {isStarted ? (
+                      <Text size="xs" c="var(--color-accent)">
+                        下载中
+                      </Text>
+                    ) : fetching.has(target) ? (
+                      <Loader size="xs" />
+                    ) : (
+                      <Button
+                        size="compact-xs"
+                        disabled={!target}
+                        onClick={() => handleFetchFiles(r)}
+                      >
+                        下载
+                      </Button>
+                    )}
+                  </Group>
                 </Group>
-                {isStarted ? (
-                  <Text size="xs" c="var(--color-accent)">
-                    下载中
-                  </Text>
-                ) : fetching.has(target) ? (
-                  <Loader size="xs" />
-                ) : (
-                  <Button size="compact-xs" disabled={!target} onClick={() => handleFetchFiles(r)}>
-                    下载
-                  </Button>
+                <Text size="xs" c="var(--color-label-tertiary)" truncate mt={4}>
+                  [{r.source}] {r.raw_title}
+                </Text>
+                {showDetail && (
+                  <Box
+                    mt="xs"
+                    p="xs"
+                    style={{
+                      background: "var(--color-surface-2)",
+                      border: "1px solid var(--color-separator)",
+                      fontFamily: "monospace",
+                      fontSize: 11,
+                    }}
+                  >
+                    {renderBreakdownLine("seeders", r.breakdown.seeders, `${r.seeders} peers`)}
+                    {renderBreakdownLine(
+                      "resolution",
+                      r.breakdown.resolution,
+                      resolutionLabel(r.resolution) || "unknown",
+                    )}
+                    {renderBreakdownLine(
+                      "source",
+                      r.breakdown.source,
+                      sourceLabel(r.source_kind) || "unknown",
+                    )}
+                    {renderBreakdownLine(
+                      "codec",
+                      r.breakdown.codec,
+                      codecLabel(r.codec) || "unknown",
+                    )}
+                    {renderBreakdownLine(
+                      "size",
+                      r.breakdown.size,
+                      r.size_bytes != null ? formatSize(r.size_bytes) : "—",
+                    )}
+                    {renderBreakdownLine(
+                      "group",
+                      r.breakdown.group,
+                      r.release_group ?? "—",
+                    )}
+                    {renderBreakdownLine("hdr", r.breakdown.hdr, r.hdr ? "yes" : "no")}
+                    <div
+                      style={{
+                        marginTop: 4,
+                        paddingTop: 4,
+                        borderTop: "1px solid var(--color-separator)",
+                      }}
+                    >
+                      {renderBreakdownLine("total", r.score, "")}
+                    </div>
+                  </Box>
                 )}
-              </Group>
+              </Box>
             );
           })}
         </Stack>
@@ -180,7 +312,7 @@ function TorrentSearchModal({
         centered
       >
         <Text size="xs" c="var(--color-label-secondary)" mb="md">
-          {filePickResult?.quality} · 共 {fileList.length} 个文件
+          {filePickResult ? qualityTags(filePickResult) : ""} · 共 {fileList.length} 个文件
         </Text>
         <ScrollArea.Autosize mah={400} mb="md">
           <Stack gap={0}>

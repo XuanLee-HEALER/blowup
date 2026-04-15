@@ -313,23 +313,6 @@ export default function Settings() {
           </Field>
         </Section>
 
-        <Section title="搜索">
-          <Field label="请求间隔（秒）">
-            <NumberInput
-              w={100}
-              min={0}
-              defaultValue={cfg.search.rate_limit_secs}
-              onBlur={(e) => {
-                const v = parseInt(e.currentTarget.value, 10);
-                if (!isNaN(v) && v >= 0) {
-                  update((c) => {
-                    c.search.rate_limit_secs = v;
-                  });
-                }
-              }}
-            />
-          </Field>
-        </Section>
 
         <Section title="缓存">
           <Field label="缓存文件路径">
