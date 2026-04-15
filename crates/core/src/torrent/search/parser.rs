@@ -7,7 +7,7 @@
 //! First-match wins in regex priority order:
 //!   resolution: 2160 → 1080 → 720 → 480
 //!   source:     remux → bluray → webdl → webrip → hdtv → ts → cam
-//!   codec:      x265/hevc → x264/avc → av1
+//!   codec:      x265/hevc → av1 → x264/avc
 
 use crate::torrent::search::types::{Codec, ParsedTitle, Resolution, SourceKind};
 use regex::Regex;
@@ -15,8 +15,7 @@ use std::sync::LazyLock;
 
 // ── Regex constants ────────────────────────────────────────────────
 
-static RES_2160: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b(?:2160p|4k|uhd)\b").unwrap());
+static RES_2160: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b(?:2160p|4k)\b").unwrap());
 static RES_1080: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b1080p\b").unwrap());
 static RES_720: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b720p\b").unwrap());
 static RES_480: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b480p\b").unwrap());
