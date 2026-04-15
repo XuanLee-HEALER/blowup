@@ -36,6 +36,10 @@ export function SpaceShell({
   onContextClose,
 }: SpaceShellProps) {
   return (
+    // `minHeight: 0` on every flex layer breaks the default
+    // `min-height: auto` chain, which otherwise lets each container
+    // grow to its content height and silently defeats any nested
+    // `flex: 1` sizing attempts downstream.
     <Box
       component="section"
       style={{
@@ -43,16 +47,27 @@ export function SpaceShell({
         display: "flex",
         flexDirection: "column",
         minWidth: 0,
+        minHeight: 0,
+        overflow: "hidden",
         position: "relative",
       }}
     >
       <Toolbar left={toolbarLeft} right={toolbarRight} />
-      <Box style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
+      <Box
+        style={{
+          flex: 1,
+          display: "flex",
+          minHeight: 0,
+          overflow: "hidden",
+          position: "relative",
+        }}
+      >
         <Box
           component="main"
           style={{
             flex: 1,
             minWidth: MAIN_MIN_WIDTH,
+            minHeight: 0,
             overflow: "hidden",
             display: "flex",
             flexDirection: "column",
