@@ -1,6 +1,7 @@
 //! Concrete `SearchProvider` implementations.
 
 pub mod nyaa;
+pub mod onethreeseven;
 pub mod yts;
 
 use crate::torrent::search::provider::SearchProvider;
@@ -12,6 +13,6 @@ pub fn build_default_providers(tmdb_api_key: String) -> Vec<Arc<dyn SearchProvid
     vec![
         Arc::new(yts::YtsProvider::new(tmdb_api_key)),
         Arc::new(nyaa::NyaaProvider::new()),
-        // 1337x added in Task 10
+        Arc::new(onethreeseven::OnethreesevenProvider::new()),
     ]
 }
