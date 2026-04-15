@@ -719,11 +719,9 @@ function SkillBridgeSection() {
         </Group>
       </Field>
       {toggleErr && (
-        <Field label="">
-          <Text size="xs" c="red" style={{ whiteSpace: "pre-wrap" }}>
-            {toggleErr}
-          </Text>
-        </Field>
+        <Text size="xs" c="red" mt={4} style={{ whiteSpace: "pre-wrap" }}>
+          {toggleErr}
+        </Text>
       )}
       <Field label="安装">
         <Group gap="0.5rem">
@@ -741,19 +739,18 @@ function SkillBridgeSection() {
         </Group>
       </Field>
       {installMsg && (
-        <Field label="">
-          <Text size="xs" c="dimmed" style={{ whiteSpace: "pre-wrap" }}>
-            {installMsg}
-          </Text>
-        </Field>
+        <Text size="xs" c="dimmed" mt={4} style={{ whiteSpace: "pre-wrap" }}>
+          {installMsg}
+        </Text>
       )}
       <Collapse expanded={snippetsOpen}>
         {snippets && (
           <Stack gap="0.5rem" mt="xs">
             <SnippetBlock title="Claude Code (CLI)" body={snippets.claude_code} />
-            <SnippetBlock title="Claude Desktop" body={snippets.claude_desktop} />
-            <SnippetBlock title="Cursor" body={snippets.cursor} />
-            <SnippetBlock title="Cline / Continue / Zed" body={snippets.cline} />
+            <SnippetBlock
+              title="Claude Desktop / Cursor / Cline / Zed"
+              body={snippets.mcp_servers_json}
+            />
           </Stack>
         )}
       </Collapse>

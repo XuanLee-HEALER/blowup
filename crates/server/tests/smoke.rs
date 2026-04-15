@@ -16,51 +16,19 @@
 //! which is a `OnceLock` — all tests are `#[serial]` so they don't
 //! race on the singleton.
 
+mod common;
+
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header::AUTHORIZATION};
-use blowup_core::AppContext;
-use blowup_core::infra::events::EventBus;
-use blowup_core::library::index::LibraryIndex;
-use blowup_core::tasks::TaskRegistry;
-use blowup_core::torrent::tracker::TrackerManager;
-use blowup_server::{AppState, build_router};
+use blowup_server::build_router;
+use common::{TEST_TOKEN, make_state};
 use http_body_util::BodyExt;
 use serial_test::serial;
-use std::sync::Arc;
-use tokio::sync::OnceCell;
 use tower::util::ServiceExt;
 
-const TEST_TOKEN: &str = "test-token";
-
 async fn make_test_app() -> (Router, tempfile::TempDir) {
-    let tmp = tempfile::tempdir().unwrap();
-    blowup_core::config::init_app_data_dir(tmp.path().to_path_buf());
-    blowup_core::infra::cache::init_cache();
-
-    let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-    sqlx::migrate!("../core/migrations")
-        .run(&pool)
-        .await
-        .unwrap();
-
-    let library_root = tmp.path().join("library");
-    std::fs::create_dir_all(&library_root).unwrap();
-    let library_index = Arc::new(LibraryIndex::load(&library_root));
-
-    let (tracker, _) = TrackerManager::load();
-    let torrent = Arc::new(OnceCell::new());
-
-    let state: AppState = AppContext::new(
-        pool,
-        library_index,
-        Arc::new(tracker),
-        torrent,
-        EventBus::new(),
-        TaskRegistry::new(),
-        Arc::new(TEST_TOKEN.to_string()),
-    );
-
+    let (state, tmp) = make_state().await;
     (build_router(state), tmp)
 }
 

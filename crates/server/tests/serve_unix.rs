@@ -1,17 +1,14 @@
-//! Tests for blowup_server::serve_unix — verify that:
-//! 1. We can bind a Unix socket and the file appears with 0600 perms
-//! 2. A real HTTP request over hyperlocal hits the same router as TCP
-//! 3. Sending the shutdown signal stops the task and leaves the
-//!    socket file in place (cleanup is the caller's job)
+//! Integration test for `blowup_server::serve_unix`. Verifies the
+//! full chain: bind a Unix socket, fire a real HTTP request through
+//! hyperlocal, reach the same router as TCP, then graceful-shutdown
+//! cleanly. Permissions and cleanup are the caller's job (the
+//! Tauri command handles those), so nothing here touches perms.
 
 #![cfg(unix)]
 
-use blowup_core::AppContext;
-use blowup_core::infra::events::EventBus;
-use blowup_core::library::index::LibraryIndex;
-use blowup_core::tasks::TaskRegistry;
-use blowup_core::torrent::tracker::TrackerManager;
-use blowup_server::AppState;
+mod common;
+
+use common::{TEST_TOKEN, make_state};
 use http_body_util::BodyExt;
 use hyper::Request;
 use hyper::body::Bytes;
@@ -19,38 +16,7 @@ use hyper_util::client::legacy::Client;
 use hyper_util::rt::TokioExecutor;
 use hyperlocal::{UnixConnector, Uri};
 use serial_test::serial;
-use std::sync::Arc;
-use tokio::sync::OnceCell;
 use tokio::sync::oneshot;
-
-const TEST_TOKEN: &str = "test-token";
-
-async fn make_state() -> (AppState, tempfile::TempDir) {
-    let tmp = tempfile::tempdir().unwrap();
-    blowup_core::config::init_app_data_dir(tmp.path().to_path_buf());
-    blowup_core::infra::cache::init_cache();
-
-    let pool = sqlx::SqlitePool::connect(":memory:").await.unwrap();
-    sqlx::migrate!("../core/migrations").run(&pool).await.unwrap();
-
-    let library_root = tmp.path().join("library");
-    std::fs::create_dir_all(&library_root).unwrap();
-    let library_index = Arc::new(LibraryIndex::load(&library_root));
-
-    let (tracker, _) = TrackerManager::load();
-    let torrent = Arc::new(OnceCell::new());
-
-    let state: AppState = AppContext::new(
-        pool,
-        library_index,
-        Arc::new(tracker),
-        torrent,
-        EventBus::new(),
-        TaskRegistry::new(),
-        Arc::new(TEST_TOKEN.to_string()),
-    );
-    (state, tmp)
-}
 
 #[tokio::test]
 #[serial]

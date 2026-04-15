@@ -3,17 +3,9 @@
 //! that points at the desktop app's Unix socket; methods are
 //! `async fn` and return `Result<T, rmcp::ErrorData>`.
 //!
-//! rmcp 1.4 wiring notes (for T8/T9 to follow the same shape):
-//!   - `#[tool_router]` on the inherent impl generates a hidden
-//!     `Self::tool_router()` that the handler macro reads.
-//!   - `#[tool_handler]` on `impl ServerHandler for BlowupService {}`
-//!     auto-fills `call_tool`, `list_tools`, `get_tool`, and `get_info`
-//!     (using `CARGO_CRATE_NAME` + `CARGO_PKG_VERSION`).
-//!   - Tool methods return `Result<T, rmcp::ErrorData>` so `?` works
-//!     directly on `BlowupClient` calls via `From<McpError>`.
-//!   - `McpError::user_message()` carries the `[FATAL] ` prefix that
-//!     skill prompts pattern-match on, so the conversion goes through
-//!     it, not through `Display`.
+//! Tool outputs must be object-rooted per the MCP outputSchema rule,
+//! so list/ID returns go through small wrapper structs below rather
+//! than bare `Vec<T>` / `i64`.
 
 use crate::client::BlowupClient;
 use crate::error::McpError;
@@ -21,6 +13,7 @@ use rmcp::handler::server::wrapper::{Json, Parameters};
 use rmcp::schemars::JsonSchema;
 use rmcp::{ErrorData, ServerHandler, tool, tool_handler, tool_router};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 /// Bridge service exposing the 9 knowledge-base tools over stdio MCP.
 ///
@@ -46,36 +39,21 @@ impl Default for BlowupService {
     }
 }
 
-/// Convert our typed bridge error into rmcp's wire-level `ErrorData`.
-///
-/// The `user_message()` string (with its `[FATAL] ` prefix for
-/// non-retryable errors, and inline `\n提示: ...` for retryable ones)
-/// is what Claude's skill prompt pattern-matches on. Raw `Display`
-/// would drop both, so we route through `user_message()`.
-///
-/// All variants map to JSON-RPC `INTERNAL_ERROR` (-32603). We
-/// intentionally don't split BadRequest → INVALID_PARAMS: the MCP
-/// error code isn't surfaced to Claude, only the message is, and
-/// keeping a single code simplifies T8/T9.
+/// Forward `McpError` into rmcp's wire-level `ErrorData` via
+/// `user_message()` so the `[FATAL] ` prefix and inline hint that
+/// the skill prompt pattern-matches on survive the boundary.
+/// `Display` would drop both.
 impl From<McpError> for ErrorData {
     fn from(err: McpError) -> Self {
         ErrorData::internal_error(err.user_message(), None)
     }
 }
 
-// ── Bridge-side DTOs ───────────────────────────────────────────────
-//
-// These mirror the JSON shapes returned by `crates/server/src/routes/entries.rs`
-// (which re-exports the types in `blowup_core::entries::model`). The server types
-// don't derive `Deserialize` (they're write-only on the server side), so we
-// redeclare them here with the shapes Claude cares about.
-//
-// Keep in sync with `crates/core/src/entries/model.rs`. If that file adds a
-// field, either add it here too or let serde ignore it by default (extra JSON
-// fields are silently dropped during deserialization — but missing fields the
-// struct declares will fail, so we match what the server actually returns).
+// DTOs mirror the JSON shapes returned by the entries routes in
+// blowup-server. Keep field sets in sync with
+// `crates/core/src/entries/model.rs` — serde drops unknown JSON
+// fields but fails on missing ones.
 
-/// Mirrors `blowup_core::entries::model::EntrySummary`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct EntrySummary {
     pub id: i64,
@@ -84,46 +62,16 @@ pub struct EntrySummary {
     pub updated_at: String,
 }
 
-/// Wrapper for `list_entries` tool output. The MCP spec requires every
-/// tool's `outputSchema` root to be an `object`, so a bare `Vec<T>` at
-/// the top level is rejected at `serve` time — wrap it in a struct with
-/// a named `entries` field.
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct EntryList {
-    pub entries: Vec<EntrySummary>,
-}
-
-/// Wrapper for `list_all_tags` / `list_relation_types` — same MCP root
-/// constraint as `EntryList`.
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct StringList {
-    pub items: Vec<String>,
-}
-
-/// Wrapper for `create_entry` tool output. MCP outputSchema root must be object.
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct EntryIdResponse {
-    pub id: i64,
-}
-
-/// Wrapper for `add_relation` tool output. MCP outputSchema root must be object.
-#[derive(Debug, Serialize, JsonSchema)]
-pub struct RelationIdResponse {
-    pub id: i64,
-}
-
-/// Mirrors `blowup_core::entries::model::RelationEntry`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct RelationEntry {
     pub id: i64,
     pub target_id: i64,
     pub target_name: String,
-    /// "outgoing" or "incoming" (relative to the entry being viewed).
+    /// "outgoing" or "incoming" relative to the entry being viewed.
     pub direction: String,
     pub relation_type: String,
 }
 
-/// Mirrors `blowup_core::entries::model::EntryDetail`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 pub struct EntryDetail {
     pub id: i64,
@@ -133,6 +81,24 @@ pub struct EntryDetail {
     pub relations: Vec<RelationEntry>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+// Object-rooted output wrappers. MCP rejects bare `Vec<T>` / `i64`
+// at the tool output root — every tool must return an object.
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct EntryList {
+    pub entries: Vec<EntrySummary>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct StringList {
+    pub items: Vec<String>,
+}
+
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct IdResponse {
+    pub id: i64,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -273,36 +239,24 @@ impl BlowupService {
     pub async fn create_entry(
         &self,
         Parameters(args): Parameters<CreateEntryArgs>,
-    ) -> Result<Json<EntryIdResponse>, ErrorData> {
-        #[derive(serde::Serialize)]
-        struct Body<'a> {
-            name: &'a str,
-        }
+    ) -> Result<Json<IdResponse>, ErrorData> {
         let id: i64 = self
             .client
             .post(
                 "/api/v1/entries",
-                &Body { name: &args.name },
+                &json!({ "name": args.name }),
                 Some("先用 list_entries(query=name) 查重"),
             )
             .await?;
-        Ok(Json(EntryIdResponse { id }))
+        Ok(Json(IdResponse { id }))
     }
 
-    // ── Void-write convention ────────────────────────────────────
-    //
-    // The three void writes (update_wiki, update_name, add_tag)
-    // return `Result<String, ErrorData>` with a literal `"ok"` on
-    // success rather than `Result<Json<OkResponse>, ErrorData>`.
-    //
-    // Why: rmcp's MCP outputSchema constraint requires the root JSON
-    // to be an object, so we can't return a bare `()`/`null`. The
-    // alternatives are (a) wrap "ok" in a one-field struct, or
-    // (b) return a `String` literal — rmcp's `IntoCallToolResult` for
-    // `String` produces `{ "content": [{ "type": "text", "text": "ok" }] }`
-    // which IS a valid object root. (b) is fewer types and equally clear
-    // to Claude. If rmcp ever changes how `String` results are encoded
-    // in a way that breaks the object-root guarantee, switch to (a).
+    // The three void writes (update_wiki, update_name, add_tag) return
+    // `Result<String, ErrorData>` with a literal `"ok"` because MCP
+    // rejects `null` at the outputSchema root, and rmcp's
+    // `IntoCallToolResult` for `String` produces a valid object-rooted
+    // response. Wrapping in a single-field struct would work too, just
+    // adds a type for no extra info.
     #[tool(
         description = "更新条目的 wiki markdown 内容。**完全覆盖**,不是 append。若是更新而非新写,先用 get_entry 拿到现有内容再合并。Wiki 内容应为中文 Markdown。"
     )]
@@ -310,16 +264,12 @@ impl BlowupService {
         &self,
         Parameters(args): Parameters<UpdateWikiArgs>,
     ) -> Result<String, ErrorData> {
-        #[derive(serde::Serialize)]
-        struct Body<'a> {
-            wiki: &'a str,
-        }
         let path = format!("/api/v1/entries/{}/wiki", args.id);
         let _: () = self
             .client
             .put(
                 &path,
-                &Body { wiki: &args.wiki },
+                &json!({ "wiki": args.wiki }),
                 Some("条目 ID 不存在时,先用 list_entries 查询"),
             )
             .await?;
@@ -333,14 +283,10 @@ impl BlowupService {
         &self,
         Parameters(args): Parameters<UpdateNameArgs>,
     ) -> Result<String, ErrorData> {
-        #[derive(serde::Serialize)]
-        struct Body<'a> {
-            name: &'a str,
-        }
         let path = format!("/api/v1/entries/{}/name", args.id);
         let _: () = self
             .client
-            .put(&path, &Body { name: &args.name }, None)
+            .put(&path, &json!({ "name": args.name }), None)
             .await?;
         Ok("ok".to_string())
     }
@@ -352,16 +298,12 @@ impl BlowupService {
         &self,
         Parameters(args): Parameters<AddTagArgs>,
     ) -> Result<String, ErrorData> {
-        #[derive(serde::Serialize)]
-        struct Body<'a> {
-            tag: &'a str,
-        }
         let path = format!("/api/v1/entries/{}/tags", args.entry_id);
         let _: () = self
             .client
             .post(
                 &path,
-                &Body { tag: &args.tag },
+                &json!({ "tag": args.tag }),
                 Some("先用 list_all_tags 检查是否有合适的现有标签"),
             )
             .await?;
@@ -374,33 +316,25 @@ impl BlowupService {
     pub async fn add_relation(
         &self,
         Parameters(args): Parameters<AddRelationArgs>,
-    ) -> Result<Json<RelationIdResponse>, ErrorData> {
-        #[derive(serde::Serialize)]
-        struct Body<'a> {
-            from_id: i64,
-            to_id: i64,
-            relation_type: &'a str,
-        }
+    ) -> Result<Json<IdResponse>, ErrorData> {
         let id: i64 = self
             .client
             .post(
                 "/api/v1/entries/relations",
-                &Body {
-                    from_id: args.from_id,
-                    to_id: args.to_id,
-                    relation_type: &args.relation_type,
-                },
+                &json!({
+                    "from_id": args.from_id,
+                    "to_id": args.to_id,
+                    "relation_type": args.relation_type,
+                }),
                 Some("先用 list_relation_types 查询现有类型并复用"),
             )
             .await?;
-        Ok(Json(RelationIdResponse { id }))
+        Ok(Json(IdResponse { id }))
     }
 }
 
-// `name = ...` is required because the macro's default for
-// `Implementation::from_build_env()` is resolved *inside* the `rmcp`
-// crate, so without an explicit name the server identifies itself as
-// `rmcp 1.4.0` instead of `blowup-mcp`. Version is left unset so it
-// falls back to `env!("CARGO_PKG_VERSION")` at our call site.
+// Explicit `name` is required — without it the handler macro resolves
+// `Implementation::from_build_env()` inside the `rmcp` crate and the
+// server identifies itself as "rmcp" instead of "blowup-mcp".
 #[tool_handler(name = "blowup-mcp")]
 impl ServerHandler for BlowupService {}

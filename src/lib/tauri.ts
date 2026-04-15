@@ -514,10 +514,10 @@ export interface InstallReport {
 
 export interface InstallSnippets {
   binary_path: string;
+  /** Shell command for Claude Code users. */
   claude_code: string;
-  claude_desktop: string;
-  cursor: string;
-  cline: string;
+  /** `mcpServers` JSON block used by Claude Desktop, Cursor, Cline, Zed, etc. */
+  mcp_servers_json: string;
 }
 
 export const skillBridge = {

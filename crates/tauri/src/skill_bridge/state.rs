@@ -17,7 +17,7 @@ pub struct SkillBridgeHandle {
 }
 
 #[derive(Clone, Default)]
-pub struct SkillBridgeState(pub Arc<Mutex<Option<SkillBridgeHandle>>>);
+pub struct SkillBridgeState(Arc<Mutex<Option<SkillBridgeHandle>>>);
 
 impl SkillBridgeState {
     pub fn new() -> Self {
@@ -32,19 +32,43 @@ impl SkillBridgeState {
         self.0.lock().as_ref().map(|h| h.socket_path.clone())
     }
 
-    /// Sync best-effort cleanup, safe to call from a window-close event
-    /// handler or signal handler. Sends the shutdown signal and unlinks
-    /// the socket file synchronously. Does NOT await the serve task —
-    /// the Tokio runtime will reap it when the process exits.
-    pub fn shutdown_blocking(&self) {
-        if let Some(h) = self.0.lock().take() {
-            let _ = h.shutdown_tx.send(());
-            #[cfg(unix)]
-            let _ = std::fs::remove_file(&h.socket_path);
-            tracing::info!(
-                path = %h.socket_path.display(),
-                "skill bridge stopped via window close hook"
-            );
+    /// Install a fresh handle. Returns `Err` with the handle back if
+    /// one is already present so the caller can decide (usually: don't
+    /// overwrite — start() already rejects when `is_running`).
+    pub fn install(&self, handle: SkillBridgeHandle) -> Result<(), SkillBridgeHandle> {
+        let mut slot = self.0.lock();
+        if slot.is_some() {
+            return Err(handle);
         }
+        *slot = Some(handle);
+        Ok(())
+    }
+
+    /// Take the handle (if any) and signal shutdown + unlink the
+    /// socket file. Returns the `JoinHandle` so async callers can
+    /// `await` it under a timeout; sync callers (window close hooks)
+    /// drop the return value and let the tokio runtime reap it.
+    pub fn take_and_shutdown(&self) -> Option<JoinHandle<()>> {
+        let handle = self.0.lock().take()?;
+        let SkillBridgeHandle {
+            task,
+            shutdown_tx,
+            socket_path,
+        } = handle;
+        let _ = shutdown_tx.send(());
+        #[cfg(unix)]
+        let _ = std::fs::remove_file(&socket_path);
+        tracing::info!(
+            path = %socket_path.display(),
+            "skill bridge stopped"
+        );
+        Some(task)
+    }
+
+    /// Convenience for sync cleanup paths (window-close hook). Sends
+    /// the shutdown signal and unlinks the socket file; does not
+    /// await the serve task (the tokio runtime reaps it on exit).
+    pub fn shutdown_blocking(&self) {
+        let _ = self.take_and_shutdown();
     }
 }

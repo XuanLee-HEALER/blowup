@@ -102,17 +102,9 @@ impl BlowupClient {
             .to_bytes();
 
         if status.is_success() {
-            // Empty success bodies (PUT/DELETE that return ()) are
-            // common in this API — `update_wiki`, `add_tag`, etc all
-            // return no body. We synthesize `null` so the caller can
-            // declare `Result<(), McpError>` and serde does the rest.
-            //
-            // Trade-off: a future endpoint that's *supposed* to return
-            // data but accidentally omits a body would silently
-            // deserialize as `null` here. We accept that risk because:
-            // (1) it's caught immediately by the test for that tool,
-            // (2) the alternative (separate void/typed methods) doubles
-            //     the API surface for a single-user tool.
+            // Empty body → `null` → `()` deserializes cleanly, so
+            // void writes (update_wiki, add_tag, …) can use the same
+            // generic send() path as typed returns.
             if body.is_empty() {
                 return serde_json::from_slice(b"null")
                     .map_err(|e| McpError::internal(format!("deserialize empty: {e}")));
