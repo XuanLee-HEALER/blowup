@@ -7,6 +7,7 @@
 //! resolving an IMDB id from a TMDB id).
 
 pub mod parser;
+pub mod scorer;
 pub mod types;
 
 use crate::error::SearchError;
