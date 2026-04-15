@@ -119,6 +119,16 @@ jobs:
 
             app "blowup.app"
 
+            # blowup is not code-signed or notarized, so the DMG carries
+            # the com.apple.quarantine xattr. Gatekeeper then blocks the
+            # first launch with "damaged / cannot be opened". Strip the
+            # attribute after install so the app opens cleanly.
+            postflight do
+              system_command "/usr/bin/xattr",
+                             args: ["-rd", "com.apple.quarantine", "#{appdir}/blowup.app"],
+                             must_succeed: false
+            end
+
             zap trash: [
               "~/Library/Application Support/io.github.xuanlee-healer.blowup",
               "~/Library/Caches/io.github.xuanlee-healer.blowup",
