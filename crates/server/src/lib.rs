@@ -27,15 +27,11 @@ pub async fn serve(addr: &str, state: AppState) -> std::io::Result<()> {
         .map_err(std::io::Error::other)
 }
 
-/// Build the full axum Router for blowup-server, mounted under /api/v1.
-///
-/// Every route requires `Authorization: Bearer <token>` where the token
-/// matches `state.auth_token`. CORS is intentionally *not* permissive:
-/// no `Access-Control-Allow-Origin` header is emitted, so browsers will
-/// block cross-origin preflights from random web pages even if they
-/// somehow learn the token. Native clients (iOS, curl) are unaffected.
-pub fn build_router(state: AppState) -> Router {
-    let api = Router::new()
+/// All API routes with no transport-specific layers applied. Each
+/// of the public `build_router*` functions attaches its own auth
+/// policy on top.
+fn mount_api_routes() -> Router<AppState> {
+    Router::new()
         .merge(routes::health::router())
         .merge(routes::config::router())
         .merge(routes::search::router())
@@ -51,6 +47,17 @@ pub fn build_router(state: AppState) -> Router {
         .merge(routes::export::router())
         .merge(routes::events::router())
         .merge(routes::tasks::router())
+}
+
+/// Build the full axum Router for blowup-server, mounted under /api/v1.
+///
+/// Every route requires `Authorization: Bearer <token>` where the token
+/// matches `state.auth_token`. CORS is intentionally *not* permissive:
+/// no `Access-Control-Allow-Origin` header is emitted, so browsers will
+/// block cross-origin preflights from random web pages even if they
+/// somehow learn the token. Native clients (iOS, curl) are unaffected.
+pub fn build_router(state: AppState) -> Router {
+    let api = mount_api_routes()
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             auth::require_bearer,
@@ -62,17 +69,33 @@ pub fn build_router(state: AppState) -> Router {
         .layer(TraceLayer::new_for_http())
 }
 
+/// Same routes as [`build_router`] but **without** the bearer-token
+/// middleware. Intended for transports where the OS itself acts as
+/// the security boundary — currently just the Unix domain socket
+/// used by the skill bridge, whose `0600` file perms mean anyone
+/// who can open the socket already is the owner.
+///
+/// Do NOT use this for any TCP listener.
+pub fn build_router_trusted(state: AppState) -> Router {
+    let api = mount_api_routes().with_state(state);
+    Router::new()
+        .nest("/api/v1", api)
+        .layer(TraceLayer::new_for_http())
+}
+
 /// Serve the axum router on an already-bound Unix domain socket.
 /// Caller owns the `UnixListener` — useful when the listener was
 /// created via the `std` type so that file perms could be set between
-/// bind and accept. See also [`serve_unix`] for the path-based variant.
+/// bind and accept. Uses [`build_router_trusted`]: the `0600` socket
+/// file permissions are the security boundary, bearer auth would be
+/// redundant.
 #[cfg(unix)]
 pub async fn serve_unix_from_listener(
     listener: tokio::net::UnixListener,
     state: AppState,
     shutdown: tokio::sync::oneshot::Receiver<()>,
 ) -> std::io::Result<()> {
-    let router = build_router(state);
+    let router = build_router_trusted(state);
     axum::serve(listener, router)
         .with_graceful_shutdown(async move {
             let _ = shutdown.await;

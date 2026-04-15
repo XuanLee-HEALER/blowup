@@ -75,8 +75,15 @@ impl BlowupClient {
                 .map_err(|e| McpError::internal(format!("serialize body: {e}")))?,
             None => Vec::new(),
         };
+        tracing::debug!(
+            method = %method,
+            path,
+            body_len = body_bytes.len(),
+            socket = %self.socket_path.display(),
+            "blowup-mcp client request"
+        );
 
-        let mut req = Request::builder().method(method).uri(uri);
+        let mut req = Request::builder().method(method.clone()).uri(uri);
         if !body_bytes.is_empty() {
             req = req.header("content-type", "application/json");
         }
@@ -100,6 +107,11 @@ impl BlowupClient {
             .await
             .map_err(|e| McpError::internal(format!("read body: {e}")))?
             .to_bytes();
+        tracing::debug!(
+            %status,
+            body_len = body.len(),
+            "blowup-mcp client response"
+        );
 
         if status.is_success() {
             // Empty body → `null` → `()` deserializes cleanly, so
@@ -113,12 +125,22 @@ impl BlowupClient {
                 .map_err(|e| McpError::internal(format!("deserialize: {e}")));
         }
 
+        // Defense in depth: an empty 4xx body would otherwise produce
+        // an empty user_message (retryable → no FATAL prefix, no
+        // hint, no message body = empty string), which Claude Code
+        // renders as `MCP error -32603:` with nothing after the colon
+        // and leaves no way to diagnose. Fall back to the status code.
         let text = String::from_utf8_lossy(&body).to_string();
+        let detail = if text.trim().is_empty() {
+            format!("HTTP {status}")
+        } else {
+            text
+        };
         let hint_owned = hint.map(|h| h.to_string());
         Err(match status {
-            StatusCode::NOT_FOUND => McpError::not_found(text, hint_owned),
-            s if s.is_client_error() => McpError::bad_request(text, hint_owned),
-            _ => McpError::internal(format!("HTTP {status}: {text}")),
+            StatusCode::NOT_FOUND => McpError::not_found(detail, hint_owned),
+            s if s.is_client_error() => McpError::bad_request(detail, hint_owned),
+            _ => McpError::internal(format!("HTTP {status}: {detail}")),
         })
     }
 }

@@ -1,14 +1,19 @@
-//! Integration test for `blowup_server::serve_unix`. Verifies the
-//! full chain: bind a Unix socket, fire a real HTTP request through
-//! hyperlocal, reach the same router as TCP, then graceful-shutdown
-//! cleanly. Permissions and cleanup are the caller's job (the
-//! Tauri command handles those), so nothing here touches perms.
+//! Integration tests for `blowup_server::serve_unix`. Verifies:
+//!   1. Bind a Unix socket, a real HTTP request through hyperlocal
+//!      reaches the router, graceful-shutdown exits cleanly.
+//!   2. The Unix socket path is **authless** — requests without an
+//!      Authorization header still succeed. This is the skill-bridge
+//!      security model (file perms do the access control, a bearer
+//!      token would be redundant).
+//!
+//! Permissions and cleanup are the caller's job (the Tauri command
+//! handles those), so nothing here touches perms.
 
 #![cfg(unix)]
 
 mod common;
 
-use common::{TEST_TOKEN, make_state};
+use common::make_state;
 use http_body_util::BodyExt;
 use hyper::Request;
 use hyper::body::Bytes;
@@ -20,7 +25,7 @@ use tokio::sync::oneshot;
 
 #[tokio::test]
 #[serial]
-async fn serve_unix_binds_and_routes() {
+async fn serve_unix_routes_without_auth_header() {
     let (state, tmp) = make_state().await;
     let socket_path = tmp.path().join("test.sock");
 
@@ -32,7 +37,6 @@ async fn serve_unix_binds_and_routes() {
             .unwrap();
     });
 
-    // Wait for the socket file to appear (bind happens async)
     for _ in 0..50 {
         if socket_path.exists() {
             break;
@@ -41,27 +45,21 @@ async fn serve_unix_binds_and_routes() {
     }
     assert!(socket_path.exists(), "socket file not created");
 
-    // Note: 0600 perms are the CALLER's responsibility (skill_bridge_start
-    // command does the chmod). serve_unix itself just bind()s, so the
-    // socket gets the umask-default perms. We don't assert perms here.
-
-    // Make a real HTTP request over the socket
+    // No Authorization header — the Unix socket path MUST accept
+    // unauthenticated requests because the skill bridge client
+    // doesn't know the desktop's bearer token.
     let client: Client<UnixConnector, http_body_util::Full<Bytes>> =
         Client::builder(TokioExecutor::new()).build(UnixConnector);
     let url: hyper::Uri = Uri::new(&socket_path, "/api/v1/health").into();
     let req = Request::builder()
         .uri(url)
-        .header("authorization", format!("Bearer {TEST_TOKEN}"))
         .body(http_body_util::Full::new(Bytes::new()))
         .unwrap();
 
     let resp = client.request(req).await.unwrap();
-    assert_eq!(resp.status(), 200);
-
-    // Drain body to make sure router actually responded
+    assert_eq!(resp.status(), 200, "health check should succeed without bearer");
     let _body = resp.into_body().collect().await.unwrap().to_bytes();
 
-    // Send shutdown
     shutdown_tx.send(()).unwrap();
     tokio::time::timeout(std::time::Duration::from_secs(2), task)
         .await
