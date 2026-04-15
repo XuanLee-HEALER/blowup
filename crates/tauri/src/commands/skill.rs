@@ -180,7 +180,10 @@ pub async fn skill_bridge_get_install_snippets(
     let bin = installed_binary_path(&app)?;
     let bin_str = bin.to_string_lossy().to_string();
 
-    let claude_code = format!("claude mcp add blowup-skill {}", shell_escape(&bin_str));
+    let claude_code = format!(
+        "claude mcp add --scope user blowup-skill {}",
+        shell_escape(&bin_str)
+    );
 
     let mcp_servers_json = serde_json::to_string_pretty(&serde_json::json!({
         "mcpServers": {
@@ -316,13 +319,24 @@ pub async fn skill_bridge_install_to_claude_code(
             _ => format!("copy SKILL.md 失败: {e}"),
         })?;
 
+        // `--scope user` registers the MCP server in the user-global
+        // Claude Code config, not the per-project "local" default —
+        // the skill should be available in every project directory,
+        // not just wherever the desktop app happened to be launched.
         let manual_command = format!(
-            "claude mcp add blowup-skill {}",
+            "claude mcp add --scope user blowup-skill {}",
             shell_escape(&target_binary_str)
         );
 
         let claude_added = std::process::Command::new("claude")
-            .args(["mcp", "add", "blowup-skill", &target_binary_str])
+            .args([
+                "mcp",
+                "add",
+                "--scope",
+                "user",
+                "blowup-skill",
+                &target_binary_str,
+            ])
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
