@@ -2,7 +2,7 @@
 
 > [中文版本点此链接](./README_zh.md)
 
-![Version](https://img.shields.io/badge/Version-2.0.7-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.1.0-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
 
 > **Blow-Up [Michelangelo Antonioni, 1966]**: A fashion photographer unknowingly captures a death on film after following two lovers in a park.
 >
@@ -43,6 +43,8 @@ A typical workflow in blowup, end to end:
 
 **5. Knowledge** — Record what you learn in the **Wiki**. Create entries for directors, films, genres — anything. Link them with custom relations. The **Graph** page visualizes your growing knowledge network.
 
+**6. AI assistant (optional)** — Turn on **Skill Bridge** in Settings to let an MCP-aware client (Claude Code, Cursor, Cline, …) read and write the same knowledge base via a local Unix-domain socket. One click installs the bundled `blowup-wiki-writer` skill into Claude Code so you can say "write a wiki entry for *La Chinoise*" and have it drafted, tagged, and linked in place. No ports, no cloud — the socket lives under `$XDG_RUNTIME_DIR` and only the local user can reach it.
+
 ### Pages
 
 | Page | Description |
@@ -57,11 +59,12 @@ A typical workflow in blowup, end to end:
 
 ### Architecture
 
-3-crate Rust workspace — see [`docs/REFACTOR.md`](./docs/REFACTOR.md) for the rationale.
+4-crate Rust workspace — see [`docs/REFACTOR.md`](./docs/REFACTOR.md) for the rationale.
 
 - **`blowup-core`** — pure business logic (torrent, subtitle, tmdb, library, ...). Zero Tauri/HTTP coupling.
 - **`blowup-server`** — `axum` HTTP wrapper around `blowup-core`. Runs headless, or in-process inside the Tauri app on `127.0.0.1:17690` so a LAN iPad can share the same DB + library + torrent session.
 - **`blowup-tauri`** — desktop adapter (Tauri commands + embedded mpv player + native windows).
+- **`blowup-mcp`** — MCP (Model Context Protocol) server bundled with the app. Accepts local AI clients over a `AF_UNIX` socket and exposes the knowledge base (entries / tags / relations) as MCP tools. Only started when Skill Bridge is enabled.
 
 Data flow is **event-driven**: backend mutations emit domain events (`downloads:changed`, `library:changed`, `entries:changed`, `config:changed`, `tasks:changed`), frontend listens and re-fetches — no polling.
 

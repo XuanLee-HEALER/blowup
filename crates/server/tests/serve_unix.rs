@@ -57,7 +57,11 @@ async fn serve_unix_routes_without_auth_header() {
         .unwrap();
 
     let resp = client.request(req).await.unwrap();
-    assert_eq!(resp.status(), 200, "health check should succeed without bearer");
+    assert_eq!(
+        resp.status(),
+        200,
+        "health check should succeed without bearer"
+    );
     let _body = resp.into_body().collect().await.unwrap().to_bytes();
 
     shutdown_tx.send(()).unwrap();

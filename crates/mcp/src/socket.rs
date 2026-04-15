@@ -44,10 +44,10 @@ pub fn default_socket_path() -> PathBuf {
 /// otherwise `default_socket_path()`. **Always** call this — never
 /// `default_socket_path()` directly — so tests can inject a tempdir.
 pub fn resolve_socket_path() -> PathBuf {
-    if let Ok(s) = std::env::var(ENV_OVERRIDE) {
-        if !s.is_empty() {
-            return PathBuf::from(s);
-        }
+    if let Ok(s) = std::env::var(ENV_OVERRIDE)
+        && !s.is_empty()
+    {
+        return PathBuf::from(s);
     }
     default_socket_path()
 }

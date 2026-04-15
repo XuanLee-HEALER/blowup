@@ -65,20 +65,14 @@ async fn start_test_router(socket_path: &std::path::Path) -> oneshot::Sender<()>
     tx
 }
 
-async fn send_request(
-    stdin: &mut tokio::process::ChildStdin,
-    req: &Value,
-) -> std::io::Result<()> {
+async fn send_request(stdin: &mut tokio::process::ChildStdin, req: &Value) -> std::io::Result<()> {
     let line = serde_json::to_string(req).unwrap();
     stdin.write_all(line.as_bytes()).await?;
     stdin.write_all(b"\n").await?;
     stdin.flush().await
 }
 
-async fn read_response<R: AsyncBufReadExt + Unpin>(
-    reader: &mut R,
-    timeout_secs: u64,
-) -> Value {
+async fn read_response<R: AsyncBufReadExt + Unpin>(reader: &mut R, timeout_secs: u64) -> Value {
     let mut buf = String::new();
     let n = tokio::time::timeout(
         std::time::Duration::from_secs(timeout_secs),
@@ -145,7 +139,10 @@ async fn end_to_end_list_entries_through_bridge() {
     .unwrap();
     let init_resp = read_response(&mut reader, 5).await;
     assert_eq!(init_resp["id"], 1);
-    assert!(init_resp["error"].is_null(), "initialize error: {init_resp}");
+    assert!(
+        init_resp["error"].is_null(),
+        "initialize error: {init_resp}"
+    );
 
     // 2. notifications/initialized — no response
     send_request(

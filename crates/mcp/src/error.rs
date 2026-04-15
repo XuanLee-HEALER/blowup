@@ -63,7 +63,9 @@ impl McpError {
     pub fn bridge_offline() -> Self {
         Self {
             code: ErrorCode::BridgeOffline,
-            message: "blowup app 未启用 skill bridge,请在 desktop 设置中打开 'Skill Bridge' 开关后重试".to_string(),
+            message:
+                "blowup app 未启用 skill bridge,请在 desktop 设置中打开 'Skill Bridge' 开关后重试"
+                    .to_string(),
             hint: None,
         }
     }

@@ -276,9 +276,7 @@ impl BlowupService {
         Ok("ok".to_string())
     }
 
-    #[tool(
-        description = "更新条目的名称。规则同 create_entry:中文,不含书名号、引号、年份后缀。"
-    )]
+    #[tool(description = "更新条目的名称。规则同 create_entry:中文,不含书名号、引号、年份后缀。")]
     pub async fn update_name(
         &self,
         Parameters(args): Parameters<UpdateNameArgs>,

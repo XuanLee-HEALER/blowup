@@ -438,12 +438,11 @@ pub fn run() {
             if window.label() != "main" {
                 return;
             }
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                if let Some(state) = window
-                    .try_state::<crate::skill_bridge::state::SkillBridgeState>()
-                {
-                    state.shutdown_blocking();
-                }
+            if let tauri::WindowEvent::CloseRequested { .. } = event
+                && let Some(state) =
+                    window.try_state::<crate::skill_bridge::state::SkillBridgeState>()
+            {
+                state.shutdown_blocking();
             }
         })
         .build(tauri::generate_context!())

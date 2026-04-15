@@ -67,8 +67,7 @@ pub async fn skill_bridge_start(
         .set_nonblocking(true)
         .map_err(|e| format!("set_nonblocking 失败: {e}"))?;
     let perms = std::fs::Permissions::from_mode(0o600);
-    std::fs::set_permissions(&socket_path, perms)
-        .map_err(|e| format!("chmod 0600 失败: {e}"))?;
+    std::fs::set_permissions(&socket_path, perms).map_err(|e| format!("chmod 0600 失败: {e}"))?;
     let listener = tokio::net::UnixListener::from_std(std_listener)
         .map_err(|e| format!("from_std 失败: {e}"))?;
 
@@ -97,9 +96,7 @@ pub async fn skill_bridge_start(
 /// returns the "not supported" error.
 #[cfg(not(unix))]
 #[tauri::command]
-pub async fn skill_bridge_start(
-    _state: tauri::State<'_, SkillBridgeState>,
-) -> Result<(), String> {
+pub async fn skill_bridge_start(_state: tauri::State<'_, SkillBridgeState>) -> Result<(), String> {
     Err("Skill bridge 在 Windows 上暂未支持".to_string())
 }
 
@@ -108,9 +105,7 @@ pub async fn skill_bridge_start(
 /// requests before returning so the caller knows the shutdown is
 /// complete.
 #[tauri::command]
-pub async fn skill_bridge_stop(
-    state: tauri::State<'_, SkillBridgeState>,
-) -> Result<(), String> {
+pub async fn skill_bridge_stop(state: tauri::State<'_, SkillBridgeState>) -> Result<(), String> {
     if let Some(task) = state.take_and_shutdown() {
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), task).await;
     }
@@ -122,8 +117,7 @@ fn ensure_parent_dir(socket_path: &std::path::Path) -> Result<(), String> {
     let parent = socket_path
         .parent()
         .ok_or_else(|| "socket path has no parent".to_string())?;
-    std::fs::create_dir_all(parent)
-        .map_err(|e| format!("mkdir {} 失败: {e}", parent.display()))?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {} 失败: {e}", parent.display()))?;
     // Best-effort hardening: 0700 on the parent dir keeps other
     // local users from probing the socket. Failing here doesn't
     // block startup (the socket file's own 0600 perms below are

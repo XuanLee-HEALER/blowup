@@ -628,6 +628,7 @@ function DataIORow({
 
 function SkillBridgeSection() {
   const [status, setStatus] = useState<SkillBridgeStatus | null>(null);
+  const [statusErr, setStatusErr] = useState<string | null>(null);
   const [snippets, setSnippets] = useState<InstallSnippets | null>(null);
   const [snippetsOpen, setSnippetsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -637,8 +638,10 @@ function SkillBridgeSection() {
   const refresh = async () => {
     try {
       setStatus(await skillBridge.status());
+      setStatusErr(null);
     } catch (e) {
       console.error("skill bridge status failed:", e);
+      setStatusErr(String(e));
     }
   };
 
@@ -690,6 +693,16 @@ function SkillBridgeSection() {
       <Section title="Skill Bridge">
         <Text size="sm" c="dimmed">
           Skill Bridge 在 Windows 上暂未支持。
+        </Text>
+      </Section>
+    );
+  }
+
+  if (status === null && statusErr) {
+    return (
+      <Section title="Skill Bridge">
+        <Text size="sm" c="red" style={{ whiteSpace: "pre-wrap" }}>
+          无法加载 Skill Bridge 状态：{statusErr}
         </Text>
       </Section>
     );

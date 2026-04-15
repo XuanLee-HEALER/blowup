@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**blowup** v2.0.7 — A Tauri v2 desktop app for the Chinese film-watching pipeline: TMDB discovery, torrent search & download, subtitle management, personal film knowledge base, and media playback.
+**blowup** v2.1.0 — A Tauri v2 desktop app for the Chinese film-watching pipeline: TMDB discovery, torrent search & download, subtitle management, personal film knowledge base, and media playback. v2.1 adds a local MCP bridge so Claude Code / Cursor / Cline can read and write the knowledge base over a Unix-domain socket.
 
 Named after Michelangelo Antonioni's 1966 film *Blow-Up*.
 
@@ -10,7 +10,7 @@ GitHub: https://github.com/XuanLee-HEALER/blowup
 
 ## Architecture
 
-3-crate Rust workspace + React 19 frontend. The single-`src-tauri` layout was split in 2026-04 so a future iOS client can share Rust business logic via HTTP — see `docs/REFACTOR.md`.
+**4-crate** Rust workspace + React 19 frontend. The single-`src-tauri` layout was split in 2026-04; the MCP crate was added in 2026-04 for the v2.1 Skill Bridge — see `docs/REFACTOR.md`.
 
 ```
 crates/
@@ -49,15 +49,30 @@ crates/
 │   │   ├── path_guard.rs        # re-export of core::infra::paths
 │   │   ├── error.rs             # ApiError ← strip_prefix on status::* tags
 │   │   ├── state.rs             # `pub use blowup_core::AppContext as AppState`
+│   │   ├── serve_unix.rs        # v2.1 — serve the router over AF_UNIX for Skill Bridge
 │   │   └── routes/              # one file per domain (health/config/search/tmdb/media/...)
 │   └── tests/
-│       └── smoke.rs             # 11 router smoke tests (auth + read-empty + 404)
+│       ├── smoke.rs             # 11 router smoke tests (auth + read-empty + 404)
+│       └── serve_unix.rs        # Unix-socket transport smoke test
+│
+├── mcp/                         # blowup-mcp — v2.1 MCP server (bundled child binary)
+│   ├── src/
+│   │   ├── lib.rs               # crate root
+│   │   ├── main.rs              # stdio MCP service — launched by Claude Code / Cursor / Cline
+│   │   ├── service.rs           # rmcp tool definitions (list_entries / create_entry /
+│   │   │                          update_wiki / add_tag / add_relation / list_relation_types)
+│   │   ├── client.rs            # minimal hyperlocal (AF_UNIX) JSON client used by service
+│   │   ├── socket.rs            # socket path resolution; Windows = "unsupported" sentinel
+│   │   └── error.rs             # 4-layer McpError model with [FATAL] prefix convention
+│   └── tests/
+│       └── smoke.rs             # cross-process stdio + Unix socket smoke test
 │
 └── tauri/                       # blowup-tauri — desktop adapter (mpv player + Tauri commands)
     ├── src/
     │   ├── lib.rs               # tauri::Builder setup, command registration, embedded server
     │   ├── main.rs              # binary entry
     │   ├── common.rs            # shellexpand helpers used by tauri commands only
+    │   ├── skill_bridge/        # v2.1 — SkillBridgeState (parking_lot-guarded socket listener)
     │   ├── player/              # Embedded mpv (CAOpenGLLayer + WKWebView, parking_lot statics)
     │   │   ├── mod.rs           # MpvPlayer lifecycle + event loop
     │   │   ├── ffi.rs           # mpv C API FFI bindings
@@ -65,28 +80,49 @@ crates/
     │   │   └── commands.rs      # Tauri player commands (play, seek, sub-add, ...)
     │   └── commands/            # Thin wrappers around blowup_core::* + DomainEvent publish
     │       ├── audio/config/download/export/media/search/subtitle/tasks/tracker.rs
+    │       ├── splash.rs        # v2.1 — close_splashscreen (close splash + show main)
+    │       ├── skill.rs         # v2.1 — skill_bridge_{status,start,stop,install_to_claude_code}
     │       ├── tmdb/{search,credits,enrichment}.rs
     │       └── library/{entries,graph,items}.rs
+    ├── resources/               # Bundled via tauri.conf.json resources
+    │   ├── blowup-mcp           # The blowup-mcp binary, synced in dev by `just` recipe
+    │   └── skills/blowup-wiki-writer/SKILL.md  # Claude Code skill prompt
     └── native/
         ├── metal_layer.{h,m}    # macOS: CAOpenGLLayer + NSView for mpv rendering
         └── win_gl_layer.{h,c}   # Windows: Win32 OpenGL child window
 
-src/                             # React 19 frontend (TypeScript + Vite, unchanged by the refactor)
-├── App.tsx                      # Router + sidebar nav + MusicPlayer
-├── lib/
-│   ├── tauri.ts                 # All Tauri invoke wrappers + TS types
-│   ├── useBackendEvent.ts       # Event hook + BackendEvent constants
-│   ├── format.ts                # Shared formatters
-│   └── styles.ts                # CSS custom-property constants
-├── pages/                       # Search / Wiki / Graph / Library / Download / Darkroom / Settings / Placeholder
+src/                             # React 19 frontend (TypeScript + Vite + Mantine v9)
+├── main.tsx + App.tsx           # Main window entry + three-space shell
+├── spaces/                      # v2.1 three-space layout (sidebar spaces)
+│   ├── LibrarySpace.tsx         #   Film library + Darkroom (context panel tabs)
+│   ├── DiscoverSpace.tsx        #   Search + Download
+│   ├── KnowledgeSpace.tsx       #   Wiki + Graph
+│   └── SettingsOverlay.tsx      #   Settings modal (incl. Skill Bridge section)
+├── splash/ + splash-main.tsx    # v2.1 standalone splashscreen window (animejs)
+│   ├── Splash.tsx               #   SVG film camera + particles (animejs timeline)
+│   ├── Splash.css               #   .splash-root fade-out transition
+│   └── SplashRoot.tsx           #   onComplete → 350ms fade → invoke("close_splashscreen")
 ├── components/
+│   ├── contextpanel/            #   v2.1 right-side context panel tabs
+│   │   ├── LibraryDetailTab.tsx
+│   │   └── LibraryDarkroomTab.tsx
 │   ├── FilmDetailPanel.tsx      # TMDB film detail + YTS search modal
 │   ├── WikiDetailView.tsx       # Markdown editor + outline + preview
 │   ├── MusicPlayer.tsx          # Background music player
 │   └── ui/                      # Button / Chip / NavItem / TextInput
-├── Player.tsx + player-main.tsx # Embedded player UI + window entry
-├── SubtitleViewer.tsx           # Subtitle viewer window
-└── Waveform.tsx                 # Audio waveform (wavesurfer.js)
+├── pages/                       # Search / Wiki / Graph / Library / Download / Darkroom / Settings
+├── lib/
+│   ├── tauri.ts                 # All Tauri invoke wrappers + TS types (incl. skillBridge.*)
+│   ├── useBackendEvent.ts       # Event hook + BackendEvent constants
+│   ├── theme.ts                 # Mantine v9 theme (NO custom color palette — see note below)
+│   ├── mountReactRoot.tsx       # Shared StrictMode + MantineProvider wrapper
+│   └── format.ts                # Shared formatters
+├── Player.tsx + player-main.tsx              # Embedded player UI + window entry
+├── SubtitleViewer.tsx + subtitle-viewer-main.tsx   # Subtitle viewer window
+└── Waveform.tsx + waveform-main.tsx                # Audio waveform (wavesurfer.js)
+
+index.html + splash.html + player.html + subtitle-viewer.html + waveform.html
+# 5 HTML entries — each is a separate Tauri window registered in vite.config.ts.
 ```
 
 ## Two runtime modes, one core
@@ -137,6 +173,8 @@ Frontend uses **bun** (`bun install`, `bun run`, `bunx`).
 - `useEffect(..., [deps])` for data loading — never `useState(() => { api })`.
 - Shared formatters in `src/lib/format.ts`.
 - Wiki HTML sanitized with DOMPurify.
+- **Mantine colors are a minefield.** The theme in `src/lib/theme.ts` does NOT register a custom palette — `accent` / `success` / `danger` / `warning` are NOT Mantine color names, they are only CSS variables. Never pass them to a Mantine component as `color="accent"` — it silently falls back to primary (blue) or renders transparent (Progress fill). To color Mantine components with app-theme colors, use `styles={{ root: { backgroundColor: "var(--color-accent)" } }}` or equivalent slot override. Bug class that already bit us twice: `<Badge color="accent">` and `<Progress color="accent">`.
+- **Splash window** is a separate Tauri webview (`splash.html` → `src/splash-main.tsx`). It mounts WITHOUT `MantineProvider` to keep the bundle minimal. The main window boots with `visible:false` and is only shown when the splash animation finishes and invokes `close_splashscreen`. Do NOT call `open_devtools()` on a hidden main window in `setup()` — it races with the later `show()` and crashes the app on macOS (v2.1 regression fix).
 
 ## Data Architecture: Knowledge Base vs Film Library
 
@@ -205,7 +243,22 @@ Both Tauri commands and server routes call into the same `workflows::*` function
 - **No CORS layer** — browsers cannot reach the API even if they learn the token (preflight is blocked). Native clients (iOS, curl) are unaffected.
 - Token resolution: `$BLOWUP_SERVER_TOKEN` if set, otherwise generated randomly per session and logged at WARN level.
 - SSE endpoint at `/api/v1/events` mirrors the in-process `EventBus`.
-- Smoke-tested in `crates/server/tests/smoke.rs` (auth 401/200, unknown route 404, fresh-install reads, missing-resource 404).
+- **AF_UNIX mode** (v2.1): `serve_unix.rs` exposes the same router over a local Unix domain socket with the bearer middleware *removed* (`build_router_trusted`). Filesystem perms (0600 on socket, 0700 on parent dir) replace the token — which is exactly what the Skill Bridge uses.
+- Smoke-tested in `crates/server/tests/smoke.rs` (auth 401/200, unknown route 404, fresh-install reads, missing-resource 404) and `tests/serve_unix.rs`.
+
+## Skill Bridge (v2.1)
+
+Lets a local AI client (Claude Code / Cursor / Cline / Zed) read and write the knowledge base via MCP over a Unix-domain socket. Three moving parts:
+
+1. **`crates/mcp/`** — the `blowup-mcp` binary, shipped inside the Tauri bundle. It is an stdio MCP server (rmcp) that the AI client spawns on demand. Its tools (list_entries, get_entry, create_entry, update_wiki, add_tag, add_relation, list_relation_types, list_all_tags) all forward to the desktop app via the hyperlocal client in `crates/mcp/src/client.rs`.
+2. **`crates/server/src/serve_unix.rs`** — the Tauri process listens on an AF_UNIX socket using `build_router_trusted` (no bearer gate; the 0600 socket + 0700 parent dir is the trust boundary).
+3. **`crates/tauri/src/skill_bridge/` + `commands/skill.rs`** — the Tauri-side state machine: `skill_bridge_start` creates/cleans the socket and spawns the listener; `skill_bridge_stop` tears it down; `skill_bridge_install_to_claude_code` copies the bundled `blowup-mcp` binary + `SKILL.md` into the user's Claude Code config dir and runs `claude mcp add` if the CLI is available.
+
+Rules:
+- Skill Bridge is **unsupported on Windows** — `crates/mcp/src/socket.rs::default_socket_path()` returns a sentinel path and the Tauri command reports `supported: false`. Frontend hides the section.
+- Errors from the MCP service use a 4-layer model (`crates/mcp/src/error.rs`) and prefix fatal classes with `[FATAL]` so the skill prompt can tell retryable from non-retryable.
+- The window-close handler (`on_window_event` in `crates/tauri/src/lib.rs`) calls `SkillBridgeState::shutdown_blocking()` on the main window only — closing the player popout or a subtitle viewer must NOT tear down the bridge.
+- The Tauri app's `resource_dir()` looks different in dev vs release. `justfile::_sync-dev-resources` copies `crates/tauri/resources/skills` into `target/debug/` so dev runs see the same layout as a bundled app; the `blowup-mcp` binary is already at `target/debug/blowup-mcp` as a workspace member. Don't skip this recipe.
 
 ## Key Patterns
 
@@ -222,6 +275,9 @@ Both Tauri commands and server routes call into the same `workflows::*` function
 | Export/Import | `crates/core/src/export/service.rs` | entries + entry_tags + relations → JSON / S3 |
 | Path safety | `crates/core/src/infra/paths.rs` | `is_safe_relative_path`, `is_within_root` — applied wherever user-owned strings join the library root |
 | Long-running tasks | `crates/core/src/tasks/registry.rs` + `workflows/subtitle_align.rs` | Generation-guarded slot updates so dismiss+restart races don't clobber state |
+| Splash window | `src/splash/` + `crates/tauri/src/commands/splash.rs` | Independent Tauri window 560×340 transparent; animejs timeline onComplete → 350ms CSS fade → invoke close_splashscreen; main window boots `visible:false`, shown only after splash closes |
+| Single instance | `tauri_plugin_single_instance` in `crates/tauri/src/lib.rs::run` | Re-launching blowup focuses the existing main window instead of creating a second process |
+| Skill Bridge | `crates/mcp/` + `crates/server/src/serve_unix.rs` + `crates/tauri/src/skill_bridge/` + `commands/skill.rs` | See the "Skill Bridge" section above |
 
 ## External Service Quirks
 

@@ -2,7 +2,7 @@
 
 > [Click here for English version](./README.md)
 
-![Version](https://img.shields.io/badge/Version-2.0.7-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-2.1.0-blue?style=for-the-badge) ![License](https://img.shields.io/badge/License-MIT-darkgreen?style=for-the-badge)
 
 > **《放大》[米开朗基罗·安东尼奥尼，1966]**：一位时装摄影师在公园里跟拍两名恋人时，无意间将一桩谋杀摄入镜头。
 >
@@ -43,6 +43,8 @@ blowup 的典型使用流程：
 
 **5. 知识** — 在 **Wiki** 中记录你的收获。为导演、影片、流派创建条目，用自定义关系连接它们。**知识图谱**页面将你日益丰富的知识网络可视化呈现。
 
+**6. AI 助手（可选）** — 在设置页打开 **Skill Bridge**，让任何支持 MCP 协议的客户端（Claude Code、Cursor、Cline……）通过本地 Unix 域套接字直接读写同一个知识库。一键把内置的 `blowup-wiki-writer` skill 装进 Claude Code，之后你只需要一句"帮我写一条《中国姑娘》的 wiki 条目"，内容、标签、关系就会被自动落库。不开端口、不走云端 —— socket 放在 `$XDG_RUNTIME_DIR` 下，只有当前用户能访问。
+
 ### 功能页面
 
 | 页面 | 说明 |
@@ -57,11 +59,12 @@ blowup 的典型使用流程：
 
 ### 架构
 
-3-crate Rust workspace —— 详见 [`docs/REFACTOR.md`](./docs/REFACTOR.md)。
+4-crate Rust workspace —— 详见 [`docs/REFACTOR.md`](./docs/REFACTOR.md)。
 
 - **`blowup-core`** —— 纯业务逻辑（种子、字幕、TMDB、电影库……），与 Tauri/HTTP 零耦合
 - **`blowup-server`** —— axum HTTP 封装。可独立运行，也可作为桌面进程内嵌在 `127.0.0.1:17690`，供局域网 iPad 共享同一套 DB + 电影库 + 种子会话
 - **`blowup-tauri`** —— 桌面适配层（Tauri 命令 + 内嵌 mpv 播放器 + 原生窗口）
+- **`blowup-mcp`** —— MCP（Model Context Protocol）服务，随应用打包。通过 `AF_UNIX` 套接字接受本地 AI 客户端连接，把知识库（条目/标签/关系）暴露为 MCP 工具。仅在开启 Skill Bridge 开关后启动
 
 数据流采用**事件驱动**模式：后端数据变更后发射领域事件（`downloads:changed`、`library:changed`、`entries:changed`、`config:changed`、`tasks:changed`），前端监听并重新拉取数据 —— 无轮询。
 
