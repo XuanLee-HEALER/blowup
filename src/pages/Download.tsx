@@ -142,8 +142,14 @@ function DownloadRow({
           <Progress
             value={progress}
             size="xs"
-            color={isActive ? "accent" : "gray"}
             transitionDuration={500}
+            styles={{
+              section: {
+                backgroundColor: isActive
+                  ? "var(--color-accent)"
+                  : "var(--color-label-tertiary)",
+              },
+            }}
           />
           <Group justify="space-between">
             <Text fz="0.65rem" c="var(--color-label-quaternary)">

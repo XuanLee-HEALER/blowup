@@ -154,7 +154,12 @@ export function MusicPlayer({ enabled, mode, playlist, active }: MusicPlayerProp
             a.currentTime = ((e.clientX - rect.left) / rect.width) * duration;
           }}
         >
-          <Progress value={percent} size="xs" color="accent" transitionDuration={500} />
+          <Progress
+            value={percent}
+            size="xs"
+            transitionDuration={500}
+            styles={{ section: { backgroundColor: "var(--color-accent)" } }}
+          />
         </Box>
         <Text fz="0.62rem" c="var(--color-label-quaternary)" style={{ whiteSpace: "nowrap" }}>
           {fmt(progress)} / {fmt(duration)}
