@@ -10,7 +10,6 @@ import {
   Image,
   Loader,
   Modal,
-  Paper,
   ScrollArea,
   Stack,
   Text,
@@ -321,11 +320,9 @@ export function FilmDetailPanel({ film, onClose }: FilmDetailPanelProps) {
 
           <Divider />
 
-          <Paper>
-            <Button variant="default" size="xs" onClick={() => setShowTorrentModal(true)}>
-              搜索资源
-            </Button>
-          </Paper>
+          <Button variant="default" size="xs" w="fit-content" onClick={() => setShowTorrentModal(true)}>
+            搜索资源
+          </Button>
         </Stack>
       </Box>
 

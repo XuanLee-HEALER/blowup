@@ -34,20 +34,18 @@ function statusLabel(s: string) {
   }
 }
 
-type BadgeColor = "accent" | "gray" | "success" | "danger";
-
-function statusBadgeColor(s: string): BadgeColor {
+function statusBadgeStyle(s: string): { bg: string; fg: string } {
   switch (s) {
     case "downloading":
-      return "accent";
+      return { bg: "var(--color-accent-soft)", fg: "var(--color-accent)" };
     case "paused":
-      return "gray";
+      return { bg: "var(--color-warning-soft)", fg: "var(--color-warning)" };
     case "completed":
-      return "success";
+      return { bg: "var(--color-success-soft)", fg: "var(--color-success)" };
     case "failed":
-      return "danger";
+      return { bg: "var(--color-danger-soft)", fg: "var(--color-danger)" };
     default:
-      return "gray";
+      return { bg: "var(--color-bg-control)", fg: "var(--color-label-secondary)" };
   }
 }
 
@@ -56,6 +54,7 @@ function statusBadgeColor(s: string): BadgeColor {
 function DownloadRow({
   record,
   prevBytes,
+  isLast,
   onPause,
   onResume,
   onDelete,
@@ -63,6 +62,7 @@ function DownloadRow({
 }: {
   record: DownloadRecord;
   prevBytes: number;
+  isLast: boolean;
   onPause: () => void;
   onResume: () => void;
   onDelete: () => void;
@@ -81,7 +81,10 @@ function DownloadRow({
       : 0;
 
   return (
-    <Box py="0.75rem" style={{ borderBottom: "1px solid var(--color-separator)" }}>
+    <Box
+      py="0.75rem"
+      style={{ borderBottom: isLast ? undefined : "1px solid var(--color-separator)" }}
+    >
       <Group justify="space-between" align="center" mb="0.3rem" wrap="nowrap">
         <Box style={{ flex: 1, minWidth: 0 }}>
           <Text fz="0.85rem" fw={500} truncate>
@@ -98,7 +101,16 @@ function DownloadRow({
                 · {record.quality}
               </Text>
             )}
-            <Badge size="xs" variant="light" color={statusBadgeColor(record.status)}>
+            <Badge
+              size="xs"
+              variant="light"
+              styles={{
+                root: {
+                  backgroundColor: statusBadgeStyle(record.status).bg,
+                  color: statusBadgeStyle(record.status).fg,
+                },
+              }}
+            >
               {statusLabel(record.status)}
             </Badge>
           </Group>
@@ -292,11 +304,12 @@ export default function Download() {
             >
               进行中
             </Text>
-            {active.map((d) => (
+            {active.map((d, i) => (
               <DownloadRow
                 key={d.id}
                 record={d}
                 prevBytes={prevBytesRef.current.get(d.id) ?? 0}
+                isLast={i === active.length - 1}
                 onPause={() => handlePause(d.id)}
                 onResume={() => handleResume(d.id)}
                 onDelete={() => handleDelete(d)}
@@ -321,11 +334,12 @@ export default function Download() {
               暂无下载记录
             </Text>
           )}
-          {history.map((d) => (
+          {history.map((d, i) => (
             <DownloadRow
               key={d.id}
               record={d}
               prevBytes={0}
+              isLast={i === history.length - 1}
               onPause={() => {}}
               onResume={() => {}}
               onDelete={() => handleDelete(d)}

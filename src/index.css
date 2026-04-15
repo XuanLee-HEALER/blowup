@@ -25,6 +25,7 @@
   --color-success:      #34C759;
   --color-success-soft: rgba(52 199 89 / 0.10);
   --color-warning:      #FF9500;
+  --color-warning-soft: rgba(255 149 0 / 0.12);
 
   /* Fills (interactive controls) */
   --color-fill:           rgba(120 120 128 / 0.20);
