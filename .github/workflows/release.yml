@@ -29,6 +29,19 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      # Build the blowup-mcp child binary FIRST and stage it under
+      # crates/tauri/resources/ so tauri-build's bundle.resources check
+      # ("resources/blowup-mcp") passes. Locally this is done by the
+      # `just build-mcp` recipe (which `just build` depends on), but
+      # tauri-action goes straight to `tauri build` and skips the
+      # justfile entirely. Without this step, v2.1 release builds
+      # fail with "resource path 'resources/blowup-mcp' doesn't exist".
+      - name: Build and stage blowup-mcp resource
+        run: |
+          cargo build --release --target aarch64-apple-darwin -p blowup-mcp
+          mkdir -p crates/tauri/resources
+          cp target/aarch64-apple-darwin/release/blowup-mcp crates/tauri/resources/blowup-mcp
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
