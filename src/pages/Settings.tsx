@@ -788,18 +788,23 @@ function SnippetBlock({ title, body }: { title: string; body: string }) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Box mb="lg">
+    <Box
+      mb="xl"
+      pt="md"
+      style={{ borderTop: "1px solid var(--color-separator)" }}
+    >
       <Text
-        size="xs"
-        tt="uppercase"
-        c="dimmed"
-        fw={600}
-        mb="xs"
-        style={{ letterSpacing: "0.06em" }}
+        size="lg"
+        fw={700}
+        mb="md"
+        style={{
+          color: "var(--color-label-primary)",
+          letterSpacing: "-0.015em",
+        }}
       >
         {title}
       </Text>
-      <Stack gap="xs">{children}</Stack>
+      <Stack gap="sm">{children}</Stack>
     </Box>
   );
 }
@@ -807,7 +812,14 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Group gap="md" align="center" wrap="nowrap">
-      <Text size="sm" c="dimmed" w={96} style={{ flexShrink: 0 }}>
+      <Text
+        size="xs"
+        w={96}
+        style={{
+          flexShrink: 0,
+          color: "var(--color-label-secondary)",
+        }}
+      >
         {label}
       </Text>
       <Box style={{ flex: 1 }}>{children}</Box>
