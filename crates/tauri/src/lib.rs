@@ -318,7 +318,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             // Search & discovery
-            commands::search::search_yify_cmd,
+            commands::search::search_movie_cmd,
             commands::tmdb::search_movies,
             commands::tmdb::discover_movies,
             commands::tmdb::list_genres,

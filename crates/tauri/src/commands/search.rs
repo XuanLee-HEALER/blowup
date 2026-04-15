@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tauri::State;
 
 #[tauri::command]
-pub async fn search_yify_cmd(
+pub async fn search_movie_cmd(
     query: String,
     year: Option<u32>,
     tmdb_id: Option<u64>,

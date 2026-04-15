@@ -9,19 +9,19 @@ use crate::error::ApiResult;
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/search/yify", post(search_yify))
+    Router::new().route("/search/movie", post(search_movie_route))
 }
 
 #[derive(Deserialize)]
-pub struct YifySearchRequest {
+pub struct MovieSearchRequest {
     pub query: String,
     pub year: Option<u32>,
     pub tmdb_id: Option<u64>,
 }
 
-async fn search_yify(
+async fn search_movie_route(
     axum::extract::State(state): axum::extract::State<AppState>,
-    Json(req): Json<YifySearchRequest>,
+    Json(req): Json<MovieSearchRequest>,
 ) -> ApiResult<Json<Vec<ScoredTorrent>>> {
     let cfg = blowup_core::config::load_config();
     let q = SearchQuery {
