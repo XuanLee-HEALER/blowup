@@ -6,6 +6,7 @@
 //! `reqwest::Client` is the TMDB API key (optional fallback for
 //! resolving an IMDB id from a TMDB id).
 
+pub mod parser;
 pub mod types;
 
 use crate::error::SearchError;
