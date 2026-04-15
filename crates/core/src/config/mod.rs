@@ -24,8 +24,6 @@ pub struct Config {
     #[serde(default)]
     pub tools: ToolsConfig,
     #[serde(default)]
-    pub search: SearchConfig,
-    #[serde(default)]
     pub subtitle: SubtitleConfig,
     #[serde(default)]
     pub opensubtitles: OpenSubtitlesConfig,
@@ -49,12 +47,6 @@ pub struct Config {
 pub struct ToolsConfig {
     #[serde(default = "default_ffmpeg")]
     pub ffmpeg: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct SearchConfig {
-    #[serde(default = "default_rate_limit")]
-    pub rate_limit_secs: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -172,9 +164,6 @@ fn default_music_mode() -> String {
 fn default_ffmpeg() -> String {
     "ffmpeg".to_string()
 }
-fn default_rate_limit() -> u64 {
-    5
-}
 fn default_lang() -> String {
     "zh".to_string()
 }
@@ -190,13 +179,6 @@ impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
             ffmpeg: default_ffmpeg(),
-        }
-    }
-}
-impl Default for SearchConfig {
-    fn default() -> Self {
-        Self {
-            rate_limit_secs: default_rate_limit(),
         }
     }
 }
@@ -306,7 +288,6 @@ mod tests {
     fn default_config_has_sane_values() {
         let cfg = Config::default();
         assert_eq!(cfg.tools.ffmpeg, "ffmpeg");
-        assert_eq!(cfg.search.rate_limit_secs, 5);
         assert_eq!(cfg.subtitle.default_lang, "zh");
     }
 
@@ -325,7 +306,6 @@ alass = "/usr/local/bin/alass"
 "#;
         let cfg: Config = toml::from_str(toml).unwrap();
         assert_eq!(cfg.tools.ffmpeg, "ffmpeg");
-        assert_eq!(cfg.search.rate_limit_secs, 5);
     }
 
     #[test]

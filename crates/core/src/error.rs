@@ -37,16 +37,6 @@ pub enum ConfigError {
 }
 
 #[derive(Debug, Error)]
-pub enum SearchError {
-    #[error("HTTP request failed: {0}")]
-    HttpFailed(#[from] reqwest::Error),
-    #[error("No results found for query: {0}")]
-    NoResults(String),
-    #[error("CDP browser not available: {0}")]
-    CdpUnavailable(String),
-}
-
-#[derive(Debug, Error)]
 pub enum SubError {
     #[error("Subtitle source returned no results")]
     NoSubtitleFound,
@@ -89,12 +79,6 @@ pub enum ConfigCmdError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn search_error_display() {
-        let e = SearchError::NoResults("Blow-Up 1966".to_string());
-        assert_eq!(e.to_string(), "No results found for query: Blow-Up 1966");
-    }
 
     #[test]
     fn tmdb_error_api_key_missing_display() {
