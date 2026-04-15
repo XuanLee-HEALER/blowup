@@ -33,8 +33,30 @@ _ensure-dev-dlls:
 [linux]
 _ensure-dev-dlls:
 
+# Copy bundled skill resources into target/debug/ so `resource_dir()`
+# sees the same layout in dev as it does in a release bundle. Tauri's
+# bundler only runs during `tauri build`, not `tauri dev`, so without
+# this the skill_bridge_install_to_claude_code command fails in dev
+# with "打包资源缺少 SKILL.md". The blowup-mcp binary is already
+# built to target/debug/blowup-mcp by cargo as a workspace member,
+# so only the skill tree needs syncing here.
+[windows]
+_sync-dev-resources:
+
+[macos]
+_sync-dev-resources:
+    mkdir -p target/debug
+    rm -rf target/debug/skills
+    cp -R crates/tauri/resources/skills target/debug/skills
+
+[linux]
+_sync-dev-resources:
+    mkdir -p target/debug
+    rm -rf target/debug/skills
+    cp -R crates/tauri/resources/skills target/debug/skills
+
 # Desktop dev — Tauri WebView + React + in-process HTTP server
-dev: _ensure-dev-dlls
+dev: _ensure-dev-dlls _sync-dev-resources
     bunx tauri dev
 
 # Headless blowup-server dev — no WebView, no libmpv (env: BLOWUP_DATA_DIR, BLOWUP_SERVER_BIND)
