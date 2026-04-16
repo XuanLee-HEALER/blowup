@@ -30,6 +30,11 @@ pub struct DownloadMonitorParams {
     pub tmdb_id: u64,
     pub year: Option<u32>,
     pub genres: Vec<String>,
+    /// If set, files whose torrent index is NOT in this list will be
+    /// deleted after download completes. This works around librqbit
+    /// pre-allocating all files regardless of `only_files` and
+    /// BitTorrent pieces spanning file boundaries.
+    pub only_files: Option<Vec<usize>>,
 }
 
 /// Spawn a background tokio task that polls `handle.stats()` every
@@ -65,6 +70,11 @@ pub fn spawn(p: DownloadMonitorParams) {
                 tracing::info!(p.download_id, "download completed");
                 download_svc::mark_completed(&p.pool, p.download_id, stats.total_bytes as i64)
                     .await;
+
+                // Remove files the user de-selected before scanning
+                if let Some(ref wanted) = p.only_files {
+                    cleanup_unwanted_files(&p.handle, &p.output_folder, wanted);
+                }
 
                 let files = crate::library::index::scan_dir_files(&p.output_folder);
 
@@ -110,4 +120,48 @@ pub fn spawn(p: DownloadMonitorParams) {
             }
         }
     });
+}
+
+/// Delete torrent files that the user de-selected in the file picker.
+///
+/// librqbit pre-allocates storage for ALL files in a torrent and
+/// BitTorrent pieces span file boundaries, so small unwanted files
+/// (subtitles, images) end up with data even when `only_files` is set.
+/// This function runs after download completion and removes those files.
+fn cleanup_unwanted_files(
+    handle: &TorrentHandle,
+    output_folder: &std::path::Path,
+    wanted: &[usize],
+) {
+    use std::collections::HashSet;
+    let wanted_set: HashSet<usize> = wanted.iter().copied().collect();
+
+    let file_names: Vec<(usize, String)> = match handle.with_metadata(|m| {
+        m.info.iter_file_details().map(|iter| {
+            iter.enumerate()
+                .map(|(i, fd)| (i, fd.filename.to_string().unwrap_or_default()))
+                .collect::<Vec<_>>()
+        })
+    }) {
+        Ok(Ok(names)) => names,
+        _ => {
+            tracing::warn!("could not read torrent metadata for unwanted file cleanup");
+            return;
+        }
+    };
+
+    for (idx, name) in file_names {
+        if wanted_set.contains(&idx) || name.is_empty() {
+            continue;
+        }
+        let path = output_folder.join(&name);
+        if path.exists() {
+            match std::fs::remove_file(&path) {
+                Ok(()) => tracing::info!(file = %name, "removed unwanted torrent file"),
+                Err(e) => {
+                    tracing::warn!(file = %name, error = %e, "failed to remove unwanted file")
+                }
+            }
+        }
+    }
 }

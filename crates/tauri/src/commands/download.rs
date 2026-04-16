@@ -38,6 +38,7 @@ pub async fn start_download(
     let download_id = svc::insert_download_record(pool.inner(), &req).await?;
 
     let trackers = tracker_mgr.hot_trackers().await;
+    let only_files = req.only_files.clone();
     let (torrent_id, handle): (usize, TorrentHandle) = match tm
         .start_download(
             &req.target,
@@ -68,6 +69,7 @@ pub async fn start_download(
         tmdb_id: req.tmdb_id,
         year: req.year,
         genres: req.genres.unwrap_or_default(),
+        only_files,
     });
 
     events.publish(DomainEvent::DownloadsChanged);
@@ -145,6 +147,7 @@ pub async fn resume_download(
         tmdb_id,
         year: record.year.map(|y| y as u32),
         genres: parse_genres_csv(record.genres.as_deref()),
+        only_files: None, // resume doesn't re-apply file selection
     });
 
     events.publish(DomainEvent::DownloadsChanged);
@@ -243,6 +246,7 @@ pub async fn redownload(
     let output_folder = index.compute_download_path(&director, tmdb_id);
 
     let trackers = tracker_mgr.hot_trackers().await;
+    let only_files_for_monitor = only_files.clone();
     let (torrent_id, handle) = tm
         .start_download(
             &record.target,
@@ -266,6 +270,7 @@ pub async fn redownload(
         tmdb_id,
         year: record.year.map(|y| y as u32),
         genres: parse_genres_csv(record.genres.as_deref()),
+        only_files: only_files_for_monitor,
     });
 
     events.publish(DomainEvent::DownloadsChanged);

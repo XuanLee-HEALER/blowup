@@ -59,6 +59,7 @@ async fn start_download(
     let download_id = svc::insert_download_record(&state.db, &req).await?;
 
     let trackers = state.tracker.hot_trackers().await;
+    let only_files = req.only_files.clone();
     let (torrent_id, handle) = match tm
         .start_download(
             &req.target,
@@ -89,6 +90,7 @@ async fn start_download(
         tmdb_id: req.tmdb_id,
         year: req.year,
         genres: req.genres.clone().unwrap_or_default(),
+        only_files,
     });
 
     state.events.publish(DomainEvent::DownloadsChanged);
@@ -148,6 +150,7 @@ async fn resume(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult
         tmdb_id,
         year: record.year.map(|y| y as u32),
         genres: parse_genres_csv(record.genres.as_deref()),
+        only_files: None,
     });
 
     state.events.publish(DomainEvent::DownloadsChanged);
@@ -209,6 +212,7 @@ async fn redownload(
 
     let tm = state.torrent().map_err(ApiError::Internal)?;
     let trackers = state.tracker.hot_trackers().await;
+    let only_files = req.only_files.clone();
     let (torrent_id, handle) = tm
         .start_download(
             &record.target,
@@ -233,6 +237,7 @@ async fn redownload(
         tmdb_id,
         year: record.year.map(|y| y as u32),
         genres: parse_genres_csv(record.genres.as_deref()),
+        only_files,
     });
 
     state.events.publish(DomainEvent::DownloadsChanged);
