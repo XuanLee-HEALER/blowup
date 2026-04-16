@@ -405,6 +405,7 @@ pub fn run() {
             commands::library::items::refresh_index_entry,
             commands::library::items::delete_film_directory,
             commands::library::items::save_subtitle_configs,
+            commands::library::items::sync_film_to_wiki,
             // Player
             player::commands::cmd_open_player,
             player::commands::cmd_close_player,

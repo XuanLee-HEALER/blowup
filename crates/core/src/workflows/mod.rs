@@ -25,5 +25,6 @@
 
 pub mod download_monitor;
 pub mod subtitle_align;
+pub mod wiki_linker;
 
 pub use subtitle_align::{run_subtitle_align_to_audio, run_subtitle_align_to_video};

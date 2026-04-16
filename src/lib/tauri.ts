@@ -376,6 +376,8 @@ export const library = {
     invoke<void>("save_subtitle_configs", { tmdbId, configs }),
   enrichIndexEntry: (tmdbId: number, force?: boolean) =>
     invoke<IndexEntry>("enrich_index_entry", { tmdbId, force }),
+  syncFilmToWiki: (tmdbId: number) =>
+    invoke<void>("sync_film_to_wiki", { tmdbId }),
 };
 
 export const download = {

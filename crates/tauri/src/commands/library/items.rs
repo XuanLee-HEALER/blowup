@@ -3,6 +3,7 @@ use blowup_core::library::index::{IndexEntry, LibraryIndex, SubtitleDisplayConfi
 use blowup_core::library::items::{
     self as svc, LibraryItemDetail, LibraryItemSummary, LibraryStats, ScanResult,
 };
+use blowup_core::workflows::wiki_linker;
 use sqlx::SqlitePool;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -191,5 +192,29 @@ pub async fn delete_film_directory(
 
     index.remove_entry(tmdb_id);
     events.publish(DomainEvent::LibraryChanged);
+    Ok(())
+}
+
+// ── Wiki sync ─────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn sync_film_to_wiki(
+    pool: tauri::State<'_, SqlitePool>,
+    events: tauri::State<'_, EventBus>,
+    index: tauri::State<'_, Arc<LibraryIndex>>,
+    tmdb_id: u64,
+) -> Result<(), String> {
+    let entry = index
+        .get_entry(tmdb_id)
+        .ok_or_else(|| format!("film {tmdb_id} not found in library index"))?;
+    let mut titles: Vec<&str> = vec![entry.title.as_str()];
+    if let Some(ref orig) = entry.original_title
+        && !orig.is_empty()
+        && orig != &entry.title
+    {
+        titles.push(orig.as_str());
+    }
+    titles.retain(|t| t.chars().count() >= 2);
+    wiki_linker::link_film_mentions(pool.inner(), events.inner(), tmdb_id, &titles).await;
     Ok(())
 }

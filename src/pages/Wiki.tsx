@@ -148,11 +148,34 @@ const mdComponents: Components = {
       {...props}
     />
   ),
-  a: ({ children, href, ...props }) => (
-    <a href={href} style={{ color: "var(--color-accent)", textDecoration: "none" }} {...props}>
-      {children}
-    </a>
-  ),
+  a: ({ children, href, ...props }) => {
+    if (href?.startsWith("#film:")) {
+      const tmdbId = href.slice(6);
+      return (
+        <a
+          href={href}
+          onClick={(e) => {
+            e.preventDefault();
+            window.location.hash = `#/library/${tmdbId}`;
+          }}
+          style={{
+            color: "var(--color-accent)",
+            textDecoration: "none",
+            borderBottom: "1px dashed var(--color-accent)",
+          }}
+          title="跳转到影片库"
+          {...props}
+        >
+          {children}
+        </a>
+      );
+    }
+    return (
+      <a href={href} style={{ color: "var(--color-accent)", textDecoration: "none" }} {...props}>
+        {children}
+      </a>
+    );
+  },
 };
 
 function WikiPreview({ content }: { content: string }) {

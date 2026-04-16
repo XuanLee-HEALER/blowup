@@ -93,6 +93,7 @@ pub fn spawn(p: DownloadMonitorParams) {
 
                 // Rescan after extraction to pick up new SRTs
                 let files = crate::library::index::scan_dir_files(&p.output_folder);
+                let film_title = p.title.clone(); // kept for wiki_linker below
                 let entry = IndexEntry {
                     tmdb_id: p.tmdb_id,
                     title: p.title,
@@ -110,6 +111,17 @@ pub fn spawn(p: DownloadMonitorParams) {
                 }
 
                 p.events.publish(DomainEvent::LibraryChanged);
+
+                // Auto-link film title mentions in wiki entries
+                let titles: Vec<&str> = [film_title.as_str()]
+                    .into_iter()
+                    .filter(|t| t.chars().count() >= 2)
+                    .collect();
+                if !titles.is_empty() {
+                    super::wiki_linker::link_film_mentions(&p.pool, &p.events, p.tmdb_id, &titles)
+                        .await;
+                }
+
                 break;
             }
 

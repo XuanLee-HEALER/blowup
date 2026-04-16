@@ -34,6 +34,7 @@ interface LibraryDetailTabProps {
   onPlay: (file: string) => void;
   onDeleteResource: (file: string) => void;
   onRefresh: () => void;
+  onSyncToWiki: () => void;
   onToggleSub: (file: string) => void;
   onUpdateSubConfig: (file: string, patch: Partial<SubConfig>) => void;
 }
@@ -47,6 +48,7 @@ export function LibraryDetailTab({
   onPlay,
   onDeleteResource,
   onRefresh,
+  onSyncToWiki,
   onToggleSub,
   onUpdateSubConfig,
 }: LibraryDetailTabProps) {
@@ -58,7 +60,15 @@ export function LibraryDetailTab({
     <ScrollArea style={{ flex: 1 }}>
       <Box p="1rem">
         <Stack gap="md">
-          <Group justify="flex-end">
+          <Group justify="flex-end" gap="xs">
+            <ActionIcon
+              variant="default"
+              size="sm"
+              onClick={onSyncToWiki}
+              title="同步到知识库"
+            >
+              📖
+            </ActionIcon>
             <ActionIcon
               variant="default"
               size="sm"

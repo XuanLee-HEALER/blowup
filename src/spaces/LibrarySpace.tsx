@@ -470,6 +470,7 @@ export function LibrarySpace() {
           onPlay={handlePlay}
           onDeleteResource={handleDeleteResource}
           onRefresh={handleRefreshDetail}
+          onSyncToWiki={() => library.syncFilmToWiki(selectedEntry.tmdb_id)}
           onToggleSub={toggleSub}
           onUpdateSubConfig={updateSubConfig}
         />
