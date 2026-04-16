@@ -13,6 +13,7 @@ import {
   Text,
   Title,
 } from "@mantine/core";
+import { IconBook } from "@tabler/icons-react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { IndexEntry } from "../../lib/tauri";
 
@@ -67,7 +68,7 @@ export function LibraryDetailTab({
               onClick={onSyncToWiki}
               title="同步到知识库"
             >
-              📖
+              <IconBook size={14} />
             </ActionIcon>
             <ActionIcon
               variant="default"
