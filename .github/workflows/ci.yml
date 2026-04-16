@@ -34,6 +34,15 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      # blowup-tauri bundles blowup-mcp as a resource. tauri-build's
+      # build.rs checks that "resources/blowup-mcp" exists at compile
+      # time, so we must build and stage it before clippy / tests.
+      - name: Build and stage blowup-mcp resource
+        run: |
+          cargo build -p blowup-mcp
+          mkdir -p crates/tauri/resources
+          cp target/debug/blowup-mcp crates/tauri/resources/blowup-mcp
+
       - name: TypeScript check
         run: bunx tsc --noEmit
 
