@@ -457,12 +457,12 @@ export function LibrarySpace() {
 
   // ── Context panel ──
   const context = selectedEntry ? (
-    <Tabs defaultValue="detail" style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+    <Tabs defaultValue="detail" style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
       <Tabs.List>
         <Tabs.Tab value="detail">详情</Tabs.Tab>
         <Tabs.Tab value="darkroom">暗房</Tabs.Tab>
       </Tabs.List>
-      <Tabs.Panel value="detail" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <Tabs.Panel value="detail" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <LibraryDetailTab
           entry={selectedEntry}
           enriching={enriching}
@@ -474,7 +474,7 @@ export function LibrarySpace() {
           onUpdateSubConfig={updateSubConfig}
         />
       </Tabs.Panel>
-      <Tabs.Panel value="darkroom" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <Tabs.Panel value="darkroom" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
         <LibraryDarkroomTab entry={selectedEntry} rootDir={rootDir} />
       </Tabs.Panel>
     </Tabs>

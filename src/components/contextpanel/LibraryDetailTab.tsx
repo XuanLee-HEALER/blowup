@@ -229,13 +229,18 @@ export function LibraryDetailTab({
                         <Checkbox
                           checked={enabled}
                           onChange={() => onToggleSub(file)}
-                          label={
-                            <Text fz="0.75rem" truncate title={file}>
-                              {file}
-                            </Text>
-                          }
+                          label={file}
+                          title={file}
                           styles={{
-                            label: { flex: 1, minWidth: 0, overflow: "hidden" },
+                            root: { overflow: "hidden" },
+                            body: { overflow: "hidden" },
+                            labelWrapper: { overflow: "hidden", minWidth: 0 },
+                            label: {
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              fontSize: "0.75rem",
+                            },
                           }}
                         />
                         {enabled && cfg && (
