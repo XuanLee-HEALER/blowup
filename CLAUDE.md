@@ -320,9 +320,6 @@ token = ""
 [subtitle]
 default_lang = "zh"
 
-[search]
-rate_limit_secs = 5
-
 [library]
 root_dir = "~/Movies/blowup"
 

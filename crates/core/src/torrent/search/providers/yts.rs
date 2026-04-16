@@ -9,6 +9,7 @@
 //! 2. Otherwise query by original title + year.
 //! 3. Fallback: sanitize title (strip punctuation) and retry.
 
+use super::extract_info_hash_from_magnet;
 use crate::torrent::search::provider::{CallPacer, SearchProvider, with_retry};
 use crate::torrent::search::types::{ProviderError, RawTorrent, SearchContext};
 use async_trait::async_trait;
@@ -224,13 +225,6 @@ static SANITIZE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^\w\s]").un
 fn sanitize_query(query: &str) -> String {
     let cleaned = SANITIZE_RE.replace_all(query, " ");
     cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-static MAGNET_HASH_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)urn:btih:([a-f0-9]+)").unwrap());
-
-pub(crate) fn extract_info_hash_from_magnet(magnet: &str) -> Option<String> {
-    MAGNET_HASH_RE.captures(magnet).map(|c| c[1].to_lowercase())
 }
 
 #[cfg(test)]

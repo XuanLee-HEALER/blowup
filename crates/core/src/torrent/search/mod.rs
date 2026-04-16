@@ -51,7 +51,6 @@ pub async fn search_movie(
         title: &query.title,
         year: query.year,
         imdb_id: imdb_id.as_deref(),
-        tmdb_api_key: &query.tmdb_api_key,
         trackers: &trackers,
     };
 
@@ -145,7 +144,7 @@ async fn fetch_imdb_id(client: &reqwest::Client, api_key: &str, tmdb_id: u64) ->
         imdb_id: Option<String>,
     }
 
-    let resp = client
+    let resp = match client
         .get(format!(
             "https://api.themoviedb.org/3/movie/{tmdb_id}/external_ids"
         ))
@@ -153,10 +152,21 @@ async fn fetch_imdb_id(client: &reqwest::Client, api_key: &str, tmdb_id: u64) ->
         .header("User-Agent", "blowup/0.1")
         .send()
         .await
-        .ok()?;
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(tmdb_id, error = %e, "fetch_imdb_id: TMDB request failed");
+            return None;
+        }
+    };
 
-    let ids: ExternalIds = resp.json().await.ok()?;
-    ids.imdb_id.filter(|s| !s.is_empty())
+    match resp.json::<ExternalIds>().await {
+        Ok(ids) => ids.imdb_id.filter(|s| !s.is_empty()),
+        Err(e) => {
+            tracing::warn!(tmdb_id, error = %e, "fetch_imdb_id: TMDB response parse failed");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

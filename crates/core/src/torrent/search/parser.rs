@@ -37,7 +37,7 @@ static CODEC_X264: LazyLock<Regex> =
 static CODEC_AV1: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\bav1\b").unwrap());
 
 static HDR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)\b(?:hdr|hdr10|dv|dolby.?vision)\b").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)\b(?:hdr|hdr10\+?|dolby.?vision)\b").unwrap());
 
 /// Release group: trailing `-GROUP` (letters + digits, length ≥ 2),
 /// optionally followed by a file extension we strip. Case-sensitive on

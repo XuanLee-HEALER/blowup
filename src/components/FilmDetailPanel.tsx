@@ -178,7 +178,7 @@ function TorrentSearchModal({
 
         {error && (
           <Text size="sm" c="var(--color-danger)">
-            {error.includes("NoResults") ? "未找到资源" : `搜索失败: ${error}`}
+            {`搜索失败: ${error}`}
           </Text>
         )}
 

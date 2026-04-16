@@ -16,8 +16,8 @@
 //! bypass — if 1337x moves behind a challenge, we surface 403/503
 //! and rely on the orchestrator to silently drop the source.
 
+use super::extract_info_hash_from_magnet;
 use crate::torrent::search::provider::{CallPacer, SearchProvider, with_retry};
-use crate::torrent::search::providers::yts::extract_info_hash_from_magnet;
 use crate::torrent::search::types::{ProviderError, RawTorrent, SearchContext};
 use async_trait::async_trait;
 use futures::stream::{self, StreamExt};

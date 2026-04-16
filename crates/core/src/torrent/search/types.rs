@@ -25,7 +25,6 @@ pub struct SearchContext<'a> {
     /// Pre-resolved IMDB id (e.g., "tt0061791"). Orchestrator fetches
     /// this once from TMDB and hands it to every provider.
     pub imdb_id: Option<&'a str>,
-    pub tmdb_api_key: &'a str,
     /// Snapshot of `TrackerManager::hot_trackers()` taken once per
     /// search. Nyaa uses this to synthesize magnet URIs.
     pub trackers: &'a [String],
